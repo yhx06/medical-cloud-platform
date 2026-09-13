@@ -1,19 +1,28 @@
 package com.medcloud.platform.tenant.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.medcloud.platform.tenant.application.PlatformTenantService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.stream.Stream;
 
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -23,6 +32,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class PlatformTenantManagementTest {
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
+
+    @MockitoSpyBean
+    private PlatformTenantService tenantService;
 
     @Autowired
     PlatformTenantManagementTest(MockMvc mockMvc, ObjectMapper objectMapper) {
@@ -92,6 +104,40 @@ class PlatformTenantManagementTest {
                         .content("{\"status\":\"DISABLED\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
+    }
+
+    @ParameterizedTest(name = "{0} cannot call {1} {2}")
+    @MethodSource("nonPlatformMutationRequests")
+    void nonPlatformRolesCannotCallPrivilegedMutations(
+            String username,
+            HttpMethod method,
+            String uri,
+            String body
+    ) throws Exception {
+        mockMvc.perform(request(method, uri)
+                        .header(AUTHORIZATION, bearer(username))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+
+        verifyNoInteractions(tenantService);
+    }
+
+    private static Stream<Arguments> nonPlatformMutationRequests() {
+        return Stream.of("patient_demo", "doctor_a", "hospital_a")
+                .flatMap(username -> Stream.of(
+                        Arguments.of(username, HttpMethod.POST, "/api/platform/tenants",
+                                "{\"name\":\"越权医院\"}"),
+                        Arguments.of(username, HttpMethod.POST,
+                                "/api/platform/tenants/11111111-1111-1111-1111-111111111111/admins",
+                                "{\"username\":\"unauthorized_admin\",\"password\":\"Demo@123456\"}"),
+                        Arguments.of(username, HttpMethod.PATCH,
+                                "/api/platform/tenants/11111111-1111-1111-1111-111111111111/status",
+                                "{\"status\":\"DISABLED\"}"),
+                        Arguments.of(username, HttpMethod.PATCH,
+                                "/api/platform/accounts/20000000-0000-0000-0000-000000000001/status",
+                                "{\"status\":\"DISABLED\"}")));
     }
 
     private String bearer(String username) throws Exception {

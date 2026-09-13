@@ -21,9 +21,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private static final Set<String> PUBLIC_ENDPOINTS = Set.of(
+            "/api/auth/login", "/actuator/health", "/error");
+
     private final JwtService jwtService;
     private final AccountAccessPolicy accountAccessPolicy;
     private final ObjectMapper objectMapper;
@@ -36,6 +40,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         this.jwtService = jwtService;
         this.accountAccessPolicy = accountAccessPolicy;
         this.objectMapper = objectMapper;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getRequestURI().substring(request.getContextPath().length());
+        return PUBLIC_ENDPOINTS.contains(path);
     }
 
     @Override
