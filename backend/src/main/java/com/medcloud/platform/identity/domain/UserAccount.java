@@ -62,6 +62,10 @@ public class UserAccount {
         return new UserAccount(username, passwordHash, UserRole.HOSPITAL_ADMIN, tenantId);
     }
 
+    public static UserAccount createDoctor(UUID tenantId, String username, String passwordHash) {
+        return new UserAccount(username, passwordHash, UserRole.DOCTOR, tenantId);
+    }
+
     public void changeStatus(UserStatus status) {
         this.status = status;
         this.updatedAt = Instant.now();

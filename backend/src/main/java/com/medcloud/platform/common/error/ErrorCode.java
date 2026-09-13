@@ -8,6 +8,7 @@ public enum ErrorCode {
     ACCOUNT_DISABLED(HttpStatus.FORBIDDEN, "账号已停用"),
     TENANT_DISABLED(HttpStatus.FORBIDDEN, "租户已停用"),
     VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "请求参数校验失败"),
+    DEPARTMENT_DUPLICATE(HttpStatus.CONFLICT, "同一租户内科室名称不能重复"),
     TENANT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "无权访问该租户资源"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "资源不存在"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "系统内部错误");
