@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: medical-cloud-platform
+  jpa:
+    open-in-view: false
+  flyway:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+
+server:
+  port: 8080

@@ -1,0 +1,26 @@
+# Java
+backend/target/
+*.class
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.npm-cache/
+
+# Environment and secrets
+.env
+deploy/.env
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and generated files
+*.log
+__pycache__/
+*.py[cod]
+
+# Local worktrees
+.worktrees/
