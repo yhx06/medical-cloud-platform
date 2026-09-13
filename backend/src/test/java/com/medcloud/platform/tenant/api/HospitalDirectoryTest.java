@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medcloud.platform.identity.domain.UserAccount;
 import com.medcloud.platform.identity.infrastructure.UserAccountRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -15,12 +19,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.http.HttpHeaders.AUTHORIZATION;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -155,6 +161,57 @@ class HospitalDirectoryTest {
                         .content("{\"status\":\"SUSPENDED\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @ParameterizedTest(name = "{0} cannot call {1} {2}")
+    @MethodSource("nonHospitalDirectoryRequests")
+    void nonHospitalRolesCannotAccessDirectoryEndpoints(
+            String username,
+            HttpMethod method,
+            String uri,
+            String body
+    ) throws Exception {
+        mockMvc.perform(request(method, uri)
+                        .header(AUTHORIZATION, bearer(username))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
+    }
+
+    @ParameterizedTest(name = "anonymous cannot call {0} {1}")
+    @MethodSource("directoryRequests")
+    void unauthenticatedUsersCannotAccessDirectoryEndpoints(
+            HttpMethod method,
+            String uri,
+            String body
+    ) throws Exception {
+        mockMvc.perform(request(method, uri)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_INVALID_CREDENTIALS"));
+    }
+
+    private static Stream<Arguments> nonHospitalDirectoryRequests() {
+        return Stream.of("patient_demo", "doctor_a", "platform_admin")
+                .flatMap(username -> directoryRequests()
+                        .map(request -> Arguments.of(username, request.get()[0], request.get()[1], request.get()[2])));
+    }
+
+    private static Stream<Arguments> directoryRequests() {
+        String id = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+        return Stream.of(
+                Arguments.of(HttpMethod.GET, "/api/hospital/departments", ""),
+                Arguments.of(HttpMethod.POST, "/api/hospital/departments", "{\"name\":\"越权科室\"}"),
+                Arguments.of(HttpMethod.PUT, "/api/hospital/departments/" + id,
+                        "{\"name\":\"越权科室\",\"description\":\"\",\"status\":\"ACTIVE\"}"),
+                Arguments.of(HttpMethod.GET, "/api/hospital/doctors", ""),
+                Arguments.of(HttpMethod.POST, "/api/hospital/doctors",
+                        "{\"username\":\"unauthorized_doctor\",\"password\":\"Doctor@123456\","
+                                + "\"departmentId\":\"" + id + "\",\"displayName\":\"越权医生\"}"),
+                Arguments.of(HttpMethod.PUT, "/api/hospital/doctors/" + id + "/status",
+                        "{\"status\":\"DISABLED\"}"));
     }
 
     private String createDepartment(String token, String name, String description) throws Exception {

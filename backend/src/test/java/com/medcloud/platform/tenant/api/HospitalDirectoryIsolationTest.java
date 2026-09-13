@@ -116,6 +116,60 @@ class HospitalDirectoryIsolationTest {
                         .value("11111111-1111-1111-1111-111111111111"));
     }
 
+    @Test
+    void forgedTenantIdsAreIgnoredWhenCreatingDepartmentsAndDoctors() throws Exception {
+        String hospitalA = bearer("hospital_a");
+        String hospitalB = bearer("hospital_b");
+        String forgedTenantId = "22222222-2222-2222-2222-222222222222";
+
+        String departmentResponse = mockMvc.perform(post("/api/hospital/departments")
+                        .header(AUTHORIZATION, hospitalA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "name", "认证租户科室",
+                                "description", "客户端伪造租户字段",
+                                "tenantId", forgedTenantId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId")
+                        .value("11111111-1111-1111-1111-111111111111"))
+                .andReturn().getResponse().getContentAsString();
+        String departmentId = objectMapper.readTree(departmentResponse).at("/data/id").asText();
+
+        mockMvc.perform(post("/api/hospital/doctors")
+                        .header(AUTHORIZATION, hospitalA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "username", "doctor_" + UUID.randomUUID().toString().replace("-", ""),
+                                "password", "Doctor@123456",
+                                "departmentId", departmentId,
+                                "displayName", "认证租户医生",
+                                "title", "医师",
+                                "biography", "客户端伪造租户字段",
+                                "tenantId", forgedTenantId))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.tenantId")
+                        .value("11111111-1111-1111-1111-111111111111"));
+
+        mockMvc.perform(get("/api/hospital/departments").header(AUTHORIZATION, hospitalA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("认证租户科室"))
+                .andExpect(jsonPath("$.data[0].tenantId")
+                        .value("11111111-1111-1111-1111-111111111111"));
+        mockMvc.perform(get("/api/hospital/doctors").header(AUTHORIZATION, hospitalA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].displayName").value("认证租户医生"))
+                .andExpect(jsonPath("$.data[0].tenantId")
+                        .value("11111111-1111-1111-1111-111111111111"));
+        mockMvc.perform(get("/api/hospital/departments").header(AUTHORIZATION, hospitalB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+        mockMvc.perform(get("/api/hospital/doctors").header(AUTHORIZATION, hospitalB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(0));
+    }
+
     private String createDepartment(String token, String name) throws Exception {
         String response = mockMvc.perform(post("/api/hospital/departments")
                         .header(AUTHORIZATION, token)
