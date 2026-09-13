@@ -29,7 +29,28 @@ public class Tenant {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     protected Tenant() {
+    }
+
+    private Tenant(String name) {
+        Instant now = Instant.now();
+        this.id = UUID.randomUUID();
+        this.name = name;
+        this.status = TenantStatus.ACTIVE;
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    public static Tenant create(String name) {
+        return new Tenant(name);
+    }
+
+    public void changeStatus(TenantStatus status) {
+        this.status = status;
+        this.updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -46,5 +67,9 @@ public class Tenant {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }

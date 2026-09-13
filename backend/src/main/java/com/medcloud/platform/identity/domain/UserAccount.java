@@ -40,7 +40,31 @@ public class UserAccount {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
+
     protected UserAccount() {
+    }
+
+    private UserAccount(String username, String passwordHash, UserRole role, UUID tenantId) {
+        Instant now = Instant.now();
+        this.id = UUID.randomUUID();
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.role = role;
+        this.status = UserStatus.ACTIVE;
+        this.tenantId = tenantId;
+        this.createdAt = now;
+        this.updatedAt = now;
+    }
+
+    public static UserAccount createHospitalAdmin(UUID tenantId, String username, String passwordHash) {
+        return new UserAccount(username, passwordHash, UserRole.HOSPITAL_ADMIN, tenantId);
+    }
+
+    public void changeStatus(UserStatus status) {
+        this.status = status;
+        this.updatedAt = Instant.now();
     }
 
     public UUID getId() {
@@ -69,5 +93,9 @@ public class UserAccount {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }
