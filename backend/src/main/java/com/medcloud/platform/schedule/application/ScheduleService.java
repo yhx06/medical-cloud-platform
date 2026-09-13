@@ -66,7 +66,7 @@ public class ScheduleService {
 
         Department department = departments.findById(doctor.getDepartmentId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_UNAVAILABLE));
-        UserAccount account = users.findById(doctor.getUserId())
+        UserAccount account = users.findByIdForUpdate(doctor.getUserId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_UNAVAILABLE));
         if (!tenantId.equals(department.getTenantId())
                 || department.getStatus() != TenantStatus.ACTIVE
