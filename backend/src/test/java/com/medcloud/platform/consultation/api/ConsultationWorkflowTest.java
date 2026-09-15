@@ -462,7 +462,7 @@ class ConsultationWorkflowTest {
 
     private void cleanBusinessData() {
         for (String table : List.of(
-                "record_correction", "prescription_item", "consultation", "appointment",
+                "medical_order", "record_correction", "prescription_item", "consultation", "appointment",
                 "schedule_slot", "doctor_profile", "department")) {
             jdbcTemplate.update("delete from " + table);
         }

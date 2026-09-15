@@ -15,6 +15,7 @@ public enum ErrorCode {
     APPOINTMENT_DUPLICATE(HttpStatus.CONFLICT, "不能重复预约同一号源"),
     APPOINTMENT_STATE_INVALID(HttpStatus.CONFLICT, "预约状态不允许此操作"),
     MEDICAL_RECORD_COMPLETED(HttpStatus.CONFLICT, "病历已完成，原始内容不可覆盖"),
+    ORDER_STATE_INVALID(HttpStatus.CONFLICT, "订单状态不允许此操作"),
     TENANT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "无权访问该租户资源"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "资源不存在"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "系统内部错误");
