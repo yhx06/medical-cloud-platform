@@ -99,6 +99,22 @@ public class Appointment {
         updatedAt = Instant.now();
     }
 
+    public void startConsultation() {
+        transitionTo(AppointmentStatus.IN_PROGRESS);
+    }
+
+    public void completeConsultation() {
+        transitionTo(AppointmentStatus.COMPLETED);
+    }
+
+    private void transitionTo(AppointmentStatus target) {
+        if (!status.canTransitionTo(target)) {
+            throw new BusinessException(ErrorCode.APPOINTMENT_STATE_INVALID);
+        }
+        status = target;
+        updatedAt = Instant.now();
+    }
+
     public UUID getId() {
         return id;
     }
