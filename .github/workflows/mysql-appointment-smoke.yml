@@ -1,0 +1,59 @@
+name: MySQL Appointment Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/complete-system-implementation
+    paths:
+      - .github/workflows/mysql-appointment-smoke.yml
+      - backend/pom.xml
+      - backend/src/main/java/com/medcloud/platform/appointment/**
+      - backend/src/main/java/com/medcloud/platform/schedule/**
+      - backend/src/main/resources/db/migration/**
+      - backend/src/test/java/com/medcloud/platform/appointment/application/AppointmentCapacityTest.java
+      - backend/src/test/resources/application.yml
+
+permissions:
+  contents: read
+
+jobs:
+  appointment-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: medical_cloud
+          MYSQL_USER: medical_cloud
+          MYSQL_PASSWORD: medical_cloud
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: backend/pom.xml
+
+      - name: Run appointment concurrency tests on MySQL 8.4
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://127.0.0.1:3306/medical_cloud?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+          SPRING_DATASOURCE_USERNAME: medical_cloud
+          SPRING_DATASOURCE_PASSWORD: medical_cloud
+          SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+        run: mvn -f backend/pom.xml -Dtest=AppointmentCapacityTest test
