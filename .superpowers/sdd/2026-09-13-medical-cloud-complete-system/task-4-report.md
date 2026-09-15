@@ -58,3 +58,34 @@
 ## Concerns
 
 - 唯一剩余验证缺口是无法在当前主机运行真实 MySQL 容器，因此 MySQL 上的 V6 DDL 和锁语义未做本机 smoke；H2 MySQL 模式迁移、数据库唯一约束及跨事务并发均已通过。
+
+## Fix Round 1：并发取消与重复预约语义
+
+### 根因与修复
+
+- 两个取消事务可以在竞争 slot 锁之前，把同一条 `BOOKED` Appointment 载入各自的 persistence context；获得 slot 锁后的普通重复查询仍可能返回受管缓存中的陈旧实体，导致两个事务都通过 `BOOKED` 状态校验。
+- 保持全流程的锁顺序为 slot → appointment。在获得共享 slot 的 `PESSIMISTIC_WRITE` 锁后，使用 `EntityManager.refresh(initial, PESSIMISTIC_WRITE)` 对已受管 Appointment 执行数据库当前读并取得写锁，再执行领域取消操作。
+
+### RED / GREEN 证据
+
+1. 并发取消 RED：
+   - `mvn -f backend/pom.xml '-Dtest=AppointmentCapacityTest#concurrentCancellationsRefreshStateAfterTheSharedSlotLock' test`
+   - 修复前 1 test / 1 failure；两个独立事务均成功，关键输出：`Expected size: 1 but was: 2`，两个 `CancellationAttempt` 的 `errorCode` 都为 `null`。
+2. 并发取消 GREEN：
+   - 同一聚焦命令修复后 1 test / 0 failures / 0 errors / 0 skipped。
+   - 恰好一个事务取消成功，另一个稳定返回 `APPOINTMENT_STATE_INVALID`，最终状态为 `CANCELLED`。
+3. 同患者同号源并发：
+   - `mvn -f backend/pom.xml '-Dtest=AppointmentCapacityTest#concurrentBookingsByTheSamePatientReturnDuplicateAfterTheSharedSlotLock' test`
+   - 新测试在现有 slot 行锁实现上首次即 GREEN：1 test / 0 failures / 0 errors / 0 skipped；一个事务成功，另一个稳定返回 `APPOINTMENT_DUPLICATE`，最终仅一条有效预约。该结果符合预期，未为制造 RED 而弱化生产锁实现。
+
+### 回归验证
+
+- `mvn -f backend/pom.xml '-Dtest=AppointmentCapacityTest' test` -> 3 tests / 0 failures / 0 errors / 0 skipped。
+- `mvn -f backend/pom.xml test` -> 109 tests / 0 failures / 0 errors / 0 skipped，`BUILD SUCCESS`（2026-09-15 19:19:10 +08:00）。
+
+### MySQL 8.4 smoke 重试
+
+- 再次执行 `docker version`，客户端可用，但 Linux engine 管道仍不存在：`open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.`
+- 已从 `C:\Program Files\Docker\Docker\Docker Desktop.exe` 隐藏启动 Docker Desktop，并累计轮询约 75 秒；引擎仍未就绪，Docker Desktop 进程已退出。
+- `wsl.exe --status` 报告当前机器配置不支持 WSL2，并提示启用硬件虚拟化；`com.docker.service` 为 stopped，当前会话无法启动该服务。
+- 因 Docker engine 的宿主环境前置条件不满足，无法创建明确命名的临时 MySQL 8.4 容器，故本轮没有容器可清理，也未声称 MySQL smoke 通过。H2 MySQL 模式已覆盖 V6、不同患者容量竞争、同患者重复和并发取消。

@@ -10,6 +10,8 @@ import com.medcloud.platform.schedule.domain.ScheduleSlot;
 import com.medcloud.platform.schedule.domain.ScheduleSlotStatus;
 import com.medcloud.platform.schedule.infrastructure.ScheduleSlotRepository;
 import com.medcloud.platform.security.CurrentUser;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,10 +30,16 @@ public class AppointmentService {
 
     private final AppointmentRepository appointments;
     private final ScheduleSlotRepository slots;
+    private final EntityManager entityManager;
 
-    public AppointmentService(AppointmentRepository appointments, ScheduleSlotRepository slots) {
+    public AppointmentService(
+            AppointmentRepository appointments,
+            ScheduleSlotRepository slots,
+            EntityManager entityManager
+    ) {
         this.appointments = appointments;
         this.slots = slots;
+        this.entityManager = entityManager;
     }
 
     @Transactional
@@ -66,11 +74,10 @@ public class AppointmentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         slots.findByIdForUpdate(initial.getSlotId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_UNAVAILABLE));
-        Appointment appointment = appointments.findByIdAndPatientId(appointmentId, patient.userId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-        appointment.cancel();
+        entityManager.refresh(initial, LockModeType.PESSIMISTIC_WRITE);
+        initial.cancel();
         appointments.flush();
-        return response(appointment);
+        return response(initial);
     }
 
     @Transactional(readOnly = true)

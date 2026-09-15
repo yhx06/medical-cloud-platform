@@ -148,6 +148,55 @@ class AppointmentCapacityTest {
         }
     }
 
+    @Test
+    void concurrentBookingsByTheSamePatientReturnDuplicateAfterTheSharedSlotLock() throws Exception {
+        CurrentUser patient = patient(firstPatientId);
+        CyclicBarrier startTogether = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<BookingAttempt> firstAttempt = executor.submit(() -> book(startTogether, patient));
+            Future<BookingAttempt> secondAttempt = executor.submit(() -> book(startTogether, patient));
+            List<BookingAttempt> attempts = List.of(
+                    firstAttempt.get(10, TimeUnit.SECONDS),
+                    secondAttempt.get(10, TimeUnit.SECONDS));
+
+            assertThat(attempts).filteredOn(BookingAttempt::succeeded).hasSize(1);
+            assertThat(attempts)
+                    .filteredOn(attempt -> attempt.errorCode() == ErrorCode.APPOINTMENT_DUPLICATE)
+                    .hasSize(1);
+            assertThat(appointments.countBySlotIdAndStatusNot(slotId, AppointmentStatus.CANCELLED))
+                    .isEqualTo(1);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentCancellationsRefreshStateAfterTheSharedSlotLock() throws Exception {
+        CurrentUser patient = patient(firstPatientId);
+        UUID appointmentId = appointmentService.book(patient, slotId).id();
+        CyclicBarrier bothLoadedBookedState = new CyclicBarrier(2);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<CancellationAttempt> first = executor.submit(
+                    () -> cancelAfterPreloading(appointmentId, patient, bothLoadedBookedState));
+            Future<CancellationAttempt> second = executor.submit(
+                    () -> cancelAfterPreloading(appointmentId, patient, bothLoadedBookedState));
+            List<CancellationAttempt> attempts = List.of(
+                    first.get(10, TimeUnit.SECONDS),
+                    second.get(10, TimeUnit.SECONDS));
+
+            assertThat(attempts).filteredOn(CancellationAttempt::succeeded).hasSize(1);
+            assertThat(attempts)
+                    .filteredOn(attempt -> attempt.errorCode() == ErrorCode.APPOINTMENT_STATE_INVALID)
+                    .hasSize(1);
+            assertThat(appointments.findById(appointmentId).orElseThrow().getStatus())
+                    .isEqualTo(AppointmentStatus.CANCELLED);
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
     private BookingAttempt book(CyclicBarrier startTogether, CurrentUser patient) throws Exception {
         startTogether.await(5, TimeUnit.SECONDS);
         try {
@@ -155,6 +204,32 @@ class AppointmentCapacityTest {
             return new BookingAttempt(response.id(), null);
         } catch (BusinessException exception) {
             return new BookingAttempt(null, exception.getCode());
+        }
+    }
+
+    private CancellationAttempt cancelAfterPreloading(
+            UUID appointmentId,
+            CurrentUser patient,
+            CyclicBarrier bothLoadedBookedState
+    ) {
+        try {
+            return transactions.execute(status -> {
+                appointments.findByIdAndPatientId(appointmentId, patient.userId()).orElseThrow();
+                await(bothLoadedBookedState);
+                AppointmentService.AppointmentResponse response =
+                        appointmentService.cancel(patient, appointmentId);
+                return new CancellationAttempt(response.id(), null);
+            });
+        } catch (BusinessException exception) {
+            return new CancellationAttempt(null, exception.getCode());
+        }
+    }
+
+    private void await(CyclicBarrier barrier) {
+        try {
+            barrier.await(5, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Concurrent test barrier failed", exception);
         }
     }
 
@@ -178,6 +253,12 @@ class AppointmentCapacityTest {
     }
 
     private record BookingAttempt(UUID appointmentId, ErrorCode errorCode) {
+        boolean succeeded() {
+            return appointmentId != null;
+        }
+    }
+
+    private record CancellationAttempt(UUID appointmentId, ErrorCode errorCode) {
         boolean succeeded() {
             return appointmentId != null;
         }
