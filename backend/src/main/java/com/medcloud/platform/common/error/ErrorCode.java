@@ -16,6 +16,8 @@ public enum ErrorCode {
     APPOINTMENT_STATE_INVALID(HttpStatus.CONFLICT, "预约状态不允许此操作"),
     MEDICAL_RECORD_COMPLETED(HttpStatus.CONFLICT, "病历已完成，原始内容不可覆盖"),
     ORDER_STATE_INVALID(HttpStatus.CONFLICT, "订单状态不允许此操作"),
+    FILE_TYPE_UNSUPPORTED(HttpStatus.BAD_REQUEST, "仅支持 PDF、JPG、JPEG 和 PNG 文件"),
+    FILE_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "附件大小不能超过 10 MiB"),
     TENANT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "无权访问该租户资源"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "资源不存在"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "系统内部错误");

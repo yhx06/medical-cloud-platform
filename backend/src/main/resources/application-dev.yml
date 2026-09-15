@@ -14,3 +14,4 @@ app:
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
     access-key: ${MINIO_ACCESS_KEY}
     secret-key: ${MINIO_SECRET_KEY}
+    bucket: ${MINIO_BUCKET:medical-cloud-private}
