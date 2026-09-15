@@ -89,3 +89,36 @@
 - 已从 `C:\Program Files\Docker\Docker\Docker Desktop.exe` 隐藏启动 Docker Desktop，并累计轮询约 75 秒；引擎仍未就绪，Docker Desktop 进程已退出。
 - `wsl.exe --status` 报告当前机器配置不支持 WSL2，并提示启用硬件虚拟化；`com.docker.service` 为 stopped，当前会话无法启动该服务。
 - 因 Docker engine 的宿主环境前置条件不满足，无法创建明确命名的临时 MySQL 8.4 容器，故本轮没有容器可清理，也未声称 MySQL smoke 通过。H2 MySQL 模式已覆盖 V6、不同患者容量竞争、同患者重复和并发取消。
+
+## Fix Round 2：GitHub Actions MySQL 8.4 smoke
+
+### Workflow
+
+- 新增 `.github/workflows/mysql-appointment-smoke.yml`，提供 `workflow_dispatch`，并用仅限 `feature/complete-system-implementation` 且仅匹配 Task 4 相关路径的 `push` 触发完成首次注册。
+- job 使用 GitHub Actions Linux runner 的 `mysql:8.4` service，配置健康检查、15 分钟超时和只读仓库权限；Java 固定为 Temurin 21。
+- 测试命令：`mvn -f backend/pom.xml -Dtest=AppointmentCapacityTest test`。
+- 通过 `SPRING_DATASOURCE_URL`、username、password 及 `SPRING_DATASOURCE_DRIVER_CLASS_NAME=com.mysql.cj.jdbc.Driver` 覆盖测试默认 H2 datasource。测试源码已有数据库产品判断，H2 专属 trigger 创建/删除不会在 MySQL 路径执行，因此没有新增 profile 或修改默认 H2 配置。
+
+### 静态与 H2 回归
+
+- PyYAML 解析成功；`npx --yes prettier@3.6.2 --check .github/workflows/mysql-appointment-smoke.yml` 通过；`git diff --check` 无空白错误。
+- `mvn -f backend/pom.xml '-Dtest=AppointmentCapacityTest' test` -> 3 tests / 0 failures / 0 errors / 0 skipped，`BUILD SUCCESS`。这确认 CI datasource 覆盖未改变默认 H2 路径。
+
+### Actions 运行证据
+
+- 首次注册 push run：`34964576430`，成功；URL：`https://github.com/yhx06/medical-cloud-platform/actions/runs/34964576430`。
+- 手动触发命令：`gh workflow run mysql-appointment-smoke.yml --ref feature/complete-system-implementation`。
+- 验收 run：`34964637671`，event=`workflow_dispatch`，head SHA=`d9c7af28aba7ffea8b49ad045360070422756e0c`，status=`completed`，conclusion=`success`。
+- URL：`https://github.com/yhx06/medical-cloud-platform/actions/runs/34964637671`。
+- 容器日志确认拉取并创建 `mysql:8.4`；Flyway 识别 `MySQL 8.4`，依次执行 V1、V2、V3、V4、V5、V6，并报告 `Successfully applied 6 migrations ... now at version v6`。
+- `AppointmentCapacityTest` -> 3 tests / 0 failures / 0 errors / 0 skipped，`BUILD SUCCESS`，测试耗时 12.46 s。三项分别覆盖不同患者抢容量（1 成功 + 1 `SCHEDULE_FULL`）、同患者同号源（1 成功 + 1 `APPOINTMENT_DUPLICATE`）及并发取消（1 成功 + 1 `APPOINTMENT_STATE_INVALID`）。
+
+### RED / GREEN 与自审
+
+- Round 1 的本机 RED 是 Docker Linux engine 因 WSL2/虚拟化不可用而无法创建 MySQL 容器；本轮将相同验证迁移到具备 Docker 能力的 GitHub Actions Linux runner，无需修改用户 BIOS/WSL。新增 workflow 的首次 push run 与后续手动 run 均直接 GREEN，因此没有生产代码或测试逻辑的猜测性修改。
+- workflow 只运行 Task 4 的三项 Spring/JPA 真并发测试，既验证服务/仓储锁语义，也由 Spring 启动阶段实际执行 Flyway V1-V6；不是仅做 SQL 静态检查。
+- MySQL service 在独立 runner job 生命周期内创建并由 Actions 的 `Stop containers` 步骤成功清理，不持久化测试数据或暴露外部数据库。
+
+### Concerns
+
+- 无 Task 4 剩余验证缺口。该 workflow 有意保持窄范围：实施分支相关路径 push 或手动触发，不替代完整后端 CI。
