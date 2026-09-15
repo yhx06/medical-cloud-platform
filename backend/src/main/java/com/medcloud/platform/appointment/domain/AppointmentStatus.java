@@ -3,6 +3,10 @@ package com.medcloud.platform.appointment.domain;
 public enum AppointmentStatus {
     BOOKED, IN_PROGRESS, COMPLETED, CANCELLED;
 
+    public boolean canBeCancelled() {
+        return this == BOOKED;
+    }
+
     public boolean canTransitionTo(AppointmentStatus target) {
         return switch (this) {
             case BOOKED -> target == IN_PROGRESS || target == CANCELLED;

@@ -1,5 +1,7 @@
 package com.medcloud.platform.schedule.application;
 
+import com.medcloud.platform.appointment.domain.AppointmentStatus;
+import com.medcloud.platform.appointment.infrastructure.AppointmentRepository;
 import com.medcloud.platform.common.error.BusinessException;
 import com.medcloud.platform.common.error.ErrorCode;
 import com.medcloud.platform.identity.domain.UserAccount;
@@ -40,6 +42,7 @@ public class ScheduleService {
     private final DoctorProfileRepository doctorProfiles;
     private final UserAccountRepository users;
     private final TenantAccessPolicy tenantAccessPolicy;
+    private final AppointmentRepository appointments;
 
     public ScheduleService(
             ScheduleSlotRepository slots,
@@ -47,7 +50,8 @@ public class ScheduleService {
             DepartmentRepository departments,
             DoctorProfileRepository doctorProfiles,
             UserAccountRepository users,
-            TenantAccessPolicy tenantAccessPolicy
+            TenantAccessPolicy tenantAccessPolicy,
+            AppointmentRepository appointments
     ) {
         this.slots = slots;
         this.tenants = tenants;
@@ -55,6 +59,7 @@ public class ScheduleService {
         this.doctorProfiles = doctorProfiles;
         this.users = users;
         this.tenantAccessPolicy = tenantAccessPolicy;
+        this.appointments = appointments;
     }
 
     @Transactional
@@ -142,7 +147,8 @@ public class ScheduleService {
                 slot.getStartTime(),
                 slot.getEndTime(),
                 slot.getCapacity(),
-                slot.getCapacity(),
+                slot.getCapacity() - Math.toIntExact(appointments.countBySlotIdAndStatusNot(
+                        slot.getId(), AppointmentStatus.CANCELLED)),
                 slot.getFee(),
                 slot.getStatus().name(),
                 slot.getCreatedAt());

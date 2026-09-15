@@ -4,17 +4,24 @@ import com.medcloud.platform.identity.domain.UserStatus;
 import com.medcloud.platform.schedule.domain.ScheduleSlot;
 import com.medcloud.platform.schedule.domain.ScheduleSlotStatus;
 import com.medcloud.platform.tenant.domain.TenantStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ScheduleSlotRepository extends JpaRepository<ScheduleSlot, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select slot from ScheduleSlot slot where slot.id = :id")
+    Optional<ScheduleSlot> findByIdForUpdate(@Param("id") UUID id);
+
     boolean existsByDoctorIdAndScheduleDateAndStatusAndStartTimeLessThanAndEndTimeGreaterThan(
             UUID doctorId,
             LocalDate scheduleDate,
