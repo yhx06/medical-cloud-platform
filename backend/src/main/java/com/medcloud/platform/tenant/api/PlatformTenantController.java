@@ -5,7 +5,9 @@ import com.medcloud.platform.common.error.BusinessException;
 import com.medcloud.platform.common.error.ErrorCode;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.identity.domain.UserAccount;
 import com.medcloud.platform.identity.domain.UserStatus;
 import com.medcloud.platform.security.CurrentUser;
@@ -62,7 +64,7 @@ public class PlatformTenantController {
             @Valid @RequestBody CreateTenantCommand command,
             HttpServletRequest request
     ) {
-        Tenant tenant = audit.execute(actor, AuditAction.TENANT_CREATED, "TENANT", null, requestId(request),
+        Tenant tenant = audit.execute(actor, AuditAction.TENANT_CREATED, AuditObjectType.TENANT, null, AuditRequestIds.from(request),
                 () -> tenantService.createTenant(actor, command), Tenant::getId);
         return ApiResponse.success(TenantResponse.from(tenant), requestId(request));
     }
@@ -75,8 +77,8 @@ public class PlatformTenantController {
             @Valid @RequestBody CreateAccountCommand command,
             HttpServletRequest request
     ) {
-        UserAccount account = audit.execute(actor, AuditAction.HOSPITAL_ADMIN_CREATED, "USER_ACCOUNT", tenantId,
-                requestId(request), () -> tenantService.createHospitalAdmin(actor, tenantId, command),
+        UserAccount account = audit.execute(actor, AuditAction.HOSPITAL_ADMIN_CREATED, AuditObjectType.USER_ACCOUNT, null,
+                AuditRequestIds.from(request), () -> tenantService.createHospitalAdmin(actor, tenantId, command),
                 UserAccount::getId);
         return ApiResponse.success(AccountResponse.from(account), requestId(request));
     }
@@ -89,8 +91,8 @@ public class PlatformTenantController {
             @Valid @RequestBody StatusCommand command,
             HttpServletRequest request
     ) {
-        Tenant tenant = audit.execute(actor, AuditAction.TENANT_STATUS_CHANGED, "TENANT", tenantId,
-                requestId(request), () -> tenantService.changeTenantStatus(actor, tenantId, tenantStatus(command.status())),
+        Tenant tenant = audit.execute(actor, AuditAction.TENANT_STATUS_CHANGED, AuditObjectType.TENANT, tenantId,
+                AuditRequestIds.from(request), () -> tenantService.changeTenantStatus(actor, tenantId, tenantStatus(command.status())),
                 Tenant::getId);
         return ApiResponse.success(TenantResponse.from(tenant), requestId(request));
     }
@@ -103,8 +105,8 @@ public class PlatformTenantController {
             @Valid @RequestBody StatusCommand command,
             HttpServletRequest request
     ) {
-        UserAccount account = audit.execute(actor, AuditAction.ACCOUNT_STATUS_CHANGED, "USER_ACCOUNT", accountId,
-                requestId(request), () -> tenantService.changeAccountStatus(actor, accountId, userStatus(command.status())),
+        UserAccount account = audit.execute(actor, AuditAction.ACCOUNT_STATUS_CHANGED, AuditObjectType.USER_ACCOUNT, accountId,
+                AuditRequestIds.from(request), () -> tenantService.changeAccountStatus(actor, accountId, userStatus(command.status())),
                 UserAccount::getId);
         return ApiResponse.success(AccountResponse.from(account), requestId(request));
     }

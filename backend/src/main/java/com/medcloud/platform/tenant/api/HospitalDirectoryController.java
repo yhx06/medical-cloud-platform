@@ -3,7 +3,9 @@ package com.medcloud.platform.tenant.api;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.security.CurrentUser;
 import com.medcloud.platform.tenant.application.HospitalDirectoryService;
 import com.medcloud.platform.tenant.application.HospitalDirectoryService.CreateDepartmentRequest;
@@ -53,8 +55,8 @@ public class HospitalDirectoryController {
             @Valid @RequestBody CreateDepartmentRequest body,
             HttpServletRequest request
     ) {
-        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_CREATED, "DEPARTMENT", null,
-                requestId(request), () -> directoryService.createDepartment(actor, body), DepartmentResponse::id);
+        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_CREATED, AuditObjectType.DEPARTMENT, null,
+                AuditRequestIds.from(request), () -> directoryService.createDepartment(actor, body), DepartmentResponse::id);
         return ApiResponse.success(department, requestId(request));
     }
 
@@ -65,8 +67,8 @@ public class HospitalDirectoryController {
             @Valid @RequestBody UpdateDepartmentRequest body,
             HttpServletRequest request
     ) {
-        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_UPDATED, "DEPARTMENT", id,
-                requestId(request), () -> directoryService.updateDepartment(actor, id, body), DepartmentResponse::id);
+        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_UPDATED, AuditObjectType.DEPARTMENT, id,
+                AuditRequestIds.from(request), () -> directoryService.updateDepartment(actor, id, body), DepartmentResponse::id);
         return ApiResponse.success(department, requestId(request));
     }
 
@@ -84,8 +86,8 @@ public class HospitalDirectoryController {
             @Valid @RequestBody CreateDoctorRequest body,
             HttpServletRequest request
     ) {
-        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_CREATED, "DOCTOR", null,
-                requestId(request), () -> directoryService.createDoctor(actor, body), DoctorResponse::id);
+        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_CREATED, AuditObjectType.DOCTOR, null,
+                AuditRequestIds.from(request), () -> directoryService.createDoctor(actor, body), DoctorResponse::id);
         return ApiResponse.success(doctor, requestId(request));
     }
 
@@ -96,8 +98,8 @@ public class HospitalDirectoryController {
             @Valid @RequestBody DoctorStatusRequest body,
             HttpServletRequest request
     ) {
-        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_STATUS_CHANGED, "DOCTOR", id,
-                requestId(request), () -> directoryService.changeDoctorStatus(actor, id, body.status()), DoctorResponse::id);
+        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_STATUS_CHANGED, AuditObjectType.DOCTOR, id,
+                AuditRequestIds.from(request), () -> directoryService.changeDoctorStatus(actor, id, body.status()), DoctorResponse::id);
         return ApiResponse.success(doctor, requestId(request));
     }
 

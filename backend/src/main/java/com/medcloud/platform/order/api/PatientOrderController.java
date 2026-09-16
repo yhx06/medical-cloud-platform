@@ -3,7 +3,9 @@ package com.medcloud.platform.order.api;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.order.application.MedicalOrderService;
 import com.medcloud.platform.order.application.MedicalOrderService.MedicalOrderResponse;
 import com.medcloud.platform.security.CurrentUser;
@@ -54,8 +56,8 @@ public class PatientOrderController {
             @PathVariable UUID id,
             HttpServletRequest request
     ) {
-        MedicalOrderResponse order = audit.execute(patient, AuditAction.ORDER_PAID, "MEDICAL_ORDER", id,
-                requestId(request), () -> orderService.pay(patient, id), MedicalOrderResponse::id);
+        MedicalOrderResponse order = audit.execute(patient, AuditAction.ORDER_PAID, AuditObjectType.MEDICAL_ORDER, id,
+                AuditRequestIds.from(request), () -> orderService.pay(patient, id), MedicalOrderResponse::id);
         return ApiResponse.success(order, requestId(request));
     }
 

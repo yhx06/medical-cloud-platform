@@ -13,10 +13,16 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -48,10 +54,28 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.fieldErrors.name").exists());
     }
 
+    @Test
+    void mapsMissingRequiredRequestParametersToValidationErrors() throws Exception {
+        mockMvc.perform(get("/test/date"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void mapsInvalidRequestParameterTypesToValidationErrors() throws Exception {
+        mockMvc.perform(get("/test/date").param("from", "not-a-date"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
     @RestController
     public static class TestController {
         @PostMapping("/test/validation")
         void validate(@Valid @RequestBody TestRequest request) {
+        }
+
+        @GetMapping("/test/date")
+        void date(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from) {
         }
     }
 

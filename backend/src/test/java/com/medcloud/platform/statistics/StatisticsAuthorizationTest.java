@@ -34,6 +34,7 @@ class StatisticsAuthorizationTest {
 
     private UUID tenantA;
     private UUID tenantB;
+    private UUID tenantC;
     private LocalDate from;
     private LocalDate to;
 
@@ -41,12 +42,15 @@ class StatisticsAuthorizationTest {
     void setUp() {
         tenantA = UUID.randomUUID();
         tenantB = UUID.randomUUID();
+        tenantC = UUID.randomUUID();
         from = LocalDate.now().minusDays(2);
         to = LocalDate.now();
-        insertTenant(tenantA, "统计医院 A");
-        insertTenant(tenantB, "统计医院 B");
+        insertTenant(tenantA, "统计医院 A", "ACTIVE");
+        insertTenant(tenantB, "统计医院 B", "ACTIVE");
+        insertTenant(tenantC, "统计医院 C", "DISABLED");
         insertAppointment(tenantA, from, "COMPLETED");
         insertAppointment(tenantA, to, "BOOKED");
+        insertAppointment(tenantA, to, "CANCELLED");
         insertAppointment(tenantB, to, "COMPLETED");
         insertCompletedConsultation(tenantA, from);
         insertCompletedConsultation(tenantB, to);
@@ -61,9 +65,10 @@ class StatisticsAuthorizationTest {
         StatisticsService.HospitalStatisticsResponse result = service.hospital(hospitalA, from, to);
 
         assertThat(result.tenantId()).isEqualTo(tenantA);
-        assertThat(result.appointmentCount()).isEqualTo(4);
-        assertThat(result.completedConsultationCount()).isEqualTo(2);
-        assertThat(result.paidOrderCount()).isEqualTo(1);
+        assertThat(result.totalAppointmentCount()).isEqualTo(5);
+        assertThat(result.cancelledAppointmentCount()).isEqualTo(1);
+        assertThat(result.completedAppointmentCount()).isEqualTo(3);
+        assertThat(result.doctorCompletedConsultationCount()).isEqualTo(2);
         assertThat(result.paidRevenue()).isEqualByComparingTo("78.00");
     }
 
@@ -74,8 +79,24 @@ class StatisticsAuthorizationTest {
         StatisticsService.PlatformStatisticsResponse result = service.platform(platform, from, to);
         String serialized = objectMapper.writeValueAsString(result);
 
-        assertThat(result.tenants()).extracting(StatisticsService.TenantStatisticsResponse::tenantId)
-                .containsExactlyInAnyOrder(tenantA, tenantB);
+        StatisticsService.TenantStatisticsResponse tenantAStatistics = tenantStatistics(result, tenantA);
+        StatisticsService.TenantStatisticsResponse tenantBStatistics = tenantStatistics(result, tenantB);
+        StatisticsService.TenantStatisticsResponse tenantCStatistics = tenantStatistics(result, tenantC);
+        assertThat(tenantAStatistics.accountCount()).isEqualTo(5);
+        assertThat(tenantAStatistics.appointmentCount()).isEqualTo(5);
+        assertThat(tenantAStatistics.completedAppointmentCount()).isEqualTo(3);
+        assertThat(tenantAStatistics.paidRevenue()).isEqualByComparingTo("78.00");
+        assertThat(tenantAStatistics.tenantStatus()).isEqualTo("ACTIVE");
+        assertThat(tenantBStatistics.accountCount()).isEqualTo(3);
+        assertThat(tenantBStatistics.appointmentCount()).isEqualTo(3);
+        assertThat(tenantBStatistics.completedAppointmentCount()).isEqualTo(3);
+        assertThat(tenantBStatistics.paidRevenue()).isEqualByComparingTo("99.00");
+        assertThat(tenantBStatistics.tenantStatus()).isEqualTo("ACTIVE");
+        assertThat(tenantCStatistics.accountCount()).isZero();
+        assertThat(tenantCStatistics.appointmentCount()).isZero();
+        assertThat(tenantCStatistics.completedAppointmentCount()).isZero();
+        assertThat(tenantCStatistics.paidRevenue()).isEqualByComparingTo("0.00");
+        assertThat(tenantCStatistics.tenantStatus()).isEqualTo("DISABLED");
         assertThat(serialized).doesNotContain("patient", "consultationId", "diagnosis", "name");
     }
 
@@ -92,11 +113,21 @@ class StatisticsAuthorizationTest {
                         exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
     }
 
-    private void insertTenant(UUID tenantId, String name) {
+    private StatisticsService.TenantStatisticsResponse tenantStatistics(
+            StatisticsService.PlatformStatisticsResponse result,
+            UUID tenantId
+    ) {
+        return result.tenants().stream()
+                .filter(statistics -> statistics.tenantId().equals(tenantId))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    private void insertTenant(UUID tenantId, String name, String status) {
         jdbcTemplate.update("""
                 insert into tenant (id, name, status, created_at, updated_at)
-                values (?, ?, 'ACTIVE', current_timestamp, current_timestamp)
-                """, tenantId.toString(), name);
+                values (?, ?, ?, current_timestamp, current_timestamp)
+                """, tenantId.toString(), name, status);
     }
 
     private void insertAppointment(UUID tenantId, LocalDate date, String status) {

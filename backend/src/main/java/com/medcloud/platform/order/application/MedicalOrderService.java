@@ -4,6 +4,7 @@ import com.medcloud.platform.common.error.BusinessException;
 import com.medcloud.platform.common.error.ErrorCode;
 import com.medcloud.platform.audit.application.AuditService;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.audit.domain.AuditResult;
 import com.medcloud.platform.consultation.application.ConsultationCompletedEvent;
 import com.medcloud.platform.consultation.infrastructure.ConsultationRepository;
@@ -95,8 +96,8 @@ public class MedicalOrderService {
         MedicalOrder order = orders.saveAndFlush(MedicalOrder.from(event));
         CurrentUser actor = event.doctorId() == null ? null : new CurrentUser(
                 event.doctorId(), null, UserRole.DOCTOR, event.tenantId());
-        audit.record(actor, AuditAction.ORDER_CREATED, "MEDICAL_ORDER", order.getId(),
-                AuditResult.SUCCESS, "unknown");
+        audit.record(actor, AuditAction.ORDER_CREATED, AuditObjectType.MEDICAL_ORDER, order.getId(),
+                AuditResult.SUCCESS, null);
         return order;
     }
 

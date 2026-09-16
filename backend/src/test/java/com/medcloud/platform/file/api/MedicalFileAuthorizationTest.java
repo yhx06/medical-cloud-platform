@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -217,6 +218,45 @@ class MedicalFileAuthorizationTest {
         assertThat(files.presignTtls).hasSize(2);
     }
 
+    @Test
+    void auditsAuthorizedMetadataAndDownloadAccessUsingOnlyRecordAndFileIdentifiers() throws Exception {
+        UUID fileId = uploadAsAssignedDoctor();
+
+        MvcResult metadata = mockMvc.perform(get("/api/records/{recordId}/files", recordId)
+                        .header(AUTHORIZATION, bearer("hospital_a")))
+                .andExpect(status().isOk())
+                .andReturn();
+        MvcResult download = mockMvc.perform(post("/api/files/{fileId}/download-url", fileId)
+                        .header(AUTHORIZATION, bearer("doctor_a")))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertAudit(metadata, "FILE_METADATA_ACCESSED", "CONSULTATION", recordId, "SUCCESS");
+        assertAudit(download, "FILE_DOWNLOAD_URL_CREATED", "FILE", fileId, "SUCCESS");
+    }
+
+    @Test
+    void auditsBusinessRejectedFileAccessButNotRejectionsBeforeTheController() throws Exception {
+        UUID fileId = uploadAsAssignedDoctor();
+        MvcResult rejectedMetadata = mockMvc.perform(get("/api/records/{recordId}/files", recordId)
+                        .header(AUTHORIZATION, bearer(sameTenantDoctorUsername)))
+                .andExpect(status().isForbidden())
+                .andReturn();
+        MvcResult rejectedDownload = mockMvc.perform(post("/api/files/{fileId}/download-url", fileId)
+                        .header(AUTHORIZATION, bearer(sameTenantDoctorUsername)))
+                .andExpect(status().isForbidden())
+                .andReturn();
+
+        assertAudit(rejectedMetadata, "FILE_METADATA_ACCESSED", "CONSULTATION", recordId, "REJECTED");
+        assertAudit(rejectedDownload, "FILE_DOWNLOAD_URL_CREATED", "FILE", fileId, "REJECTED");
+
+        int auditsBeforePreAuthorization = countAudits("FILE_METADATA_ACCESSED", recordId);
+        mockMvc.perform(get("/api/records/{recordId}/files", recordId)
+                        .header(AUTHORIZATION, bearer("platform_admin")))
+                .andExpect(status().isForbidden());
+        assertThat(countAudits("FILE_METADATA_ACCESSED", recordId)).isEqualTo(auditsBeforePreAuthorization);
+    }
+
     private UUID uploadAsAssignedDoctor() throws Exception {
         String response = mockMvc.perform(multipart("/api/doctor/records/{recordId}/files", recordId)
                         .file(pdf())
@@ -224,6 +264,27 @@ class MedicalFileAuthorizationTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return UUID.fromString(objectMapper.readTree(response).at("/data/id").asText());
+    }
+
+    private void assertAudit(
+            MvcResult result,
+            String action,
+            String objectType,
+            UUID objectId,
+            String outcome
+    ) {
+        String requestId = result.getResponse().getHeader("X-Request-Id");
+        assertThat(jdbcTemplate.queryForObject("""
+                        select count(*) from audit_event
+                        where request_id = ? and action = ? and object_type = ? and object_id = ? and result = ?
+                        """, Integer.class, requestId, action, objectType, objectId.toString(), outcome))
+                .isEqualTo(1);
+    }
+
+    private int countAudits(String action, UUID objectId) {
+        return jdbcTemplate.queryForObject("""
+                        select count(*) from audit_event where action = ? and object_id = ?
+                        """, Integer.class, action, objectId.toString());
     }
 
     private static MockMultipartFile pdf() {

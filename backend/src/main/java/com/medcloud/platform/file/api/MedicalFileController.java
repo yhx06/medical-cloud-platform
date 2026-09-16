@@ -3,7 +3,9 @@ package com.medcloud.platform.file.api;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.file.application.MedicalFileService;
 import com.medcloud.platform.file.application.MedicalFileService.DownloadUrlResponse;
 import com.medcloud.platform.file.application.MedicalFileService.FileResponse;
@@ -41,8 +43,8 @@ public class MedicalFileController {
             @RequestPart("file") MultipartFile file,
             HttpServletRequest request
     ) {
-        FileResponse stored = audit.execute(doctor, AuditAction.FILE_UPLOADED, "FILE", null,
-                requestId(request), () -> files.upload(doctor, recordId, file), FileResponse::id);
+        FileResponse stored = audit.execute(doctor, AuditAction.FILE_UPLOADED, AuditObjectType.FILE, null,
+                AuditRequestIds.from(request), () -> files.upload(doctor, recordId, file), FileResponse::id);
         return ApiResponse.success(stored, requestId(request));
     }
 
@@ -53,7 +55,9 @@ public class MedicalFileController {
             @PathVariable UUID recordId,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(files.listMetadata(user, recordId), requestId(request));
+        List<FileResponse> metadata = audit.execute(user, AuditAction.FILE_METADATA_ACCESSED, AuditObjectType.CONSULTATION, recordId,
+                AuditRequestIds.from(request), () -> files.listMetadata(user, recordId), ignored -> recordId);
+        return ApiResponse.success(metadata, requestId(request));
     }
 
     @PostMapping("/files/{fileId}/download-url")
@@ -63,7 +67,9 @@ public class MedicalFileController {
             @PathVariable UUID fileId,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(files.createDownloadUrl(user, fileId), requestId(request));
+        DownloadUrlResponse download = audit.execute(user, AuditAction.FILE_DOWNLOAD_URL_CREATED, AuditObjectType.FILE, fileId,
+                AuditRequestIds.from(request), () -> files.createDownloadUrl(user, fileId), ignored -> fileId);
+        return ApiResponse.success(download, requestId(request));
     }
 
     private static String requestId(HttpServletRequest request) {

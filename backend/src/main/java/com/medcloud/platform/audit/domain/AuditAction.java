@@ -1,6 +1,8 @@
 package com.medcloud.platform.audit.domain;
 
 public enum AuditAction {
+    LOGIN_SUCCEEDED,
+    LOGIN_REJECTED,
     TENANT_CREATED,
     TENANT_STATUS_CHANGED,
     HOSPITAL_ADMIN_CREATED,
@@ -18,5 +20,7 @@ public enum AuditAction {
     RECORD_CORRECTION_APPENDED,
     ORDER_CREATED,
     ORDER_PAID,
-    FILE_UPLOADED
+    FILE_UPLOADED,
+    FILE_METADATA_ACCESSED,
+    FILE_DOWNLOAD_URL_CREATED
 }

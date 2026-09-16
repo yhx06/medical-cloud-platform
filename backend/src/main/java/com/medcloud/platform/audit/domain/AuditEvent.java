@@ -10,6 +10,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -36,8 +37,9 @@ public class AuditEvent {
     @Column(nullable = false, length = 64)
     private AuditAction action;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "object_type", nullable = false, length = 32)
-    private String objectType;
+    private AuditObjectType objectType;
 
     @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "object_id")
@@ -47,8 +49,9 @@ public class AuditEvent {
     @Column(nullable = false, length = 16)
     private AuditResult result;
 
-    @Column(name = "request_id", nullable = false, length = 36)
-    private String requestId;
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "request_id", length = 36)
+    private UUID requestId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -60,10 +63,10 @@ public class AuditEvent {
             UUID actorId,
             UUID tenantId,
             AuditAction action,
-            String objectType,
+            AuditObjectType objectType,
             UUID objectId,
             AuditResult result,
-            String requestId
+            UUID requestId
     ) {
         this.id = UUID.randomUUID();
         this.actorId = actorId;
@@ -80,12 +83,19 @@ public class AuditEvent {
             UUID actorId,
             UUID tenantId,
             AuditAction action,
-            String objectType,
+            AuditObjectType objectType,
             UUID objectId,
             AuditResult result,
-            String requestId
+            UUID requestId
     ) {
-        return new AuditEvent(actorId, tenantId, action, objectType, objectId, result, requestId);
+        return new AuditEvent(
+                actorId,
+                tenantId,
+                Objects.requireNonNull(action, "action is required"),
+                Objects.requireNonNull(objectType, "object type is required"),
+                objectId,
+                Objects.requireNonNull(result, "result is required"),
+                requestId);
     }
 
     public UUID getId() {
@@ -104,7 +114,7 @@ public class AuditEvent {
         return action;
     }
 
-    public String getObjectType() {
+    public AuditObjectType getObjectType() {
         return objectType;
     }
 
@@ -116,7 +126,7 @@ public class AuditEvent {
         return result;
     }
 
-    public String getRequestId() {
+    public UUID getRequestId() {
         return requestId;
     }
 

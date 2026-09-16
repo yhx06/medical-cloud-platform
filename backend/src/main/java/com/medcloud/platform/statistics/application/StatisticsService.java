@@ -28,7 +28,16 @@ public class StatisticsService {
     public HospitalStatisticsResponse hospital(CurrentUser admin, LocalDate from, LocalDate to) {
         UUID tenantId = requireHospitalAdmin(admin);
         validateRange(from, to);
-        return hospitalResponse(statistics.hospital(tenantId, from, to), from, to);
+        StatisticsRepository.HospitalAggregate aggregate = statistics.hospital(tenantId, from, to);
+        return new HospitalStatisticsResponse(
+                aggregate.tenantId(),
+                from,
+                to,
+                aggregate.totalAppointmentCount(),
+                aggregate.cancelledAppointmentCount(),
+                aggregate.completedAppointmentCount(),
+                aggregate.doctorCompletedConsultationCount(),
+                aggregate.paidRevenue());
     }
 
     @Transactional(readOnly = true)
@@ -40,20 +49,14 @@ public class StatisticsService {
                 .toList());
     }
 
-    private static HospitalStatisticsResponse hospitalResponse(
-            StatisticsRepository.TenantAggregate aggregate,
-            LocalDate from,
-            LocalDate to
-    ) {
-        return new HospitalStatisticsResponse(
-                aggregate.tenantId(), from, to, aggregate.appointmentCount(),
-                aggregate.completedConsultationCount(), aggregate.paidOrderCount(), aggregate.paidRevenue());
-    }
-
-    private static TenantStatisticsResponse tenantResponse(StatisticsRepository.TenantAggregate aggregate) {
+    private static TenantStatisticsResponse tenantResponse(StatisticsRepository.PlatformAggregate aggregate) {
         return new TenantStatisticsResponse(
-                aggregate.tenantId(), aggregate.appointmentCount(), aggregate.completedConsultationCount(),
-                aggregate.paidOrderCount(), aggregate.paidRevenue());
+                aggregate.tenantId(),
+                aggregate.tenantStatus(),
+                aggregate.accountCount(),
+                aggregate.appointmentCount(),
+                aggregate.completedAppointmentCount(),
+                aggregate.paidRevenue());
     }
 
     private static UUID requireHospitalAdmin(CurrentUser actor) {
@@ -80,9 +83,10 @@ public class StatisticsService {
             UUID tenantId,
             LocalDate from,
             LocalDate to,
-            long appointmentCount,
-            long completedConsultationCount,
-            long paidOrderCount,
+            long totalAppointmentCount,
+            long cancelledAppointmentCount,
+            long completedAppointmentCount,
+            long doctorCompletedConsultationCount,
             BigDecimal paidRevenue
     ) {
     }
@@ -96,9 +100,10 @@ public class StatisticsService {
 
     public record TenantStatisticsResponse(
             UUID tenantId,
+            String tenantStatus,
+            long accountCount,
             long appointmentCount,
-            long completedConsultationCount,
-            long paidOrderCount,
+            long completedAppointmentCount,
             BigDecimal paidRevenue
     ) {
     }

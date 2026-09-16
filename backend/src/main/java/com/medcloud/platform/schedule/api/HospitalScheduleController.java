@@ -3,7 +3,9 @@ package com.medcloud.platform.schedule.api;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.schedule.application.ScheduleService;
 import com.medcloud.platform.schedule.application.ScheduleService.PublishSlotRequest;
 import com.medcloud.platform.schedule.application.ScheduleService.ScheduleSlotResponse;
@@ -35,8 +37,8 @@ public class HospitalScheduleController {
             @Valid @RequestBody PublishSlotRequest body,
             HttpServletRequest request
     ) {
-        ScheduleSlotResponse slot = audit.execute(actor, AuditAction.SCHEDULE_PUBLISHED, "SCHEDULE_SLOT", null,
-                requestId(request), () -> scheduleService.publish(actor, body), ScheduleSlotResponse::id);
+        ScheduleSlotResponse slot = audit.execute(actor, AuditAction.SCHEDULE_PUBLISHED, AuditObjectType.SCHEDULE_SLOT, null,
+                AuditRequestIds.from(request), () -> scheduleService.publish(actor, body), ScheduleSlotResponse::id);
         return ApiResponse.success(slot, requestId(request));
     }
 

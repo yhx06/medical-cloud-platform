@@ -3,7 +3,9 @@ package com.medcloud.platform.appointment.api;
 import com.medcloud.platform.appointment.application.AppointmentService;
 import com.medcloud.platform.appointment.application.AppointmentService.AppointmentResponse;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.security.CurrentUser;
@@ -40,8 +42,8 @@ public class PatientAppointmentController {
             @Valid @RequestBody BookAppointmentRequest body,
             HttpServletRequest request
     ) {
-        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_BOOKED, "APPOINTMENT", null,
-                requestId(request), () -> appointmentService.book(patient, body.slotId()), AppointmentResponse::id);
+        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_BOOKED, AuditObjectType.APPOINTMENT, null,
+                AuditRequestIds.from(request), () -> appointmentService.book(patient, body.slotId()), AppointmentResponse::id);
         return ApiResponse.success(appointment, requestId(request));
     }
 
@@ -68,8 +70,8 @@ public class PatientAppointmentController {
             @PathVariable UUID id,
             HttpServletRequest request
     ) {
-        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_CANCELLED, "APPOINTMENT", id,
-                requestId(request), () -> appointmentService.cancel(patient, id), AppointmentResponse::id);
+        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_CANCELLED, AuditObjectType.APPOINTMENT, id,
+                AuditRequestIds.from(request), () -> appointmentService.cancel(patient, id), AppointmentResponse::id);
         return ApiResponse.success(appointment, requestId(request));
     }
 

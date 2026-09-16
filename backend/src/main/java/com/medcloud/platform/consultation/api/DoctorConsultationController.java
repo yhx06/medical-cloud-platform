@@ -3,7 +3,9 @@ package com.medcloud.platform.consultation.api;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.application.AuditRequestIds;
 import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditObjectType;
 import com.medcloud.platform.consultation.application.ConsultationService;
 import com.medcloud.platform.consultation.application.ConsultationService.CorrectionCommand;
 import com.medcloud.platform.consultation.application.ConsultationService.DraftCommand;
@@ -44,8 +46,8 @@ public class DoctorConsultationController {
             @PathVariable UUID appointmentId,
             HttpServletRequest request
     ) {
-        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_STARTED, "CONSULTATION", null,
-                requestId(request), () -> consultationService.start(doctor, appointmentId), MedicalRecordResponse::id);
+        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_STARTED, AuditObjectType.CONSULTATION, null,
+                AuditRequestIds.from(request), () -> consultationService.start(doctor, appointmentId), MedicalRecordResponse::id);
         return ApiResponse.success(consultation, requestId(request));
     }
 
@@ -57,7 +59,7 @@ public class DoctorConsultationController {
             HttpServletRequest request
     ) {
         MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_DRAFT_SAVED,
-                "CONSULTATION", null, requestId(request),
+                AuditObjectType.CONSULTATION, null, AuditRequestIds.from(request),
                 () -> consultationService.saveDraft(doctor, appointmentId, body.toCommand()), MedicalRecordResponse::id);
         return ApiResponse.success(consultation, requestId(request));
     }
@@ -69,7 +71,7 @@ public class DoctorConsultationController {
             HttpServletRequest request
     ) {
         MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_COMPLETED,
-                "CONSULTATION", null, requestId(request),
+                AuditObjectType.CONSULTATION, null, AuditRequestIds.from(request),
                 () -> consultationService.complete(doctor, appointmentId), MedicalRecordResponse::id);
         return ApiResponse.success(consultation, requestId(request));
     }
@@ -82,7 +84,7 @@ public class DoctorConsultationController {
             HttpServletRequest request
     ) {
         MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.RECORD_CORRECTION_APPENDED,
-                "CONSULTATION", recordId, requestId(request),
+                AuditObjectType.CONSULTATION, recordId, AuditRequestIds.from(request),
                 () -> consultationService.appendCorrection(doctor, recordId, new CorrectionCommand(body.reason())),
                 MedicalRecordResponse::id);
         return ApiResponse.success(consultation, requestId(request));

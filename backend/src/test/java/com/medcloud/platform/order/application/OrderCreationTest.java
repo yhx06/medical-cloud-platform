@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -141,6 +142,25 @@ class OrderCreationTest {
                 "select count(*) from medical_order where consultation_id = ?",
                 Integer.class,
                 consultationId.toString())).isEqualTo(1);
+    }
+
+    @Test
+    void outerRollbackRemovesOrderCreatedAuditTogetherWithTheOrder() {
+        ConsultationCompletedEvent event = completedEvent("59.00");
+        AtomicReference<UUID> orderId = new AtomicReference<>();
+
+        transactions.executeWithoutResult(status -> {
+            orderId.set(orderService.createForCompletedConsultation(event).id());
+            status.setRollbackOnly();
+        });
+
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from medical_order where consultation_id = ?",
+                Integer.class, consultationId.toString())).isZero();
+        assertThat(jdbcTemplate.queryForObject("""
+                select count(*) from audit_event
+                where action = 'ORDER_CREATED' and object_id = ?
+                """, Integer.class, orderId.get().toString())).isZero();
     }
 
     @Test
