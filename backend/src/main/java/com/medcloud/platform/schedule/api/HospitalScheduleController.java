@@ -2,6 +2,8 @@ package com.medcloud.platform.schedule.api;
 
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.schedule.application.ScheduleService;
 import com.medcloud.platform.schedule.application.ScheduleService.PublishSlotRequest;
 import com.medcloud.platform.schedule.application.ScheduleService.ScheduleSlotResponse;
@@ -20,9 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalScheduleController {
     private final ScheduleService scheduleService;
+    private final AuditMutationBoundary audit;
 
-    public HospitalScheduleController(ScheduleService scheduleService) {
+    public HospitalScheduleController(ScheduleService scheduleService, AuditMutationBoundary audit) {
         this.scheduleService = scheduleService;
+        this.audit = audit;
     }
 
     @PostMapping
@@ -31,7 +35,9 @@ public class HospitalScheduleController {
             @Valid @RequestBody PublishSlotRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(scheduleService.publish(actor, body), requestId(request));
+        ScheduleSlotResponse slot = audit.execute(actor, AuditAction.SCHEDULE_PUBLISHED, "SCHEDULE_SLOT", null,
+                requestId(request), () -> scheduleService.publish(actor, body), ScheduleSlotResponse::id);
+        return ApiResponse.success(slot, requestId(request));
     }
 
     private String requestId(HttpServletRequest request) {

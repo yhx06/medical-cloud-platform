@@ -84,7 +84,8 @@ public class ConsultationService {
                 appointment.getId(),
                 appointment.getPatientId(),
                 appointment.getTenantId(),
-                appointment.getFee()));
+                appointment.getFee(),
+                appointment.getDoctorId()));
         return response(consultation);
     }
 

@@ -8,6 +8,16 @@ public record ConsultationCompletedEvent(
         UUID appointmentId,
         UUID patientId,
         UUID tenantId,
-        BigDecimal fee
+        BigDecimal fee,
+        UUID doctorId
 ) {
+    public ConsultationCompletedEvent(
+            UUID consultationId,
+            UUID appointmentId,
+            UUID patientId,
+            UUID tenantId,
+            BigDecimal fee
+    ) {
+        this(consultationId, appointmentId, patientId, tenantId, fee, null);
+    }
 }

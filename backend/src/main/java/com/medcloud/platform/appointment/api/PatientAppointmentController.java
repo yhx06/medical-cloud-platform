@@ -2,6 +2,8 @@ package com.medcloud.platform.appointment.api;
 
 import com.medcloud.platform.appointment.application.AppointmentService;
 import com.medcloud.platform.appointment.application.AppointmentService.AppointmentResponse;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
 import com.medcloud.platform.security.CurrentUser;
@@ -25,9 +27,11 @@ import java.util.UUID;
 @PreAuthorize("hasRole('PATIENT')")
 public class PatientAppointmentController {
     private final AppointmentService appointmentService;
+    private final AuditMutationBoundary audit;
 
-    public PatientAppointmentController(AppointmentService appointmentService) {
+    public PatientAppointmentController(AppointmentService appointmentService, AuditMutationBoundary audit) {
         this.appointmentService = appointmentService;
+        this.audit = audit;
     }
 
     @PostMapping
@@ -36,7 +40,9 @@ public class PatientAppointmentController {
             @Valid @RequestBody BookAppointmentRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(appointmentService.book(patient, body.slotId()), requestId(request));
+        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_BOOKED, "APPOINTMENT", null,
+                requestId(request), () -> appointmentService.book(patient, body.slotId()), AppointmentResponse::id);
+        return ApiResponse.success(appointment, requestId(request));
     }
 
     @GetMapping
@@ -62,7 +68,9 @@ public class PatientAppointmentController {
             @PathVariable UUID id,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(appointmentService.cancel(patient, id), requestId(request));
+        AppointmentResponse appointment = audit.execute(patient, AuditAction.APPOINTMENT_CANCELLED, "APPOINTMENT", id,
+                requestId(request), () -> appointmentService.cancel(patient, id), AppointmentResponse::id);
+        return ApiResponse.success(appointment, requestId(request));
     }
 
     private String requestId(HttpServletRequest request) {

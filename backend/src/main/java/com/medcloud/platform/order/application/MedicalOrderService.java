@@ -2,6 +2,9 @@ package com.medcloud.platform.order.application;
 
 import com.medcloud.platform.common.error.BusinessException;
 import com.medcloud.platform.common.error.ErrorCode;
+import com.medcloud.platform.audit.application.AuditService;
+import com.medcloud.platform.audit.domain.AuditAction;
+import com.medcloud.platform.audit.domain.AuditResult;
 import com.medcloud.platform.consultation.application.ConsultationCompletedEvent;
 import com.medcloud.platform.consultation.infrastructure.ConsultationRepository;
 import com.medcloud.platform.identity.domain.UserRole;
@@ -23,13 +26,16 @@ import java.util.UUID;
 public class MedicalOrderService {
     private final MedicalOrderRepository orders;
     private final ConsultationRepository consultations;
+    private final AuditService audit;
 
     public MedicalOrderService(
             MedicalOrderRepository orders,
-            ConsultationRepository consultations
+            ConsultationRepository consultations,
+            AuditService audit
     ) {
         this.orders = orders;
         this.consultations = consultations;
+        this.audit = audit;
     }
 
     @EventListener
@@ -82,7 +88,16 @@ public class MedicalOrderService {
         consultations.findByIdForUpdate(event.consultationId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         return orders.findByConsultationId(event.consultationId())
-                .orElseGet(() -> orders.saveAndFlush(MedicalOrder.from(event)));
+                .orElseGet(() -> createAndAuditOrder(event));
+    }
+
+    private MedicalOrder createAndAuditOrder(ConsultationCompletedEvent event) {
+        MedicalOrder order = orders.saveAndFlush(MedicalOrder.from(event));
+        CurrentUser actor = event.doctorId() == null ? null : new CurrentUser(
+                event.doctorId(), null, UserRole.DOCTOR, event.tenantId());
+        audit.record(actor, AuditAction.ORDER_CREATED, "MEDICAL_ORDER", order.getId(),
+                AuditResult.SUCCESS, "unknown");
+        return order;
     }
 
     private static void requirePatient(CurrentUser actor) {

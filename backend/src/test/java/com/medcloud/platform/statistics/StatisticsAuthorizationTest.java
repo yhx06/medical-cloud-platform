@@ -1,0 +1,198 @@
+package com.medcloud.platform.statistics;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.medcloud.platform.common.error.BusinessException;
+import com.medcloud.platform.common.error.ErrorCode;
+import com.medcloud.platform.identity.domain.UserRole;
+import com.medcloud.platform.security.CurrentUser;
+import com.medcloud.platform.statistics.application.StatisticsService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+@SpringBootTest
+@Transactional
+class StatisticsAuthorizationTest {
+    @Autowired
+    private StatisticsService service;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    private UUID tenantA;
+    private UUID tenantB;
+    private LocalDate from;
+    private LocalDate to;
+
+    @BeforeEach
+    void setUp() {
+        tenantA = UUID.randomUUID();
+        tenantB = UUID.randomUUID();
+        from = LocalDate.now().minusDays(2);
+        to = LocalDate.now();
+        insertTenant(tenantA, "统计医院 A");
+        insertTenant(tenantB, "统计医院 B");
+        insertAppointment(tenantA, from, "COMPLETED");
+        insertAppointment(tenantA, to, "BOOKED");
+        insertAppointment(tenantB, to, "COMPLETED");
+        insertCompletedConsultation(tenantA, from);
+        insertCompletedConsultation(tenantB, to);
+        insertPaidOrder(tenantA, new BigDecimal("78.00"), to);
+        insertPaidOrder(tenantB, new BigDecimal("99.00"), to);
+    }
+
+    @Test
+    void hospitalAdministratorReceivesOnlyOwnTenantInclusiveAggregate() {
+        CurrentUser hospitalA = new CurrentUser(UUID.randomUUID(), "hospital-a", UserRole.HOSPITAL_ADMIN, tenantA);
+
+        StatisticsService.HospitalStatisticsResponse result = service.hospital(hospitalA, from, to);
+
+        assertThat(result.tenantId()).isEqualTo(tenantA);
+        assertThat(result.appointmentCount()).isEqualTo(4);
+        assertThat(result.completedConsultationCount()).isEqualTo(2);
+        assertThat(result.paidOrderCount()).isEqualTo(1);
+        assertThat(result.paidRevenue()).isEqualByComparingTo("78.00");
+    }
+
+    @Test
+    void platformAdministratorReceivesTenantGroupedSanitizedTotalsOnly() throws Exception {
+        CurrentUser platform = new CurrentUser(UUID.randomUUID(), "platform", UserRole.PLATFORM_ADMIN, null);
+
+        StatisticsService.PlatformStatisticsResponse result = service.platform(platform, from, to);
+        String serialized = objectMapper.writeValueAsString(result);
+
+        assertThat(result.tenants()).extracting(StatisticsService.TenantStatisticsResponse::tenantId)
+                .containsExactlyInAnyOrder(tenantA, tenantB);
+        assertThat(serialized).doesNotContain("patient", "consultationId", "diagnosis", "name");
+    }
+
+    @Test
+    void authorizationAndInclusiveWindowAreValidated() {
+        CurrentUser patient = new CurrentUser(UUID.randomUUID(), "patient", UserRole.PATIENT, null);
+        CurrentUser hospitalA = new CurrentUser(UUID.randomUUID(), "hospital-a", UserRole.HOSPITAL_ADMIN, tenantA);
+
+        assertThatThrownBy(() -> service.hospital(patient, from, to))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.AUTH_FORBIDDEN));
+        assertThatThrownBy(() -> service.hospital(hospitalA, from, from.plusDays(366)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+    }
+
+    private void insertTenant(UUID tenantId, String name) {
+        jdbcTemplate.update("""
+                insert into tenant (id, name, status, created_at, updated_at)
+                values (?, ?, 'ACTIVE', current_timestamp, current_timestamp)
+                """, tenantId.toString(), name);
+    }
+
+    private void insertAppointment(UUID tenantId, LocalDate date, String status) {
+        UUID patientId = insertAccount("PATIENT", null);
+        UUID doctorId = insertAccount("DOCTOR", tenantId);
+        UUID departmentId = UUID.randomUUID();
+        UUID slotId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into department (id, tenant_id, name, description, status, created_at, updated_at)
+                values (?, ?, ?, '', 'ACTIVE', current_timestamp, current_timestamp)
+                """, departmentId.toString(), tenantId.toString(), "统计科室-" + departmentId);
+        jdbcTemplate.update("""
+                insert into schedule_slot (id, tenant_id, doctor_id, department_id, schedule_date, start_time, end_time,
+                                           capacity, fee, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, '09:00', '10:00', 3, 20.00, 'PUBLISHED', 0, current_timestamp, current_timestamp)
+                """, slotId.toString(), tenantId.toString(), doctorId.toString(), departmentId.toString(), date);
+        jdbcTemplate.update("""
+                insert into appointment (id, tenant_id, patient_id, doctor_id, department_id, slot_id, appointment_date,
+                                         start_time, end_time, fee, status, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, '09:00', '10:00', 20.00, ?, current_timestamp, current_timestamp)
+                """, UUID.randomUUID().toString(), tenantId.toString(), patientId.toString(), doctorId.toString(),
+                departmentId.toString(), slotId.toString(), date, status);
+    }
+
+    private void insertCompletedConsultation(UUID tenantId, LocalDate completedDate) {
+        UUID patientId = insertAccount("PATIENT", null);
+        UUID doctorId = insertAccount("DOCTOR", tenantId);
+        UUID departmentId = UUID.randomUUID();
+        UUID slotId = UUID.randomUUID();
+        UUID appointmentId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into department (id, tenant_id, name, description, status, created_at, updated_at)
+                values (?, ?, ?, '', 'ACTIVE', current_timestamp, current_timestamp)
+                """, departmentId.toString(), tenantId.toString(), "完成科室-" + departmentId);
+        jdbcTemplate.update("""
+                insert into schedule_slot (id, tenant_id, doctor_id, department_id, schedule_date, start_time, end_time,
+                                           capacity, fee, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, '10:00', '11:00', 3, 20.00, 'PUBLISHED', 0, current_timestamp, current_timestamp)
+                """, slotId.toString(), tenantId.toString(), doctorId.toString(), departmentId.toString(), completedDate);
+        jdbcTemplate.update("""
+                insert into appointment (id, tenant_id, patient_id, doctor_id, department_id, slot_id, appointment_date,
+                                         start_time, end_time, fee, status, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, '10:00', '11:00', 20.00, 'COMPLETED', current_timestamp, current_timestamp)
+                """, appointmentId.toString(), tenantId.toString(), patientId.toString(), doctorId.toString(),
+                departmentId.toString(), slotId.toString(), completedDate);
+        jdbcTemplate.update("""
+                insert into consultation (id, appointment_id, tenant_id, patient_id, doctor_id, complaint, diagnosis, advice,
+                                          status, completed_at, created_at, updated_at)
+                values (?, ?, ?, ?, ?, '', '', '', 'COMPLETED', ?, current_timestamp, current_timestamp)
+                """, UUID.randomUUID().toString(), appointmentId.toString(), tenantId.toString(), patientId.toString(),
+                doctorId.toString(), completedDate.atStartOfDay());
+    }
+
+    private void insertPaidOrder(UUID tenantId, BigDecimal amount, LocalDate paidDate) {
+        UUID patientId = insertAccount("PATIENT", null);
+        UUID doctorId = insertAccount("DOCTOR", tenantId);
+        UUID departmentId = UUID.randomUUID();
+        UUID slotId = UUID.randomUUID();
+        UUID appointmentId = UUID.randomUUID();
+        UUID consultationId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into department (id, tenant_id, name, description, status, created_at, updated_at)
+                values (?, ?, ?, '', 'ACTIVE', current_timestamp, current_timestamp)
+                """, departmentId.toString(), tenantId.toString(), "支付科室-" + departmentId);
+        jdbcTemplate.update("""
+                insert into schedule_slot (id, tenant_id, doctor_id, department_id, schedule_date, start_time, end_time,
+                                           capacity, fee, status, version, created_at, updated_at)
+                values (?, ?, ?, ?, ?, '11:00', '12:00', 3, 20.00, 'PUBLISHED', 0, current_timestamp, current_timestamp)
+                """, slotId.toString(), tenantId.toString(), doctorId.toString(), departmentId.toString(), paidDate);
+        jdbcTemplate.update("""
+                insert into appointment (id, tenant_id, patient_id, doctor_id, department_id, slot_id, appointment_date,
+                                         start_time, end_time, fee, status, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, ?, '11:00', '12:00', 20.00, 'COMPLETED', current_timestamp, current_timestamp)
+                """, appointmentId.toString(), tenantId.toString(), patientId.toString(), doctorId.toString(),
+                departmentId.toString(), slotId.toString(), paidDate);
+        jdbcTemplate.update("""
+                insert into consultation (id, appointment_id, tenant_id, patient_id, doctor_id, complaint, diagnosis, advice,
+                                          status, completed_at, created_at, updated_at)
+                values (?, ?, ?, ?, ?, '', '', '', 'COMPLETED', ?, current_timestamp, current_timestamp)
+                """, consultationId.toString(), appointmentId.toString(), tenantId.toString(), patientId.toString(),
+                doctorId.toString(), paidDate.atStartOfDay());
+        jdbcTemplate.update("""
+                insert into medical_order (id, consultation_id, appointment_id, tenant_id, patient_id, amount, status,
+                                           transaction_no, paid_at, created_at, updated_at)
+                values (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, current_timestamp, current_timestamp)
+                """, UUID.randomUUID().toString(), consultationId.toString(), appointmentId.toString(), tenantId.toString(),
+                patientId.toString(), amount, "PAY-" + UUID.randomUUID(), paidDate.atStartOfDay());
+    }
+
+    private UUID insertAccount(String role, UUID tenantId) {
+        UUID accountId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                insert into user_account (id, username, password_hash, role, status, tenant_id, created_at, updated_at)
+                values (?, ?, ?, ?, 'ACTIVE', ?, current_timestamp, current_timestamp)
+                """, accountId.toString(), "stats_" + accountId, "$2a$10$ucqsp8rSjN.zbcRRnijpDuSF/W7eqnYiifPs3K0wC00mmYGdj0DU2",
+                role, tenantId == null ? null : tenantId.toString());
+        return accountId;
+    }
+}

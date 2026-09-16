@@ -2,6 +2,8 @@ package com.medcloud.platform.consultation.api;
 
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.consultation.application.ConsultationService;
 import com.medcloud.platform.consultation.application.ConsultationService.CorrectionCommand;
 import com.medcloud.platform.consultation.application.ConsultationService.DraftCommand;
@@ -29,9 +31,11 @@ import java.util.UUID;
 @PreAuthorize("hasRole('DOCTOR')")
 public class DoctorConsultationController {
     private final ConsultationService consultationService;
+    private final AuditMutationBoundary audit;
 
-    public DoctorConsultationController(ConsultationService consultationService) {
+    public DoctorConsultationController(ConsultationService consultationService, AuditMutationBoundary audit) {
         this.consultationService = consultationService;
+        this.audit = audit;
     }
 
     @PostMapping("/appointments/{appointmentId}/start")
@@ -40,7 +44,9 @@ public class DoctorConsultationController {
             @PathVariable UUID appointmentId,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(consultationService.start(doctor, appointmentId), requestId(request));
+        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_STARTED, "CONSULTATION", null,
+                requestId(request), () -> consultationService.start(doctor, appointmentId), MedicalRecordResponse::id);
+        return ApiResponse.success(consultation, requestId(request));
     }
 
     @PutMapping("/consultations/{appointmentId}/draft")
@@ -50,9 +56,10 @@ public class DoctorConsultationController {
             @Valid @RequestBody DraftRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(
-                consultationService.saveDraft(doctor, appointmentId, body.toCommand()),
-                requestId(request));
+        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_DRAFT_SAVED,
+                "CONSULTATION", null, requestId(request),
+                () -> consultationService.saveDraft(doctor, appointmentId, body.toCommand()), MedicalRecordResponse::id);
+        return ApiResponse.success(consultation, requestId(request));
     }
 
     @PostMapping("/consultations/{appointmentId}/complete")
@@ -61,7 +68,10 @@ public class DoctorConsultationController {
             @PathVariable UUID appointmentId,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(consultationService.complete(doctor, appointmentId), requestId(request));
+        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_COMPLETED,
+                "CONSULTATION", null, requestId(request),
+                () -> consultationService.complete(doctor, appointmentId), MedicalRecordResponse::id);
+        return ApiResponse.success(consultation, requestId(request));
     }
 
     @PostMapping("/records/{recordId}/corrections")
@@ -71,9 +81,11 @@ public class DoctorConsultationController {
             @Valid @RequestBody CorrectionRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(
-                consultationService.appendCorrection(doctor, recordId, new CorrectionCommand(body.reason())),
-                requestId(request));
+        MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.RECORD_CORRECTION_APPENDED,
+                "CONSULTATION", recordId, requestId(request),
+                () -> consultationService.appendCorrection(doctor, recordId, new CorrectionCommand(body.reason())),
+                MedicalRecordResponse::id);
+        return ApiResponse.success(consultation, requestId(request));
     }
 
     private static String requestId(HttpServletRequest request) {

@@ -2,6 +2,8 @@ package com.medcloud.platform.tenant.api;
 
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.security.CurrentUser;
 import com.medcloud.platform.tenant.application.HospitalDirectoryService;
 import com.medcloud.platform.tenant.application.HospitalDirectoryService.CreateDepartmentRequest;
@@ -30,9 +32,11 @@ import java.util.UUID;
 @PreAuthorize("hasRole('HOSPITAL_ADMIN')")
 public class HospitalDirectoryController {
     private final HospitalDirectoryService directoryService;
+    private final AuditMutationBoundary audit;
 
-    public HospitalDirectoryController(HospitalDirectoryService directoryService) {
+    public HospitalDirectoryController(HospitalDirectoryService directoryService, AuditMutationBoundary audit) {
         this.directoryService = directoryService;
+        this.audit = audit;
     }
 
     @GetMapping("/departments")
@@ -49,7 +53,9 @@ public class HospitalDirectoryController {
             @Valid @RequestBody CreateDepartmentRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(directoryService.createDepartment(actor, body), requestId(request));
+        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_CREATED, "DEPARTMENT", null,
+                requestId(request), () -> directoryService.createDepartment(actor, body), DepartmentResponse::id);
+        return ApiResponse.success(department, requestId(request));
     }
 
     @PutMapping("/departments/{id}")
@@ -59,7 +65,9 @@ public class HospitalDirectoryController {
             @Valid @RequestBody UpdateDepartmentRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(directoryService.updateDepartment(actor, id, body), requestId(request));
+        DepartmentResponse department = audit.execute(actor, AuditAction.DEPARTMENT_UPDATED, "DEPARTMENT", id,
+                requestId(request), () -> directoryService.updateDepartment(actor, id, body), DepartmentResponse::id);
+        return ApiResponse.success(department, requestId(request));
     }
 
     @GetMapping("/doctors")
@@ -76,7 +84,9 @@ public class HospitalDirectoryController {
             @Valid @RequestBody CreateDoctorRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(directoryService.createDoctor(actor, body), requestId(request));
+        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_CREATED, "DOCTOR", null,
+                requestId(request), () -> directoryService.createDoctor(actor, body), DoctorResponse::id);
+        return ApiResponse.success(doctor, requestId(request));
     }
 
     @PutMapping("/doctors/{id}/status")
@@ -86,7 +96,9 @@ public class HospitalDirectoryController {
             @Valid @RequestBody DoctorStatusRequest body,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(directoryService.changeDoctorStatus(actor, id, body.status()), requestId(request));
+        DoctorResponse doctor = audit.execute(actor, AuditAction.DOCTOR_STATUS_CHANGED, "DOCTOR", id,
+                requestId(request), () -> directoryService.changeDoctorStatus(actor, id, body.status()), DoctorResponse::id);
+        return ApiResponse.success(doctor, requestId(request));
     }
 
     private String requestId(HttpServletRequest request) {

@@ -2,6 +2,8 @@ package com.medcloud.platform.file.api;
 
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.file.application.MedicalFileService;
 import com.medcloud.platform.file.application.MedicalFileService.DownloadUrlResponse;
 import com.medcloud.platform.file.application.MedicalFileService.FileResponse;
@@ -24,9 +26,11 @@ import java.util.UUID;
 @RequestMapping("/api")
 public class MedicalFileController {
     private final MedicalFileService files;
+    private final AuditMutationBoundary audit;
 
-    public MedicalFileController(MedicalFileService files) {
+    public MedicalFileController(MedicalFileService files, AuditMutationBoundary audit) {
         this.files = files;
+        this.audit = audit;
     }
 
     @PostMapping("/doctor/records/{recordId}/files")
@@ -37,7 +41,9 @@ public class MedicalFileController {
             @RequestPart("file") MultipartFile file,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(files.upload(doctor, recordId, file), requestId(request));
+        FileResponse stored = audit.execute(doctor, AuditAction.FILE_UPLOADED, "FILE", null,
+                requestId(request), () -> files.upload(doctor, recordId, file), FileResponse::id);
+        return ApiResponse.success(stored, requestId(request));
     }
 
     @GetMapping("/records/{recordId}/files")

@@ -2,6 +2,8 @@ package com.medcloud.platform.order.api;
 
 import com.medcloud.platform.common.api.ApiResponse;
 import com.medcloud.platform.common.web.RequestIdFilter;
+import com.medcloud.platform.audit.application.AuditMutationBoundary;
+import com.medcloud.platform.audit.domain.AuditAction;
 import com.medcloud.platform.order.application.MedicalOrderService;
 import com.medcloud.platform.order.application.MedicalOrderService.MedicalOrderResponse;
 import com.medcloud.platform.security.CurrentUser;
@@ -22,9 +24,11 @@ import java.util.UUID;
 @PreAuthorize("hasRole('PATIENT')")
 public class PatientOrderController {
     private final MedicalOrderService orderService;
+    private final AuditMutationBoundary audit;
 
-    public PatientOrderController(MedicalOrderService orderService) {
+    public PatientOrderController(MedicalOrderService orderService, AuditMutationBoundary audit) {
         this.orderService = orderService;
+        this.audit = audit;
     }
 
     @GetMapping
@@ -50,7 +54,9 @@ public class PatientOrderController {
             @PathVariable UUID id,
             HttpServletRequest request
     ) {
-        return ApiResponse.success(orderService.pay(patient, id), requestId(request));
+        MedicalOrderResponse order = audit.execute(patient, AuditAction.ORDER_PAID, "MEDICAL_ORDER", id,
+                requestId(request), () -> orderService.pay(patient, id), MedicalOrderResponse::id);
+        return ApiResponse.success(order, requestId(request));
     }
 
     private String requestId(HttpServletRequest request) {
