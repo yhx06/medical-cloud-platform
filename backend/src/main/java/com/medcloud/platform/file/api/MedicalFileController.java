@@ -49,7 +49,6 @@ public class MedicalFileController {
     }
 
     @GetMapping("/records/{recordId}/files")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'PATIENT', 'HOSPITAL_ADMIN')")
     ApiResponse<List<FileResponse>> listMetadata(
             @AuthenticationPrincipal CurrentUser user,
             @PathVariable UUID recordId,
@@ -61,7 +60,6 @@ public class MedicalFileController {
     }
 
     @PostMapping("/files/{fileId}/download-url")
-    @PreAuthorize("hasAnyRole('DOCTOR', 'PATIENT')")
     ApiResponse<DownloadUrlResponse> createDownloadUrl(
             @AuthenticationPrincipal CurrentUser user,
             @PathVariable UUID fileId,

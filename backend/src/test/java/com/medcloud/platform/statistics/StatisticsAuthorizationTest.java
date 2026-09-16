@@ -9,8 +9,11 @@ import com.medcloud.platform.statistics.application.StatisticsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -19,8 +22,14 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.http.HttpHeaders.AUTHORIZATION;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @Transactional
 class StatisticsAuthorizationTest {
     @Autowired
@@ -31,6 +40,9 @@ class StatisticsAuthorizationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private MockMvc mockMvc;
 
     private UUID tenantA;
     private UUID tenantB;
@@ -55,6 +67,7 @@ class StatisticsAuthorizationTest {
         insertCompletedConsultation(tenantA, from);
         insertCompletedConsultation(tenantB, to);
         insertPaidOrder(tenantA, new BigDecimal("78.00"), to);
+        insertUnpaidOrder(tenantA, new BigDecimal("500.00"), to);
         insertPaidOrder(tenantB, new BigDecimal("99.00"), to);
     }
 
@@ -65,10 +78,10 @@ class StatisticsAuthorizationTest {
         StatisticsService.HospitalStatisticsResponse result = service.hospital(hospitalA, from, to);
 
         assertThat(result.tenantId()).isEqualTo(tenantA);
-        assertThat(result.totalAppointmentCount()).isEqualTo(5);
+        assertThat(result.totalAppointmentCount()).isEqualTo(6);
         assertThat(result.cancelledAppointmentCount()).isEqualTo(1);
-        assertThat(result.completedAppointmentCount()).isEqualTo(3);
-        assertThat(result.doctorCompletedConsultationCount()).isEqualTo(2);
+        assertThat(result.completedAppointmentCount()).isEqualTo(4);
+        assertThat(result.doctorCompletedConsultationCount()).isEqualTo(3);
         assertThat(result.paidRevenue()).isEqualByComparingTo("78.00");
     }
 
@@ -82,9 +95,9 @@ class StatisticsAuthorizationTest {
         StatisticsService.TenantStatisticsResponse tenantAStatistics = tenantStatistics(result, tenantA);
         StatisticsService.TenantStatisticsResponse tenantBStatistics = tenantStatistics(result, tenantB);
         StatisticsService.TenantStatisticsResponse tenantCStatistics = tenantStatistics(result, tenantC);
-        assertThat(tenantAStatistics.accountCount()).isEqualTo(5);
-        assertThat(tenantAStatistics.appointmentCount()).isEqualTo(5);
-        assertThat(tenantAStatistics.completedAppointmentCount()).isEqualTo(3);
+        assertThat(tenantAStatistics.accountCount()).isEqualTo(6);
+        assertThat(tenantAStatistics.appointmentCount()).isEqualTo(6);
+        assertThat(tenantAStatistics.completedAppointmentCount()).isEqualTo(4);
         assertThat(tenantAStatistics.paidRevenue()).isEqualByComparingTo("78.00");
         assertThat(tenantAStatistics.tenantStatus()).isEqualTo("ACTIVE");
         assertThat(tenantBStatistics.accountCount()).isEqualTo(3);
@@ -111,6 +124,16 @@ class StatisticsAuthorizationTest {
         assertThatThrownBy(() -> service.hospital(hospitalA, from, from.plusDays(366)))
                 .isInstanceOfSatisfying(BusinessException.class,
                         exception -> assertThat(exception.getCode()).isEqualTo(ErrorCode.VALIDATION_ERROR));
+    }
+
+    @Test
+    void platformStatisticsEndpointRejectsHospitalAdministrators() throws Exception {
+        mockMvc.perform(get("/api/platform/statistics")
+                        .header(AUTHORIZATION, bearer("hospital_a"))
+                        .param("from", from.toString())
+                        .param("to", to.toString()))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_FORBIDDEN"));
     }
 
     private StatisticsService.TenantStatisticsResponse tenantStatistics(
@@ -181,7 +204,15 @@ class StatisticsAuthorizationTest {
                 doctorId.toString(), completedDate.atStartOfDay());
     }
 
-    private void insertPaidOrder(UUID tenantId, BigDecimal amount, LocalDate paidDate) {
+    private void insertPaidOrder(UUID tenantId, BigDecimal amount, LocalDate orderDate) {
+        insertOrder(tenantId, amount, orderDate, "PAID");
+    }
+
+    private void insertUnpaidOrder(UUID tenantId, BigDecimal amount, LocalDate orderDate) {
+        insertOrder(tenantId, amount, orderDate, "PENDING");
+    }
+
+    private void insertOrder(UUID tenantId, BigDecimal amount, LocalDate orderDate, String status) {
         UUID patientId = insertAccount("PATIENT", null);
         UUID doctorId = insertAccount("DOCTOR", tenantId);
         UUID departmentId = UUID.randomUUID();
@@ -196,25 +227,36 @@ class StatisticsAuthorizationTest {
                 insert into schedule_slot (id, tenant_id, doctor_id, department_id, schedule_date, start_time, end_time,
                                            capacity, fee, status, version, created_at, updated_at)
                 values (?, ?, ?, ?, ?, '11:00', '12:00', 3, 20.00, 'PUBLISHED', 0, current_timestamp, current_timestamp)
-                """, slotId.toString(), tenantId.toString(), doctorId.toString(), departmentId.toString(), paidDate);
+                """, slotId.toString(), tenantId.toString(), doctorId.toString(), departmentId.toString(), orderDate);
         jdbcTemplate.update("""
                 insert into appointment (id, tenant_id, patient_id, doctor_id, department_id, slot_id, appointment_date,
                                          start_time, end_time, fee, status, created_at, updated_at)
                 values (?, ?, ?, ?, ?, ?, ?, '11:00', '12:00', 20.00, 'COMPLETED', current_timestamp, current_timestamp)
                 """, appointmentId.toString(), tenantId.toString(), patientId.toString(), doctorId.toString(),
-                departmentId.toString(), slotId.toString(), paidDate);
+                departmentId.toString(), slotId.toString(), orderDate);
         jdbcTemplate.update("""
                 insert into consultation (id, appointment_id, tenant_id, patient_id, doctor_id, complaint, diagnosis, advice,
                                           status, completed_at, created_at, updated_at)
                 values (?, ?, ?, ?, ?, '', '', '', 'COMPLETED', ?, current_timestamp, current_timestamp)
                 """, consultationId.toString(), appointmentId.toString(), tenantId.toString(), patientId.toString(),
-                doctorId.toString(), paidDate.atStartOfDay());
+                doctorId.toString(), orderDate.atStartOfDay());
         jdbcTemplate.update("""
                 insert into medical_order (id, consultation_id, appointment_id, tenant_id, patient_id, amount, status,
                                            transaction_no, paid_at, created_at, updated_at)
-                values (?, ?, ?, ?, ?, ?, 'PAID', ?, ?, current_timestamp, current_timestamp)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp, current_timestamp)
                 """, UUID.randomUUID().toString(), consultationId.toString(), appointmentId.toString(), tenantId.toString(),
-                patientId.toString(), amount, "PAY-" + UUID.randomUUID(), paidDate.atStartOfDay());
+                patientId.toString(), amount, status,
+                "PAID".equals(status) ? "PAY-" + UUID.randomUUID() : null,
+                "PAID".equals(status) ? orderDate.atStartOfDay() : null);
+    }
+
+    private String bearer(String username) throws Exception {
+        String json = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"" + username + "\",\"password\":\"Demo@123456\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return "Bearer " + objectMapper.readTree(json).at("/data/accessToken").asText();
     }
 
     private UUID insertAccount(String role, UUID tenantId) {
@@ -226,4 +268,5 @@ class StatisticsAuthorizationTest {
                 role, tenantId == null ? null : tenantId.toString());
         return accountId;
     }
+
 }

@@ -236,7 +236,7 @@ class MedicalFileAuthorizationTest {
     }
 
     @Test
-    void auditsBusinessRejectedFileAccessButNotRejectionsBeforeTheController() throws Exception {
+    void auditsBusinessAndEndpointRoleRejectedFileAccess() throws Exception {
         UUID fileId = uploadAsAssignedDoctor();
         MvcResult rejectedMetadata = mockMvc.perform(get("/api/records/{recordId}/files", recordId)
                         .header(AUTHORIZATION, bearer(sameTenantDoctorUsername)))
@@ -250,11 +250,12 @@ class MedicalFileAuthorizationTest {
         assertAudit(rejectedMetadata, "FILE_METADATA_ACCESSED", "CONSULTATION", recordId, "REJECTED");
         assertAudit(rejectedDownload, "FILE_DOWNLOAD_URL_CREATED", "FILE", fileId, "REJECTED");
 
-        int auditsBeforePreAuthorization = countAudits("FILE_METADATA_ACCESSED", recordId);
-        mockMvc.perform(get("/api/records/{recordId}/files", recordId)
+        MvcResult rejectedPlatformMetadata = mockMvc.perform(get("/api/records/{recordId}/files", recordId)
                         .header(AUTHORIZATION, bearer("platform_admin")))
-                .andExpect(status().isForbidden());
-        assertThat(countAudits("FILE_METADATA_ACCESSED", recordId)).isEqualTo(auditsBeforePreAuthorization);
+                .andExpect(status().isForbidden())
+                .andReturn();
+
+        assertAudit(rejectedPlatformMetadata, "FILE_METADATA_ACCESSED", "CONSULTATION", recordId, "REJECTED");
     }
 
     private UUID uploadAsAssignedDoctor() throws Exception {
@@ -279,12 +280,6 @@ class MedicalFileAuthorizationTest {
                         where request_id = ? and action = ? and object_type = ? and object_id = ? and result = ?
                         """, Integer.class, requestId, action, objectType, objectId.toString(), outcome))
                 .isEqualTo(1);
-    }
-
-    private int countAudits(String action, UUID objectId) {
-        return jdbcTemplate.queryForObject("""
-                        select count(*) from audit_event where action = ? and object_id = ?
-                        """, Integer.class, action, objectId.toString());
     }
 
     private static MockMultipartFile pdf() {

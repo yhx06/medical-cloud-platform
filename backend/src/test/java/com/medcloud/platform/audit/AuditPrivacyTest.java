@@ -97,14 +97,27 @@ class AuditPrivacyTest {
     }
 
     @Test
-    void databaseRejectsRawAuditValuesOutsideTheEnumeratedSchema() {
-        assertThatThrownBy(() -> jdbcTemplate.update("""
-                        insert into audit_event
-                            (id, action, object_type, result, request_id, created_at)
-                        values ('00000000-0000-0000-0000-000000000099', 'NOT_AN_ACTION',
-                                'UNKNOWN_OBJECT', 'NOT_A_RESULT', 'not-a-uuid', current_timestamp)
-                        """))
-                .isInstanceOf(DataIntegrityViolationException.class);
+    void databaseRejectsAuditEventsWithAnInvalidAction() {
+        assertAuditConstraintViolation("NOT_AN_ACTION", "TENANT", "SUCCESS",
+                "00000000-0000-0000-0000-000000000001");
+    }
+
+    @Test
+    void databaseRejectsAuditEventsWithAnInvalidObjectType() {
+        assertAuditConstraintViolation("LOGIN_SUCCEEDED", "UNKNOWN_OBJECT", "SUCCESS",
+                "00000000-0000-0000-0000-000000000002");
+    }
+
+    @Test
+    void databaseRejectsAuditEventsWithAnInvalidResult() {
+        assertAuditConstraintViolation("LOGIN_SUCCEEDED", "TENANT", "NOT_A_RESULT",
+                "00000000-0000-0000-0000-000000000003");
+    }
+
+    @Test
+    void databaseRejectsAuditEventsWithNonHexadecimalUuidRequestIds() {
+        assertAuditConstraintViolation("LOGIN_SUCCEEDED", "TENANT", "SUCCESS",
+                "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz");
     }
 
     @Test
@@ -188,5 +201,19 @@ class AuditPrivacyTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return "Bearer " + objectMapper.readTree(json).at("/data/accessToken").asText();
+    }
+
+    private void assertAuditConstraintViolation(
+            String action,
+            String objectType,
+            String result,
+            String requestId
+    ) {
+        assertThatThrownBy(() -> jdbcTemplate.update("""
+                        insert into audit_event
+                            (id, action, object_type, result, request_id, created_at)
+                        values (?, ?, ?, ?, ?, current_timestamp)
+                        """, UUID.randomUUID().toString(), action, objectType, result, requestId))
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
