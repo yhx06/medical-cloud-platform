@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import MockAdapter from 'axios-mock-adapter'
 import { canAccess, router } from './index'
+import { http, TOKEN_KEY } from '../api/http'
 
 describe('route authorization', () => {
   it('redirects anonymous users from protected routes', () => {
@@ -42,5 +45,21 @@ describe('route authorization', () => {
     const protectedPages = router.getRoutes().filter(route => route.meta.roles)
     expect(protectedPages).toHaveLength(13)
     expect(protectedPages.every(route => typeof route.components?.default === 'function')).toBe(true)
+  })
+
+  it('restores a refresh session before the first protected navigation only once', async () => {
+    setActivePinia(createPinia())
+    sessionStorage.setItem(TOKEN_KEY, 'existing-token')
+    const mock = new MockAdapter(http)
+    mock.onGet('/api/me').reply(200, { data: {
+      userId: 'patient-1', username: 'patient_demo', role: 'PATIENT', tenantId: null
+    } })
+
+    await router.push('/records')
+    expect(router.currentRoute.value.path).toBe('/records')
+
+    await router.push('/appointments')
+    expect(mock.history.get.filter(request => request.url === '/api/me')).toHaveLength(1)
+    mock.restore()
   })
 })

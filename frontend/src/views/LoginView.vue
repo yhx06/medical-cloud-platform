@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { getApiErrorMessage } from '../api/http'
 
 const username = ref('patient_demo')
 const password = ref('Demo@123456')
@@ -12,7 +13,7 @@ const auth = useAuthStore()
 async function submit() {
   loading.value = true; error.value = ''
   try { await auth.login(username.value, password.value); await router.push('/dashboard') }
-  catch (reason: any) { error.value = reason.response?.data?.message ?? '登录失败，请检查账号和服务状态' }
+  catch (reason: unknown) { error.value = getApiErrorMessage(reason, '登录失败，请检查账号和服务状态') }
   finally { loading.value = false }
 }
 </script>

@@ -9,6 +9,12 @@ export function canAccess(role: UserRole | undefined, meta: AccessMeta): true | 
   return true
 }
 
+let sessionRestore: Promise<void> | undefined
+function restoreSessionOnce(): Promise<void> {
+  sessionRestore ??= useAuthStore().restore()
+  return sessionRestore
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
@@ -35,4 +41,7 @@ export const router = createRouter({
     ] }
   ]
 })
-router.beforeEach(to => canAccess(useAuthStore().role, to.meta as RouteMeta & AccessMeta))
+router.beforeEach(async to => {
+  await restoreSessionOnce()
+  return canAccess(useAuthStore().role, to.meta as RouteMeta & AccessMeta)
+})

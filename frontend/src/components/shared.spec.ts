@@ -20,17 +20,21 @@ describe('AsyncState', () => {
   it('shows the active async state and restores content when ready', async () => {
     const wrapper = mount(AsyncState, {
       props: { loading: true, empty: false, error: null },
-      slots: { default: '<p>业务内容</p>' }
+      slots: { heading: '<h1>页面标题</h1>', default: '<p>业务内容</p>' }
     })
+    expect(wrapper.get('h1').text()).toBe('页面标题')
     expect(wrapper.get('[role="status"]').text()).toContain('加载中')
 
     await wrapper.setProps({ loading: false, error: '加载失败' })
+    expect(wrapper.get('h1').text()).toBe('页面标题')
     expect(wrapper.get('[role="alert"]').text()).toBe('加载失败')
 
     await wrapper.setProps({ error: null, empty: true })
+    expect(wrapper.get('h1').text()).toBe('页面标题')
     expect(wrapper.get('[data-test="empty-state"]').text()).toContain('暂无数据')
 
     await wrapper.setProps({ empty: false })
+    expect(wrapper.get('h1').text()).toBe('页面标题')
     expect(wrapper.text()).toContain('业务内容')
   })
 })

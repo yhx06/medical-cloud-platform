@@ -1,3 +1,5 @@
+import type { UserRole } from './auth'
+
 export interface PageResponse<T> {
   content: T[]
   totalElements: number
@@ -96,10 +98,10 @@ export interface PrescriptionItemInput {
 }
 
 export interface ConsultationDraft {
-  complaint: string
-  diagnosis: string
-  advice: string
-  prescriptionItems: PrescriptionItemInput[]
+  complaint?: string | null
+  diagnosis?: string | null
+  advice?: string | null
+  prescriptionItems?: PrescriptionItemInput[] | null
 }
 
 export interface MedicalOrder {
@@ -120,11 +122,16 @@ export interface Tenant {
   status: ActiveStatus
 }
 
-export interface HospitalAccount {
+export interface Account {
   id: string
   username: string
-  role: 'HOSPITAL_ADMIN'
+  role: UserRole
   status: ActiveStatus
+  tenantId: string | null
+}
+
+export interface HospitalAccount extends Account {
+  role: 'HOSPITAL_ADMIN'
   tenantId: string
 }
 

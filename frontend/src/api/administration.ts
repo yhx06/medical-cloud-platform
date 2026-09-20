@@ -1,7 +1,7 @@
 import { http } from './http'
 import type { ApiEnvelope } from '../types/auth'
 import type {
-  ActiveStatus, CreateDepartmentInput, CreateDoctorInput, Department, Doctor, HospitalAccount,
+  Account, ActiveStatus, CreateDepartmentInput, CreateDoctorInput, Department, Doctor, HospitalAccount,
   PublishScheduleSlotInput, ScheduleSlot, Tenant, UpdateDepartmentInput
 } from '../types/business'
 
@@ -21,8 +21,8 @@ export async function changeTenantStatus(tenantId: string, status: ActiveStatus)
   return (await http.patch<ApiEnvelope<Tenant>>(`/api/platform/tenants/${tenantId}/status`, { status })).data.data
 }
 
-export async function changeAccountStatus(accountId: string, status: ActiveStatus): Promise<HospitalAccount> {
-  return (await http.patch<ApiEnvelope<HospitalAccount>>(`/api/platform/accounts/${accountId}/status`, { status })).data.data
+export async function changeAccountStatus(accountId: string, status: ActiveStatus): Promise<Account> {
+  return (await http.patch<ApiEnvelope<Account>>(`/api/platform/accounts/${accountId}/status`, { status })).data.data
 }
 
 export async function getHospitalProfile(): Promise<Tenant> {

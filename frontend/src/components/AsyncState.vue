@@ -9,6 +9,7 @@ withDefaults(defineProps<{ loading?: boolean; error?: string | null; empty?: boo
 
 <template>
   <div class="async-state">
+    <slot name="heading" />
     <p v-if="loading" role="status" class="message">加载中…</p>
     <p v-else-if="error" role="alert" class="message error">{{ error }}</p>
     <div v-else-if="empty" data-test="empty-state" class="message"><slot name="empty">{{ emptyText }}</slot></div>
