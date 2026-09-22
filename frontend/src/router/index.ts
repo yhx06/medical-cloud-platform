@@ -20,18 +20,18 @@ export const router = createRouter({
         component: () => import('../views/DashboardView.vue'),
         meta: { roles: ['PATIENT', 'DOCTOR', 'HOSPITAL_ADMIN', 'PLATFORM_ADMIN'] }
       },
-      { path: 'catalog', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PATIENT'] } },
-      { path: 'appointments', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PATIENT'] } },
-      { path: 'records', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PATIENT'] } },
-      { path: 'orders', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PATIENT'] } },
-      { path: 'doctor/appointments', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['DOCTOR'] } },
-      { path: 'doctor/records', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['DOCTOR'] } },
-      { path: 'hospital/departments', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
-      { path: 'hospital/doctors', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
-      { path: 'hospital/schedule', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
-      { path: 'hospital/statistics', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
-      { path: 'platform/tenants', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PLATFORM_ADMIN'] } },
-      { path: 'platform/statistics', component: () => import('../views/ModulePlaceholderView.vue'), meta: { roles: ['PLATFORM_ADMIN'] } }
+      { path: 'catalog', component: () => import('../views/patient/CatalogView.vue'), meta: { roles: ['PATIENT'] } },
+      { path: 'appointments', component: () => import('../views/patient/AppointmentsView.vue'), meta: { roles: ['PATIENT'] } },
+      { path: 'records', component: () => import('../views/patient/RecordsView.vue'), meta: { roles: ['PATIENT'] } },
+      { path: 'orders', component: () => import('../views/patient/OrdersView.vue'), meta: { roles: ['PATIENT'] } },
+      { path: 'doctor/appointments', component: () => import('../views/doctor/DoctorAppointmentsView.vue'), meta: { roles: ['DOCTOR'] } },
+      { path: 'doctor/records', component: () => import('../views/doctor/DoctorRecordsView.vue'), meta: { roles: ['DOCTOR'] } },
+      { path: 'hospital/departments', component: () => import('../views/hospital/DepartmentsView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
+      { path: 'hospital/doctors', component: () => import('../views/hospital/DoctorsView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
+      { path: 'hospital/schedule', component: () => import('../views/hospital/ScheduleSlotsView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
+      { path: 'hospital/statistics', component: () => import('../views/hospital/HospitalStatisticsView.vue'), meta: { roles: ['HOSPITAL_ADMIN'] } },
+      { path: 'platform/tenants', component: () => import('../views/platform/TenantsView.vue'), meta: { roles: ['PLATFORM_ADMIN'] } },
+      { path: 'platform/statistics', component: () => import('../views/platform/PlatformStatisticsView.vue'), meta: { roles: ['PLATFORM_ADMIN'] } }
     ] }
   ]
 })

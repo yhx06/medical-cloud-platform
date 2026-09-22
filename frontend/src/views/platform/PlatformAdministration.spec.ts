@@ -1,0 +1,58 @@
+import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import Tenants from './TenantsView.vue'
+import Statistics from './PlatformStatisticsView.vue'
+import Dashboard from '../DashboardView.vue'
+import { setupWorkflow, platformStats } from '../workflowTestSupport'
+
+describe('platform administration', () => {
+  const api = setupWorkflow('PLATFORM_ADMIN')
+  it('creates a tenant and its administrator and confirms tenant and account status changes', async () => {
+    const tenant = { id: 'tenant-a', name: '演示医院', status: 'ACTIVE' }
+    api().onGet('/api/platform/tenants').reply(200, { data: [tenant] })
+    api().onPost('/api/platform/tenants', { name: '新医院' }).reply(200, { data: { ...tenant, id: 'new', name: '新医院' } })
+    api().onPost('/api/platform/tenants/tenant-a/admins').reply(200, { data: { id: 'admin-a', username: 'admin_demo', role: 'HOSPITAL_ADMIN', status: 'ACTIVE', tenantId: 'tenant-a' } })
+    api().onPatch('/api/platform/tenants/tenant-a/status').reply(200, { data: { ...tenant, status: 'DISABLED' } })
+    api().onPatch('/api/platform/accounts/admin-a/status').reply(200, { data: { id: 'admin-a', username: 'admin_demo', role: 'HOSPITAL_ADMIN', status: 'DISABLED', tenantId: 'tenant-a' } })
+    const view = mount(Tenants)
+    await flushPromises()
+    await view.get('[name="tenant-name"]').setValue('新医院')
+    await view.get('[data-test="tenant-form"]').trigger('submit')
+    await flushPromises()
+    expect(view.text()).toContain('新医院')
+    await view.get('[name="tenantId"]').setValue('tenant-a')
+    await view.get('[name="username"]').setValue('admin_demo')
+    await view.get('[name="password"]').setValue('Demo@123456')
+    await view.get('[data-test="admin-form"]').trigger('submit')
+    await flushPromises()
+    expect(view.text()).toContain('admin_demo')
+    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    await view.findAll('[data-test="tenant-status"]')[0]!.trigger('click')
+    expect(api().history.patch).toHaveLength(0)
+    await view.findAll('[data-test="tenant-status"]')[0]!.trigger('click')
+    await flushPromises()
+    await view.get('[data-test="account-status"]').trigger('click')
+    await flushPromises()
+    expect(api().history.patch.map(r => r.url)).toEqual(['/api/platform/tenants/tenant-a/status', '/api/platform/accounts/admin-a/status'])
+    expect(view.text()).not.toContain('诊断内容')
+    expect(api().history.get.every(r => r.url?.startsWith('/api/platform/'))).toBe(true)
+  })
+  it('shows only aggregate platform fields even when extra clinical fields arrive', async () => {
+    api().onGet('/api/platform/statistics').reply(200, { data: { ...platformStats, diagnosis: '禁止展示的秘密', prescriptionItems: ['秘密药品'] } })
+    const view = mount(Statistics)
+    await flushPromises()
+    expect(view.text()).toContain('175.00')
+    expect(view.text()).toContain('tenant-a')
+    expect(view.text()).not.toContain('秘密')
+    await view.get('[name="from"]').setValue('2026-09-01')
+    await view.get('[name="to"]').setValue('2026-09-22')
+    await view.get('form').trigger('submit')
+    await flushPromises()
+    expect(api().history.get.at(-1)?.params).toEqual({ from: '2026-09-01', to: '2026-09-22' })
+    const dashboard = mount(Dashboard, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    expect(dashboard.get('[data-test="metric-appointments"]').text()).toContain('12')
+    expect(dashboard.text()).not.toContain('秘密')
+    expect(api().history.get.every(r => r.url === '/api/platform/statistics')).toBe(true)
+  })
+})

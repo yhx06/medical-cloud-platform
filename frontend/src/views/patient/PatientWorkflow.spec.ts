@@ -1,0 +1,108 @@
+import { describe, expect, it, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { nextTick } from 'vue'
+import CatalogView from './CatalogView.vue'
+import AppointmentsView from './AppointmentsView.vue'
+import RecordsView from './RecordsView.vue'
+import OrdersView from './OrdersView.vue'
+import DashboardView from '../DashboardView.vue'
+import { setupWorkflow, slot, appointment, record, order, page } from '../workflowTestSupport'
+
+describe('patient workflows', () => {
+  const api = setupWorkflow('PATIENT')
+  it('filters and pages the server catalog, books the selected slot and displays feedback', async () => {
+    api().onGet('/api/catalog/schedule-slots').reply(200, { data: page([slot], 0, 11) })
+    api().onPost('/api/patient/appointments', { slotId: 'slot-a' }).reply(200, { data: appointment })
+    const view = mount(CatalogView)
+    await flushPromises()
+    expect(view.text()).toContain('演示医院')
+    await view.get('[data-test="next-page"]').trigger('click')
+    await flushPromises()
+    expect(api().history.get.at(-1)?.params.page).toBe(1)
+    await view.get('[name="date"]').setValue('2026-10-01')
+    await view.get('form').trigger('submit')
+    await flushPromises()
+    expect(api().history.get.at(-1)?.params).toMatchObject({ page: 0, date: '2026-10-01' })
+    await view.get('[data-test="book-slot"]').trigger('click')
+    await flushPromises()
+    expect(api().history.post[0]?.data).toBe('{"slotId":"slot-a"}')
+    expect(view.text()).toContain('预约成功')
+  })
+  it('shows booking failures and prevents double submission while pending', async () => {
+    api().onGet('/api/catalog/schedule-slots').reply(200, { data: page() })
+    let respond!: (value: [number, unknown]) => void
+    api().onPost('/api/patient/appointments').reply(() => new Promise(resolve => { respond = resolve }))
+    const view = mount(CatalogView)
+    await flushPromises()
+    await view.get('[data-test="book-slot"]').trigger('click')
+    expect(view.get('[data-test="book-slot"]').attributes('disabled')).toBeDefined()
+    respond([409, { message: '号源已满' }])
+    await flushPromises()
+    expect(view.get('[role="alert"]').text()).toContain('号源已满')
+  })
+  it('confirms cancellation and never offers cancellation after consultation starts', async () => {
+    api().onGet('/api/patient/appointments').reply(200, { data: [appointment, { ...appointment, id: 'started', status: 'IN_PROGRESS' }] })
+    api().onPost('/api/patient/appointments/appointment-a/cancel').reply(200, { data: { ...appointment, status: 'CANCELLED' } })
+    const view = mount(AppointmentsView)
+    await flushPromises()
+    expect(view.findAll('[data-test="cancel-appointment"]')).toHaveLength(1)
+    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    await view.get('[data-test="cancel-appointment"]').trigger('click')
+    expect(api().history.post).toHaveLength(0)
+    await view.get('[data-test="cancel-appointment"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('已取消')
+  })
+  it('pays only a pending own order and displays server transaction data', async () => {
+    api().onGet('/api/patient/orders').reply(200, { data: [order] })
+    api().onPost('/api/patient/orders/order-a/pay').reply(200, { data: { ...order, status: 'PAID', transactionNo: 'SERVER-TXN-1', paidAt: '2026-09-22T10:00:00Z' } })
+    const view = mount(OrdersView)
+    await flushPromises()
+    vi.mocked(window.confirm).mockReturnValueOnce(false)
+    await view.get('[data-test="pay-order"]').trigger('click')
+    expect(api().history.post).toHaveLength(0)
+    await view.get('[data-test="pay-order"]').trigger('click')
+    await flushPromises()
+    expect(api().history.post[0]?.data).toBeUndefined()
+    expect(view.text()).toContain('SERVER-TXN-1')
+    expect(view.find('[data-test="pay-order"]').exists()).toBe(false)
+  })
+  it('loads owned completed records, prescriptions, corrections and authorized attachment links', async () => {
+    const completed = { ...record, status: 'COMPLETED', prescriptionItems: [{ id: 'rx', sequenceNumber: 1, medicationName: '演示药', dosage: '1片', frequency: '每日一次', durationDays: 2 }], corrections: [{ id: 'correction', sequenceNumber: 1, doctorId: 'doctor-a', reason: '补充说明', createdAt: record.createdAt }] }
+    api().onGet('/api/patient/records').reply(200, { data: [completed] })
+    api().onGet('/api/patient/records/record-a').reply(200, { data: completed })
+    api().onGet('/api/records/record-a/files').reply(200, { data: [{ id: 'file-a', recordId: 'record-a', originalFilename: '报告.pdf', mediaType: 'application/pdf', sizeBytes: 100, createdAt: record.createdAt }] })
+    api().onPost('/api/files/file-a/download-url').reply(200, { data: { url: 'https://files.example/report', expiresAt: '2026-09-22T10:05:00Z' } })
+    const view = mount(RecordsView)
+    await flushPromises()
+    await view.get('[data-test="view-record"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('演示药')
+    expect(view.text()).toContain('补充说明')
+    await view.get('[data-test="download-file"]').trigger('click')
+    await flushPromises()
+    expect(view.get('a[data-test="file-link"]').attributes('href')).toBe('https://files.example/report')
+    expect(view.find('input[type="file"]').exists()).toBe(false)
+  })
+  it('provides loading, empty and backend error states without cross-role requests', async () => {
+    api().onGet('/api/patient/orders').reply(200, { data: [] })
+    const empty = mount(OrdersView)
+    await nextTick()
+    expect(empty.text()).toContain('加载中')
+    await flushPromises()
+    expect(empty.text()).toContain('暂无')
+    api().onGet('/api/patient/appointments').reply(403, { message: '账号已停用' })
+    const failed = mount(AppointmentsView)
+    await flushPromises()
+    expect(failed.get('[role="alert"]').text()).toContain('账号已停用')
+    expect(api().history.get.every(r => r.url?.startsWith('/api/patient/'))).toBe(true)
+  })
+  it('derives patient dashboard counts from owned lists', async () => {
+    api().onGet('/api/patient/appointments').reply(200, { data: [appointment] })
+    api().onGet('/api/patient/orders').reply(200, { data: [order, { ...order, id: 'paid', status: 'PAID' }] })
+    const view = mount(DashboardView, { global: { stubs: { RouterLink: true } } })
+    await flushPromises()
+    expect(view.get('[data-test="metric-appointments"]').text()).toContain('1')
+    expect(view.get('[data-test="metric-pending"]').text()).toContain('1')
+  })
+})
