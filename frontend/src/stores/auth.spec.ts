@@ -30,4 +30,21 @@ describe('auth store', () => {
     await auth.restore()
     expect(auth.role).toBe('PATIENT')
   })
+
+  it('restores once per store lifecycle without leaking across Pinia instances', async () => {
+    sessionStorage.setItem('medical-cloud-token', 'opaque-token')
+    const mock = new MockAdapter(http)
+    mock.onGet('/api/me').reply(200, { data: {
+      userId: '1', username: 'patient_demo', role: 'PATIENT', tenantId: null
+    } })
+
+    const first = useAuthStore()
+    await Promise.all([first.restoreOnce(), first.restoreOnce()])
+    expect(mock.history.get).toHaveLength(1)
+
+    setActivePinia(createPinia())
+    const second = useAuthStore()
+    await second.restoreOnce()
+    expect(mock.history.get).toHaveLength(2)
+  })
 })

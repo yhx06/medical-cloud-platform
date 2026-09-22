@@ -6,6 +6,7 @@ import type { AuthUser } from '../types/auth'
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<AuthUser>()
+  let initialRestore: Promise<void> | undefined
   const isAuthenticated = computed(() => Boolean(user.value && sessionStorage.getItem(TOKEN_KEY)))
   const role = computed(() => user.value?.role)
   const tenantId = computed(() => user.value?.tenantId ?? null)
@@ -19,6 +20,10 @@ export const useAuthStore = defineStore('auth', () => {
     if (!sessionStorage.getItem(TOKEN_KEY)) return
     try { user.value = await authApi.currentUser() } catch { logout() }
   }
+  function restoreOnce(): Promise<void> {
+    initialRestore ??= restore()
+    return initialRestore
+  }
   function logout() { sessionStorage.removeItem(TOKEN_KEY); user.value = undefined }
-  return { user, isAuthenticated, role, tenantId, login, restore, logout }
+  return { user, isAuthenticated, role, tenantId, login, restore, restoreOnce, logout }
 })
