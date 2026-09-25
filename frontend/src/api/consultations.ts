@@ -10,6 +10,14 @@ export async function getPatientRecord(recordId: string): Promise<MedicalRecord>
   return (await http.get<ApiEnvelope<MedicalRecord>>(`/api/patient/records/${recordId}`)).data.data
 }
 
+export async function listDoctorRecords(): Promise<MedicalRecord[]> {
+  return (await http.get<ApiEnvelope<MedicalRecord[]>>('/api/doctor/records')).data.data
+}
+
+export async function getDoctorRecord(recordId: string): Promise<MedicalRecord> {
+  return (await http.get<ApiEnvelope<MedicalRecord>>(`/api/doctor/records/${recordId}`)).data.data
+}
+
 export async function startConsultation(appointmentId: string): Promise<MedicalRecord> {
   return (await http.post<ApiEnvelope<MedicalRecord>>(`/api/doctor/appointments/${appointmentId}/start`)).data.data
 }

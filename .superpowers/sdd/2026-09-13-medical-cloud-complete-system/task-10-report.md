@@ -85,3 +85,37 @@
 6. 现有订单 API 不提供取消待支付订单；页面不编造该操作。
 
 以上限制已在实施期间告知 controller，并获准按最小安全实现继续；最终状态据此为 DONE_WITH_CONCERNS。
+
+## Fix round 1：补齐设计要求的持久化读取与管理接口
+
+### RED
+
+- 后端新增 `Task10PersistentReadApiTest`，覆盖：启用医院/科室目录、医生本人本租户病历恢复、医院本租户完整排班历史与停用、平台持久医院管理员列表及敏感字段缺失。
+- 命令：`mvn -f backend/pom.xml -Dtest=Task10PersistentReadApiTest test`
+- 结果：4 tests，4 failures；四组目标路由均不存在并返回 500，认证和数据库夹具正常。
+- 前端扩展 typed API 契约和四角色页面测试。
+- 命令：`npm --prefix frontend test -- --run src/api/business.spec.ts src/views/patient/PatientWorkflow.spec.ts src/views/doctor/ConsultationEditorView.spec.ts src/views/hospital/HospitalAdministration.spec.ts src/views/platform/PlatformAdministration.spec.ts`
+- 结果：5 files failed；66 tests 中 11 failed、55 passed。失败均为新增 API 函数或页面持久化交互缺失。
+
+### GREEN 与调试记录
+
+- 后端首次 GREEN 为 3/4；医生记录查询因测试夹具写入不存在的 `DRAFT` 枚举而返回 500。领域状态实际为 `IN_PROGRESS|COMPLETED`；修正夹具为 `IN_PROGRESS` 后 4/4 通过，未修改生产查询以掩盖错误。
+- 后端受影响回归：`Task10PersistentReadApiTest,ScheduleCatalogTest,HospitalScheduleTest,ConsultationWorkflowTest,PlatformTenantManagementTest,RoleAuthorizationTest`，51/51 通过。
+- 前端相关 GREEN：5 files、66/66 通过。
+- 全量验证时发现系统 `JAVA_HOME` 指向 JDK 8，而命令行 `java` 指向 JDK 21，导致首次 Maven 全量运行在执行测试前发生 class version 65/52 错误；使用已安装的 `D:\Java\jdk-21.0.11` 仅覆盖本次命令环境后重跑。
+- 最终后端：`$env:JAVA_HOME='D:\Java\jdk-21.0.11'; mvn -f backend/pom.xml test`，176/176 通过。
+- 最终前端：`npm --prefix frontend test -- --run`，10 files、87/87 通过。
+- 生产构建：`npm --prefix frontend run build`，146 modules transformed，exit 0。
+- `git diff --check`：exit 0；仅有 Git 的 LF→CRLF 工作区提示。
+
+### 实现结果
+
+- 增加认证后目录：`GET /api/catalog/tenants` 与 `GET /api/catalog/tenants/{tenantId}/departments`，只返回启用数据；患者改用医院/科室下拉选择。
+- 增加医生病历列表与详情读取，仓储查询同时绑定 JWT 医生 ID 和租户 ID；预约页可恢复草稿，历史页可恢复已完成病历和更正入口。
+- 增加医院排班完整历史 GET 与状态 PUT；只按认证租户读取/修改，不提供删除路径，已有预约号源通过停用保留历史。
+- 增加平台按租户读取医院管理员列表；响应只有账号、角色、状态和租户字段，不含任何病历、处方或附件数据。
+
+### 顾虑
+
+- 平台前端按医院逐个读取管理员列表，演示数据量下清晰可靠，但租户数量较大时会形成 1+N 请求；留给最终审查决定是否需要聚合接口。
+- 本机 Maven 默认仍由系统 `JAVA_HOME` 选择 JDK 8；项目要求 Java 21，后续 Compose/README 应明确 Java 21 或使用容器构建，避免本机环境漂移。

@@ -1,37 +1,34 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { listDoctors, publishScheduleSlot } from '../../api/administration'
-import { searchScheduleSlots } from '../../api/catalog'
-import { useAuthStore } from '../../stores/auth'
-import type { Doctor, ScheduleSlot, PageResponse } from '../../types/business'
+import { changeScheduleSlotStatus, listDoctors, listHospitalScheduleSlots, publishScheduleSlot } from '../../api/administration'
+import type { Doctor, ScheduleSlot } from '../../types/business'
 import { money, useWorkflow } from '../../composables/useWorkflow'
 import AsyncState from '../../components/AsyncState.vue'
 import StatusTag from '../../components/StatusTag.vue'
 import WorkflowFeedback from '../../components/WorkflowFeedback.vue'
-import PaginationBar from '../../components/PaginationBar.vue'
-const auth = useAuthStore()
-const catalog = ref<PageResponse<ScheduleSlot>>({ content: [], number: 0, size: 10, totalElements: 0, totalPages: 0 })
-const catalogDate = ref('')
-const { loading: catalogLoading, error: catalogError, load: loadCatalog } = useWorkflow()
-async function search(page = 0) {
-  if (!auth.tenantId) { catalogError.value = '当前账号没有所属医院'; return }
-  await loadCatalog(async () => {
-    catalog.value = await searchScheduleSlots({ tenantId: auth.tenantId!, date: catalogDate.value || undefined, page, size: 10 })
-  })
-}
 const doctors = ref<Doctor[]>([])
-const published = ref<ScheduleSlot[]>([])
+const slots = ref<ScheduleSlot[]>([])
 const form = reactive({ doctorId: '', date: '', startTime: '', endTime: '', capacity: 1, fee: 0 })
 const { loading, busy, error, message, load, perform } = useWorkflow()
-const refresh = () => load(async () => { doctors.value = await listDoctors() })
+const refresh = () => load(async () => {
+  [doctors.value, slots.value] = await Promise.all([listDoctors(), listHospitalScheduleSlots()])
+})
 async function submit() {
   if (!form.doctorId || !form.date || !form.startTime || !form.endTime || form.endTime <= form.startTime || !Number.isInteger(form.capacity) || form.capacity < 1 || !Number.isFinite(form.fee) || form.fee < 0) {
     error.value = '请选择医生和日期，结束时间须晚于开始时间，容量须为正整数且诊费不能为负'; return
   }
   if (!window.confirm('确认发布该号源？发布后患者即可预约。')) return
-  await perform(async () => { published.value.unshift(await publishScheduleSlot({ ...form })) }, '号源发布成功')
+  await perform(async () => { slots.value.unshift(await publishScheduleSlot({ ...form })) }, '号源发布成功')
 }
-onMounted(() => { void refresh(); void search() })
+async function toggleStatus(slot: ScheduleSlot) {
+  const status = slot.status === 'PUBLISHED' ? 'DISABLED' : 'PUBLISHED'
+  if (!window.confirm(`确认${status === 'DISABLED' ? '停用' : '重新启用'}该号源？`)) return
+  await perform(async () => {
+    const updated = await changeScheduleSlotStatus(slot.id, status)
+    slots.value = slots.value.map(item => item.id === slot.id ? updated : item)
+  }, '号源状态已更新')
+}
+onMounted(refresh)
 </script>
 <template>
   <section class="workspace"><header><p class="eyebrow">HOSPITAL / SCHEDULE</p><h2>排班号源</h2><p class="muted">为本院已启用医生发布就诊时段。</p></header>
@@ -43,14 +40,8 @@ onMounted(() => { void refresh(); void search() })
     </div><button class="primary">发布号源</button></fieldset></form>
     <button :disabled="loading || busy" @click="refresh">刷新可选医生</button>
     <AsyncState :loading="loading" :empty="!doctors.length" empty-text="暂无可选医生，请先创建医生" />
-    <h3>本院当前可预约号源</h3>
-    <p class="muted">目录仅显示当前可预约的号源，不包含过期、停用号源。</p>
-    <div class="form-grid"><label>查询日期<input v-model="catalogDate" type="date" /></label><button :disabled="catalogLoading || busy" @click="search(0)">查询本院号源</button></div>
-    <WorkflowFeedback :error="catalogError" />
-    <AsyncState :loading="catalogLoading" :empty="!catalog.content.length" empty-text="暂无可预约号源"><div class="table-scroll"><table><thead><tr><th>医生 / 科室</th><th>日期 / 时段</th><th>剩余 / 容量</th><th>诊费</th></tr></thead><tbody><tr v-for="slot in catalog.content" :key="slot.id"><td>{{ slot.doctorName }}<small>{{ slot.departmentName }}</small></td><td>{{ slot.date }}<small>{{ slot.startTime }}–{{ slot.endTime }}</small></td><td>{{ slot.remainingCapacity }} / {{ slot.capacity }}</td><td>{{ money(slot.fee) }}</td></tr></tbody></table></div></AsyncState>
-    <PaginationBar v-if="catalog.totalElements" :page="catalog.number" :size="catalog.size" :total-elements="catalog.totalElements" @change="search" />
-    <h3>本次会话发布结果</h3>
-    <p class="notice">当前医院接口未提供完整历史排班列表和编辑能力；此处仅保留本次会话的发布结果，刷新浏览器后不保留。当前可预约号源可在上方目录重新查询。</p>
-    <AsyncState :empty="!published.length" empty-text="本次会话暂无发布结果"><div class="table-scroll"><table><thead><tr><th>号源 / 医生</th><th>就诊时段</th><th>容量</th><th>诊费</th><th>状态</th></tr></thead><tbody><tr v-for="slot in published" :key="slot.id"><td>{{ slot.id }}<small>{{ slot.doctorName }}</small></td><td>{{ slot.date }}<small>{{ slot.startTime }}–{{ slot.endTime }}</small></td><td>{{ slot.capacity }}</td><td>{{ money(slot.fee) }}</td><td><StatusTag :status="slot.status" /></td></tr></tbody></table></div></AsyncState>
+    <h3>本院排班历史</h3>
+    <p class="muted">包含已停用和过期号源；已有预约的号源仅可停用，不会删除历史。</p>
+    <AsyncState :loading="loading" :empty="!slots.length" empty-text="暂无排班号源"><div class="table-scroll"><table><thead><tr><th>号源 / 医生</th><th>就诊时段</th><th>剩余 / 容量</th><th>诊费</th><th>状态 / 操作</th></tr></thead><tbody><tr v-for="slot in slots" :key="slot.id"><td>{{ slot.id }}<small>{{ slot.doctorName }} · {{ slot.departmentName }}</small></td><td>{{ slot.date }}<small>{{ slot.startTime }}–{{ slot.endTime }}</small></td><td>{{ slot.remainingCapacity }} / {{ slot.capacity }}</td><td>{{ money(slot.fee) }}</td><td><StatusTag :status="slot.status" /> <button data-test="slot-status" :disabled="busy" @click="toggleStatus(slot)">{{ slot.status === 'PUBLISHED' ? '停用' : '启用' }}</button></td></tr></tbody></table></div></AsyncState>
   </section>
 </template>

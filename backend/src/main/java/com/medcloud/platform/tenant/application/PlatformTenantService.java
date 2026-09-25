@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.List;
 
 @Service
 public class PlatformTenantService {
@@ -71,6 +72,15 @@ public class PlatformTenantService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         account.changeStatus(status);
         return account;
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserAccount> hospitalAdministrators(CurrentUser actor, UUID tenantId) {
+        requirePlatformAdmin(actor);
+        if (!tenants.existsById(tenantId)) {
+            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+        return users.findAllByTenantIdAndRoleOrderByUsernameAsc(tenantId, UserRole.HOSPITAL_ADMIN);
     }
 
     private void requirePlatformAdmin(CurrentUser actor) {

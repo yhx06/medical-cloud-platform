@@ -83,6 +83,19 @@ public class PlatformTenantController {
         return ApiResponse.success(AccountResponse.from(account), requestId(request));
     }
 
+    @GetMapping("/tenants/{tenantId}/administrators")
+    @PreAuthorize("hasRole('PLATFORM_ADMIN')")
+    ApiResponse<List<AccountResponse>> hospitalAdministrators(
+            @AuthenticationPrincipal CurrentUser actor,
+            @PathVariable UUID tenantId,
+            HttpServletRequest request
+    ) {
+        List<AccountResponse> data = tenantService.hospitalAdministrators(actor, tenantId).stream()
+                .map(AccountResponse::from)
+                .toList();
+        return ApiResponse.success(data, requestId(request));
+    }
+
     @PatchMapping("/tenants/{tenantId}/status")
     @PreAuthorize("hasRole('PLATFORM_ADMIN')")
     ApiResponse<TenantResponse> changeTenantStatus(

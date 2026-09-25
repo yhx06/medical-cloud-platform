@@ -126,6 +126,24 @@ public class ConsultationService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
+    @Transactional(readOnly = true)
+    public List<MedicalRecordResponse> doctorRecords(CurrentUser doctor) {
+        requireDoctor(doctor);
+        return consultations.findAllByDoctorIdAndTenantIdOrderByUpdatedAtDesc(
+                        doctor.userId(), doctor.tenantId())
+                .stream()
+                .map(ConsultationService::response)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MedicalRecordResponse doctorRecord(CurrentUser doctor, UUID recordId) {
+        requireDoctor(doctor);
+        return consultations.findByIdAndDoctorIdAndTenantId(recordId, doctor.userId(), doctor.tenantId())
+                .map(ConsultationService::response)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
     private static List<PrescriptionItem.Draft> prescriptionDrafts(List<PrescriptionItemCommand> items) {
         if (items == null) {
             return List.of();

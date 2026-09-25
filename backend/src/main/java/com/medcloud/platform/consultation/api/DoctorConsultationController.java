@@ -19,6 +19,7 @@ import jakarta.validation.constraints.Positive;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -49,6 +50,23 @@ public class DoctorConsultationController {
         MedicalRecordResponse consultation = audit.execute(doctor, AuditAction.CONSULTATION_STARTED, AuditObjectType.CONSULTATION, null,
                 AuditRequestIds.from(request), () -> consultationService.start(doctor, appointmentId), MedicalRecordResponse::id);
         return ApiResponse.success(consultation, requestId(request));
+    }
+
+    @GetMapping("/records")
+    ApiResponse<List<MedicalRecordResponse>> records(
+            @AuthenticationPrincipal CurrentUser doctor,
+            HttpServletRequest request
+    ) {
+        return ApiResponse.success(consultationService.doctorRecords(doctor), requestId(request));
+    }
+
+    @GetMapping("/records/{recordId}")
+    ApiResponse<MedicalRecordResponse> record(
+            @AuthenticationPrincipal CurrentUser doctor,
+            @PathVariable UUID recordId,
+            HttpServletRequest request
+    ) {
+        return ApiResponse.success(consultationService.doctorRecord(doctor, recordId), requestId(request));
     }
 
     @PutMapping("/consultations/{appointmentId}/draft")

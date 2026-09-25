@@ -10,12 +10,14 @@ describe('platform administration', () => {
   it('creates a tenant and its administrator and confirms tenant and account status changes', async () => {
     const tenant = { id: 'tenant-a', name: '演示医院', status: 'ACTIVE' }
     api().onGet('/api/platform/tenants').reply(200, { data: [tenant] })
+    api().onGet('/api/platform/tenants/tenant-a/administrators').reply(200, { data: [{ id: 'persisted-admin', username: 'saved_admin', role: 'HOSPITAL_ADMIN', status: 'ACTIVE', tenantId: 'tenant-a' }] })
     api().onPost('/api/platform/tenants', { name: '新医院' }).reply(200, { data: { ...tenant, id: 'new', name: '新医院' } })
     api().onPost('/api/platform/tenants/tenant-a/admins').reply(200, { data: { id: 'admin-a', username: 'admin_demo', role: 'HOSPITAL_ADMIN', status: 'ACTIVE', tenantId: 'tenant-a' } })
     api().onPatch('/api/platform/tenants/tenant-a/status').reply(200, { data: { ...tenant, status: 'DISABLED' } })
     api().onPatch('/api/platform/accounts/admin-a/status').reply(200, { data: { id: 'admin-a', username: 'admin_demo', role: 'HOSPITAL_ADMIN', status: 'DISABLED', tenantId: 'tenant-a' } })
     const view = mount(Tenants)
     await flushPromises()
+    expect(view.text()).toContain('saved_admin')
     await view.get('[name="tenant-name"]').setValue('新医院')
     await view.get('[data-test="tenant-form"]').trigger('submit')
     await flushPromises()
@@ -31,7 +33,7 @@ describe('platform administration', () => {
     expect(api().history.patch).toHaveLength(0)
     await view.findAll('[data-test="tenant-status"]')[0]!.trigger('click')
     await flushPromises()
-    await view.get('[data-test="account-status"]').trigger('click')
+    await view.findAll('[data-test="account-status"]').at(-1)!.trigger('click')
     await flushPromises()
     expect(api().history.patch.map(r => r.url)).toEqual(['/api/platform/tenants/tenant-a/status', '/api/platform/accounts/admin-a/status'])
     expect(view.text()).not.toContain('诊断内容')

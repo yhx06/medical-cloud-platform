@@ -32,6 +32,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -117,6 +118,28 @@ public class ScheduleService {
                         UserStatus.ACTIVE,
                         pageable)
                 .map(this::catalogResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ScheduleSlotResponse> hospitalSlots(CurrentUser actor) {
+        UUID tenantId = requireHospitalTenant(actor);
+        return slots.findAllByTenantIdOrderByScheduleDateDescStartTimeDescIdAsc(tenantId).stream()
+                .map(this::catalogResponse)
+                .toList();
+    }
+
+    @Transactional
+    public ScheduleSlotResponse changeStatus(CurrentUser actor, UUID slotId, ScheduleSlotStatus status) {
+        UUID tenantId = requireHospitalTenant(actor);
+        ScheduleSlot slot = slots.findByIdForUpdate(slotId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+        tenantAccessPolicy.requireTenant(actor, slot.getTenantId());
+        if (!tenantId.equals(slot.getTenantId())) {
+            throw new BusinessException(ErrorCode.TENANT_ACCESS_DENIED);
+        }
+        slot.changeStatus(status);
+        slots.flush();
+        return catalogResponse(slot);
     }
 
     private ScheduleSlotResponse catalogResponse(ScheduleSlot slot) {

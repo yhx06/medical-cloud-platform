@@ -111,6 +111,14 @@ public class ScheduleSlot {
                 tenantId, doctorId, departmentId, scheduleDate, startTime, endTime, capacity, fee, today);
     }
 
+    public void changeStatus(ScheduleSlotStatus status) {
+        if (status == null) {
+            throw new BusinessException(ErrorCode.VALIDATION_ERROR);
+        }
+        this.status = status;
+        this.updatedAt = Instant.now();
+    }
+
     private static void requireValid(
             LocalDate scheduleDate,
             LocalTime startTime,

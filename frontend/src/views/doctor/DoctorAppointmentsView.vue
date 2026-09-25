@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { listDoctorAppointments } from '../../api/appointments'
-import { startConsultation } from '../../api/consultations'
+import { listDoctorRecords, startConsultation } from '../../api/consultations'
 import type { Appointment, MedicalRecord } from '../../types/business'
 import { useConsultationWorkspace } from '../../stores/consultationWorkspace'
 import { currentDateRange, useWorkflow } from '../../composables/useWorkflow'
@@ -17,7 +17,11 @@ const date = ref('')
 const status = ref('')
 const visible = computed(() => appointments.value.filter(item => (!date.value || item.date === date.value) && (!status.value || item.status === status.value)))
 const { loading, busy, error, message, load, perform } = useWorkflow()
-const refresh = () => load(async () => { appointments.value = await listDoctorAppointments() })
+const refresh = () => load(async () => {
+  const [assigned, records] = await Promise.all([listDoctorAppointments(), listDoctorRecords()])
+  appointments.value = assigned
+  records.forEach(workspace.remember)
+})
 function updated(record: MedicalRecord) {
   const item = appointments.value.find(item => item.id === record.appointmentId)
   if (item) item.status = record.status
@@ -34,7 +38,7 @@ async function start(item: Appointment) {
 onMounted(refresh)
 </script>
 <template>
-  <section class="workspace"><header><p class="eyebrow">DOCTOR / APPOINTMENTS</p><h2>我的接诊预约</h2><p class="muted">仅显示分配给本人、本院的预约。请在当前浏览器会话内完成接诊。</p></header>
+  <section class="workspace"><header><p class="eyebrow">DOCTOR / APPOINTMENTS</p><h2>我的接诊预约</h2><p class="muted">仅显示分配给本人、本院的预约，服务端草稿可在刷新后恢复。</p></header>
     <div class="form-grid"><label>日期<input v-model="date" type="date" /></label><label>状态<select v-model="status"><option value="">全部</option><option value="BOOKED">待接诊</option><option value="IN_PROGRESS">接诊中</option><option value="COMPLETED">已完成</option><option value="CANCELLED">已取消</option></select></label><button @click="date = currentDateRange().to">今日预约</button><button @click="date = ''; status = ''">全部预约</button><button :disabled="loading || busy" @click="refresh">刷新</button></div>
     <WorkflowFeedback :error="error" :message="message" />
     <AsyncState :loading="loading" :empty="!visible.length" empty-text="暂无符合条件的预约">
@@ -42,11 +46,11 @@ onMounted(refresh)
         <tr v-for="item in visible" :key="item.id"><td>{{ item.id }}</td><td>{{ item.patientId }}</td><td>{{ item.date }}<small>{{ item.startTime }}–{{ item.endTime }}</small></td><td><StatusTag :status="item.status" /></td><td>
           <button v-if="item.status === 'BOOKED'" data-test="start-consultation" :disabled="busy" @click="start(item)">开始接诊</button>
           <button v-else-if="workspace.records.some(record => record.appointmentId === item.id)" :disabled="busy" @click="activeId = item.id">打开本次接诊</button>
-          <span v-else-if="item.status === 'IN_PROGRESS'" class="muted">无法恢复先前会话的草稿：当前服务未提供读取接口</span>
+          <span v-else-if="item.status === 'IN_PROGRESS'" class="muted">接诊草稿暂未找到</span>
         </td></tr>
       </tbody></table></div>
     </AsyncState>
     <ConsultationEditorView v-if="selected" :key="selected.id" :record="selected" @updated="updated" />
-    <p class="notice">当前会话的病历可在“历史病历”中继续查看。刷新浏览器后无法恢复编辑内容；保存操作会将草稿保存在服务器。</p>
+    <p class="notice">病历草稿与历史记录保存在服务器，刷新后可继续处理。</p>
   </section>
 </template>

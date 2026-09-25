@@ -14,6 +14,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,6 +30,8 @@ public interface ScheduleSlotRepository extends JpaRepository<ScheduleSlot, UUID
             LocalTime requestedEnd,
             LocalTime requestedStart
     );
+
+    List<ScheduleSlot> findAllByTenantIdOrderByScheduleDateDescStartTimeDescIdAsc(UUID tenantId);
 
     @Query("""
             select slot

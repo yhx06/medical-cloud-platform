@@ -9,6 +9,8 @@ import java.util.UUID;
 public interface DepartmentRepository extends JpaRepository<Department, UUID> {
     List<Department> findAllByTenantIdOrderByNameAsc(UUID tenantId);
 
+    List<Department> findAllByTenantIdAndStatusOrderByNameAsc(UUID tenantId, com.medcloud.platform.tenant.domain.TenantStatus status);
+
     boolean existsByTenantIdAndName(UUID tenantId, String name);
 
     boolean existsByTenantIdAndNameAndIdNot(UUID tenantId, String name, UUID id);

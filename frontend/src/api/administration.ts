@@ -56,3 +56,15 @@ export async function changeDoctorStatus(id: string, status: ActiveStatus): Prom
 export async function publishScheduleSlot(input: PublishScheduleSlotInput): Promise<ScheduleSlot> {
   return (await http.post<ApiEnvelope<ScheduleSlot>>('/api/hospital/schedule-slots', input)).data.data
 }
+
+export async function listHospitalScheduleSlots(): Promise<ScheduleSlot[]> {
+  return (await http.get<ApiEnvelope<ScheduleSlot[]>>('/api/hospital/schedule-slots')).data.data
+}
+
+export async function changeScheduleSlotStatus(id: string, status: ScheduleSlot['status']): Promise<ScheduleSlot> {
+  return (await http.put<ApiEnvelope<ScheduleSlot>>(`/api/hospital/schedule-slots/${id}`, { status })).data.data
+}
+
+export async function listHospitalAdministrators(tenantId: string): Promise<HospitalAccount[]> {
+  return (await http.get<ApiEnvelope<HospitalAccount[]>>(`/api/platform/tenants/${tenantId}/administrators`)).data.data
+}

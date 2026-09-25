@@ -122,6 +122,18 @@ export interface Tenant {
   status: ActiveStatus
 }
 
+export interface CatalogTenant {
+  id: string
+  name: string
+}
+
+export interface CatalogDepartment {
+  id: string
+  tenantId: string
+  name: string
+  description: string | null
+}
+
 export interface Account {
   id: string
   username: string

@@ -2,20 +2,21 @@ import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest'
 import MockAdapter from 'axios-mock-adapter'
 import type { AxiosRequestConfig } from 'axios'
 import { http, getApiErrorMessage } from './http'
-import { searchScheduleSlots } from './catalog'
+import { listCatalogDepartments, listCatalogTenants, searchScheduleSlots } from './catalog'
 import {
   bookAppointment, cancelAppointment, getPatientAppointment,
   listDoctorAppointments, listPatientAppointments
 } from './appointments'
 import {
-  appendRecordCorrection, completeConsultation, getPatientRecord, listPatientRecords,
+  appendRecordCorrection, completeConsultation, getDoctorRecord, getPatientRecord, listDoctorRecords, listPatientRecords,
   saveConsultationDraft, startConsultation
 } from './consultations'
 import { getPatientOrder, listPatientOrders, payPatientOrder } from './orders'
 import {
   changeAccountStatus, changeDoctorStatus, changeTenantStatus, createDepartment,
-  createDoctor, createHospitalAdmin, createTenant, getHospitalProfile, listDepartments,
-  listDoctors, listTenants, publishScheduleSlot, updateDepartment
+  changeScheduleSlotStatus, createDoctor, createHospitalAdmin, createTenant, getHospitalProfile,
+  listDepartments, listDoctors, listHospitalAdministrators, listHospitalScheduleSlots, listTenants,
+  publishScheduleSlot, updateDepartment
 } from './administration'
 import { createFileDownloadUrl, listRecordFiles, uploadRecordFile } from './files'
 import { getHospitalStatistics, getPlatformStatistics } from './statistics'
@@ -62,6 +63,8 @@ function businessApiContracts(): ApiContract[] {
   const file = new File(['demo'], 'report.pdf', { type: 'application/pdf' })
 
   return [
+    { name: 'listCatalogTenants', method: 'GET', url: '/api/catalog/tenants', invoke: listCatalogTenants },
+    { name: 'listCatalogDepartments', method: 'GET', url: '/api/catalog/tenants/tenant-1/departments', invoke: () => listCatalogDepartments('tenant-1') },
     {
       name: 'searchScheduleSlots', method: 'GET', url: '/api/catalog/schedule-slots',
       params: { tenantId: 'tenant-1', departmentId: 'department-1', date: '2026-09-19', page: 1, size: 10, sort: 'date,asc' },
@@ -76,6 +79,8 @@ function businessApiContracts(): ApiContract[] {
     { name: 'listDoctorAppointments', method: 'GET', url: '/api/doctor/appointments', invoke: listDoctorAppointments },
     { name: 'listPatientRecords', method: 'GET', url: '/api/patient/records', invoke: listPatientRecords },
     { name: 'getPatientRecord', method: 'GET', url: '/api/patient/records/record-1', invoke: () => getPatientRecord('record-1') },
+    { name: 'listDoctorRecords', method: 'GET', url: '/api/doctor/records', invoke: listDoctorRecords },
+    { name: 'getDoctorRecord', method: 'GET', url: '/api/doctor/records/record-1', invoke: () => getDoctorRecord('record-1') },
     { name: 'startConsultation', method: 'POST', url: '/api/doctor/appointments/appointment-1/start', invoke: () => startConsultation('appointment-1') },
     { name: 'saveConsultationDraft', method: 'PUT', url: '/api/doctor/consultations/appointment-1/draft', body: draft, invoke: () => saveConsultationDraft('appointment-1', draft) },
     { name: 'completeConsultation', method: 'POST', url: '/api/doctor/consultations/appointment-1/complete', invoke: () => completeConsultation('appointment-1') },
@@ -104,6 +109,9 @@ function businessApiContracts(): ApiContract[] {
     { name: 'createDoctor', method: 'POST', url: '/api/hospital/doctors', body: doctor, invoke: () => createDoctor(doctor) },
     { name: 'changeDoctorStatus', method: 'PUT', url: '/api/hospital/doctors/doctor-1/status', body: { status: 'DISABLED' }, invoke: () => changeDoctorStatus('doctor-1', 'DISABLED') },
     { name: 'publishScheduleSlot', method: 'POST', url: '/api/hospital/schedule-slots', body: slot, invoke: () => publishScheduleSlot(slot) },
+    { name: 'listHospitalScheduleSlots', method: 'GET', url: '/api/hospital/schedule-slots', invoke: listHospitalScheduleSlots },
+    { name: 'changeScheduleSlotStatus', method: 'PUT', url: '/api/hospital/schedule-slots/slot-1', body: { status: 'DISABLED' }, invoke: () => changeScheduleSlotStatus('slot-1', 'DISABLED') },
+    { name: 'listHospitalAdministrators', method: 'GET', url: '/api/platform/tenants/tenant-1/administrators', invoke: () => listHospitalAdministrators('tenant-1') },
     {
       name: 'uploadRecordFile', method: 'POST', url: '/api/doctor/records/record-1/files',
       body: { file: { name: 'report.pdf', type: 'application/pdf', size: 4 } },

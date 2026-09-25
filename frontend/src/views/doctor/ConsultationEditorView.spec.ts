@@ -12,6 +12,7 @@ describe('doctor consultation workflows', () => {
   const api = setupWorkflow('DOCTOR')
   it('starts only an assigned booked appointment and opens the returned consultation', async () => {
     api().onGet('/api/doctor/appointments').reply(200, { data: [appointment] })
+    api().onGet('/api/doctor/records').reply(200, { data: [] })
     api().onPost('/api/doctor/appointments/appointment-a/start').reply(200, { data: record })
     api().onGet('/api/records/record-a/files').reply(200, { data: [] })
     const view = mount(Appointments)
@@ -89,14 +90,18 @@ describe('doctor consultation workflows', () => {
     await flushPromises()
     expect(view.text()).toContain('文件类型不支持')
   })
-  it('shows completed appointment history without using a mutation to read missing records', async () => {
-    api().onGet('/api/doctor/appointments').reply(200, { data: [{ ...appointment, status: 'COMPLETED' }] })
+  it('restores persistent doctor records and opens completed history without mutation reads', async () => {
+    api().onGet('/api/doctor/records').reply(200, { data: [{ ...record, status: 'COMPLETED' }] })
+    api().onGet('/api/records/record-a/files').reply(200, { data: [] })
     const view = mount(Records)
     await flushPromises()
-    expect(view.text()).toContain('appointment-a')
+    expect(view.text()).toContain('record-a')
     expect(view.text()).toContain('历史病历')
+    await view.get('[data-test="open-doctor-record"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('头痛')
     expect(api().history.post).toHaveLength(0)
-    expect(api().history.get.every(r => r.url === '/api/doctor/appointments')).toBe(true)
+    expect(api().history.get.some(r => r.url === '/api/doctor/records')).toBe(true)
   })
   it('rejects oversized files before any upload request', async () => {
     api().onGet('/api/records/record-a/files').reply(200, { data: [] })

@@ -11,11 +11,16 @@ import { setupWorkflow, slot, appointment, record, order, page } from '../workfl
 describe('patient workflows', () => {
   const api = setupWorkflow('PATIENT')
   it('filters and pages the server catalog, books the selected slot and displays feedback', async () => {
+    api().onGet('/api/catalog/tenants').reply(200, { data: [{ id: 'tenant-a', name: '演示医院' }] })
+    api().onGet('/api/catalog/tenants/tenant-a/departments').reply(200, { data: [{ id: 'department-a', tenantId: 'tenant-a', name: '内科', description: '普通内科' }] })
     api().onGet('/api/catalog/schedule-slots').reply(200, { data: page([slot], 0, 11) })
     api().onPost('/api/patient/appointments', { slotId: 'slot-a' }).reply(200, { data: appointment })
     const view = mount(CatalogView)
     await flushPromises()
     expect(view.text()).toContain('演示医院')
+    await view.get('[name="tenantId"]').setValue('tenant-a')
+    await flushPromises()
+    expect(view.get('[name="departmentId"]').text()).toContain('内科')
     await view.get('[data-test="next-page"]').trigger('click')
     await flushPromises()
     expect(api().history.get.at(-1)?.params.page).toBe(1)
@@ -29,6 +34,7 @@ describe('patient workflows', () => {
     expect(view.text()).toContain('预约成功')
   })
   it('shows booking failures and prevents double submission while pending', async () => {
+    api().onGet('/api/catalog/tenants').reply(200, { data: [] })
     api().onGet('/api/catalog/schedule-slots').reply(200, { data: page() })
     let respond!: (value: [number, unknown]) => void
     api().onPost('/api/patient/appointments').reply(() => new Promise(resolve => { respond = resolve }))

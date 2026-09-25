@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { searchScheduleSlots } from '../../api/catalog'
+import { onMounted, reactive, ref, watch } from 'vue'
+import { listCatalogDepartments, listCatalogTenants, searchScheduleSlots } from '../../api/catalog'
 import { bookAppointment } from '../../api/appointments'
-import type { PageResponse, ScheduleSlot } from '../../types/business'
+import type { CatalogDepartment, CatalogTenant, PageResponse, ScheduleSlot } from '../../types/business'
 import { useWorkflow, money } from '../../composables/useWorkflow'
 import AsyncState from '../../components/AsyncState.vue'
 import WorkflowFeedback from '../../components/WorkflowFeedback.vue'
 import PaginationBar from '../../components/PaginationBar.vue'
 import StatusTag from '../../components/StatusTag.vue'
 const filters = reactive({ tenantId: '', departmentId: '', date: '' })
+const tenants = ref<CatalogTenant[]>([])
+const departments = ref<CatalogDepartment[]>([])
 const page = ref(0)
 const result = ref<PageResponse<ScheduleSlot>>({ content: [], number: 0, size: 10, totalElements: 0, totalPages: 0 })
 const { loading, busy, error, message, load, perform } = useWorkflow()
@@ -24,14 +26,21 @@ async function book(slot: ScheduleSlot) {
     slot.remainingCapacity = Math.max(0, slot.remainingCapacity - 1)
   }, '预约成功，请在我的预约中查看')
 }
-onMounted(() => search())
+watch(() => filters.tenantId, async tenantId => {
+  filters.departmentId = ''
+  departments.value = tenantId ? await listCatalogDepartments(tenantId) : []
+})
+onMounted(async () => {
+  await load(async () => { tenants.value = await listCatalogTenants() })
+  await search()
+})
 </script>
 <template>
   <section class="workspace">
     <header><p class="eyebrow">PATIENT / CATALOG</p><h2>查找号源</h2><p class="muted">选择医院、科室和医生的可用就诊时段。</p></header>
     <form class="form-grid" @submit.prevent="search(0)">
-      <label>医院编号（选填）<input v-model="filters.tenantId" name="tenantId" placeholder="按医院编号筛选" /></label>
-      <label>科室编号（选填）<input v-model="filters.departmentId" name="departmentId" placeholder="按科室编号筛选" /></label>
+      <label>医院<select v-model="filters.tenantId" name="tenantId"><option value="">全部医院</option><option v-for="tenant in tenants" :key="tenant.id" :value="tenant.id">{{ tenant.name }}</option></select></label>
+      <label>科室<select v-model="filters.departmentId" name="departmentId" :disabled="!filters.tenantId"><option value="">全部科室</option><option v-for="department in departments" :key="department.id" :value="department.id">{{ department.name }}</option></select></label>
       <label>就诊日期<input v-model="filters.date" name="date" type="date" /></label>
       <button :disabled="loading || busy">查询号源</button>
     </form>

@@ -52,7 +52,7 @@ describe('hospital administration', () => {
   })
   it('validates and publishes a slot with numeric capacity and fee', async () => {
     api().onGet('/api/hospital/doctors').reply(200, { data: [doctor] })
-    api().onGet('/api/catalog/schedule-slots').reply(200, { data: page() })
+    api().onGet('/api/hospital/schedule-slots').reply(200, { data: [] })
     api().onPost('/api/hospital/schedule-slots').reply(200, { data: slot })
     const view = mount(Schedule)
     await flushPromises()
@@ -72,14 +72,14 @@ describe('hospital administration', () => {
   })
   it('queries only this hospital available catalog slots with server pagination', async () => {
     api().onGet('/api/hospital/doctors').reply(200, { data: [doctor] })
-    api().onGet('/api/catalog/schedule-slots').reply(200, { data: page([slot], 0, 11) })
+    api().onGet('/api/hospital/schedule-slots').reply(200, { data: [slot] })
     const view = mount(Schedule)
     await flushPromises()
-    expect(api().history.get.find(request => request.url === '/api/catalog/schedule-slots')?.params).toMatchObject({ tenantId: 'tenant-a', page: 0, size: 10 })
-    await view.get('[data-test="next-page"]').trigger('click')
-    await flushPromises()
-    expect(api().history.get.at(-1)?.params).toMatchObject({ tenantId: 'tenant-a', page: 1 })
     expect(view.text()).toContain('李医生')
+    api().onPut('/api/hospital/schedule-slots/slot-a', { status: 'DISABLED' }).reply(200, { data: { ...slot, status: 'DISABLED' } })
+    await view.get('[data-test="slot-status"]').trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('已停用')
   })
   it('queries date-range aggregate statistics and renders actual amounts', async () => {
     api().onGet('/api/hospital/statistics').reply(200, { data: hospitalStats })
