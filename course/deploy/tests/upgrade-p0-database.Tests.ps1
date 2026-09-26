@@ -15,6 +15,7 @@ $serverProcess = $null
 $oldPassword = $env:MYSQL_PWD
 $oldUser = $env:MEDICAL_COURSE_DB_USER
 $oldCoursePassword = $env:MEDICAL_COURSE_DB_PASSWORD
+$serverUuid = $null
 
 function Invoke-FixtureSql([string]$sql, [string]$database = '') {
     $arguments = @('--no-defaults', '--protocol=TCP', '--host=127.0.0.1', "--port=$port", '--user=root', '--batch', '--skip-column-names')
@@ -40,8 +41,8 @@ GROUP BY INDEX_NAME,NON_UNIQUE ORDER BY 1;
     return @(Invoke-FixtureSql $sql)
 }
 
-function Invoke-Upgrade([string]$database, [string]$backup) {
-    & powershell.exe -NoProfile -NonInteractive -File $upgrade -MySqlCli $mysql -MySqlDumpCli $dump -HostName '127.0.0.1' -Port $port -Database $database -BackupPath $backup 2>&1 | Out-Null
+function Invoke-Upgrade([string]$database, [string]$backup, [string]$expectedUuid = $serverUuid) {
+    $script:lastUpgradeOutput = @(& powershell.exe -NoProfile -NonInteractive -File $upgrade -MySqlCli $mysql -MySqlDumpCli $dump -HostName '127.0.0.1' -Port $port -Database $database -ExpectedServerUuid $expectedUuid -BackupPath $backup 2>&1)
     return $LASTEXITCODE
 }
 
@@ -57,10 +58,14 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) { throw "Disposable MySQL did not start: $(Get-Content (Join-Path $scratch 'server.err') -Tail 20)" }
+    $serverUuid = @(Invoke-FixtureSql 'SELECT @@server_uuid')[0]
     $env:MEDICAL_COURSE_DB_USER = 'root'
     $env:MEDICAL_COURSE_DB_PASSWORD = ''
     $env:MYSQL_PWD = ''
-    $legacy = git show HEAD:course/deploy/schema.sql
+    $freshSchema = Get-Content -LiteralPath (Join-Path $deploy 'schema.sql') -Raw -Encoding UTF8
+    $legacy = $freshSchema -replace '(?m)^    (?:started_at DATETIME|complaint VARCHAR\(500\)|notes VARCHAR\(2000\)|completed_at DATETIME|paid_at DATETIME) NULL,\r?\n', ''
+    $legacy = $legacy.Replace('INDEX idx_course_patient_slot (patient_id, slot_id)', 'CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id)')
+    if ($legacy -eq $freshSchema -or $legacy -match '(?:started_at|completed_at|paid_at) DATETIME NULL') { throw 'Legacy fixture could not be derived from current schema' }
     $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
     if ($LASTEXITCODE -ne 0) { throw 'Legacy fixture schema failed' }
     Invoke-FixtureSql @'
@@ -81,9 +86,16 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             (Test-Path $backup) | Should Be $false
             (Get-Shape | Where-Object { $_ -like 'C:*' }).Count | Should Be 0
         }
+        It 'rejects another MySQL instance identity before backup or DDL' {
+            $backup = Join-Path $scratch 'wrong-instance.sql'
+            (Invoke-Upgrade 'medical_cloud_course' $backup '00000000-0000-0000-0000-000000000000') | Should Not Be 0
+            (Test-Path $backup) | Should Be $false
+            (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
+        }
         It 'preserves all old IDs and rows and creates the target shape' {
             $backup = Join-Path $scratch 'before.sql'
-            (Invoke-Upgrade 'medical_cloud_course' $backup) | Should Be 0
+            $exit = Invoke-Upgrade 'medical_cloud_course' $backup
+            if ($exit -ne 0) { throw "Upgrade failed: $script:lastUpgradeOutput" }
             (Test-Path $backup) | Should Be $true
             ((Get-Content $backup -Raw) -match 'a-booked') | Should Be $true
             $rows = @(Invoke-FixtureSql "SELECT CONCAT('A:',id,':',status) FROM appointment UNION ALL SELECT CONCAT('R:',id,':',appointment_id) FROM clinical_record UNION ALL SELECT CONCAT('O:',id,':',status) FROM payment_order ORDER BY 1" 'medical_cloud_course')

@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory = $true)][string]$HostName,
     [Parameter(Mandatory = $true)][ValidateRange(1, 65535)][int]$Port,
     [Parameter(Mandatory = $true)][string]$Database,
+    [Parameter(Mandatory = $true)][string]$ExpectedServerUuid,
     [Parameter(Mandatory = $true)][string]$BackupPath
 )
 
@@ -22,11 +23,11 @@ $previousPassword = $env:MYSQL_PWD
 $env:MYSQL_PWD = $env:MEDICAL_COURSE_DB_PASSWORD
 $connection = @('--no-defaults', '--protocol=TCP', "--host=$HostName", "--port=$Port", '--default-character-set=utf8mb4', "--user=$env:MEDICAL_COURSE_DB_USER")
 try {
-    $identity = @(& $mysqlPath @connection --batch --skip-column-names --execute='SELECT DATABASE(), @@port, @@hostname' "--database=$Database" 2>&1)
+    $identity = @(& $mysqlPath @connection --batch --skip-column-names --execute='SELECT DATABASE(), @@port, @@server_uuid' "--database=$Database" 2>&1)
     if ($LASTEXITCODE -ne 0 -or $identity.Count -ne 1) { throw "Cannot identify target database: $identity" }
     $parts = $identity[0] -split "`t"
-    if ($parts.Count -ne 3 -or $parts[0] -cne $Database -or [int]$parts[1] -ne $Port) {
-        throw 'Connected database or port does not match the explicit target'
+    if ($parts.Count -ne 3 -or $parts[0] -cne $Database -or [int]$parts[1] -ne $Port -or $parts[2] -cne $ExpectedServerUuid) {
+        throw 'Connected database, port, or server UUID does not match the explicit target'
     }
 
     $preflight = @'
