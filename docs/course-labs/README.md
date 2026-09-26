@@ -6,11 +6,13 @@
 | --- | --- | --- | --- |
 | 1 环境搭建 | JDK 8、双容器、MySQL | 环境检查脚本识别 JDK 1.8.0_341；Tomcat 8088、WildFly 8080、MySQL 3307 监听；两个入口 HTTP 200 | 教师指定机器的版本/端口截图 |
 | 2 建模 | IaaS/PaaS/SaaS、数据库物理模型 | PowerDesigner `.pdm` 重新打开并检查 8 表、14 外键；ER 导出图与架构说明 | 在 PowerDesigner 打开模型，展示主外键和分层图；当前导出图边缘略裁切 |
-| 3 SaaS | `CloudServiceFactory`、角色页面、HTTP 调用 | Tomcat 登录返回 200；患者登录后页面能读到“上呼吸道感染”和 `PAID`；患者不能进入医生页面的自动测试 | 浏览器逐页截图并说明医院/平台页为只读展示 |
-| 4 PaaS | JAX-RS 契约、EJB 服务、权限 | WildFly `paas.war.deployed`；端到端脚本得到停用登录 401、跨机构医生 403、重复预约 409 | WildFly 管理 CLI 与接口响应截图 |
-| 5 JNDI/JPA | 数据源、事务、持久化 | `MedicalCloudCourseDS:test-connection-in-pool` 成功；预约、病历、账单和重复模拟支付完整通过；JPA schema validation 部署时执行 | 在隔离数据库只读查询对应三张业务表并截图，遮盖账号/密钥 |
+| 3 SaaS | `CloudServiceFactory`、角色页面、HTTP 调用 | Tomcat 登录返回 200；患者页读到“上呼吸道感染”和 `PAID`；真实 Tomcat 表单提交“演示：中文复核”及建议后，PaaS 读回与原文完全一致 | 浏览器逐页截图并说明医院/平台页为只读展示 |
+| 4 PaaS | JAX-RS 契约、EJB 服务、权限 | WildFly `paas.war.deployed`；端到端脚本得到停用登录 401、跨机构医生 403、重复预约 409；JDK 8 全量构建为 27 项测试、0 失败 | WildFly 管理 CLI 与接口响应截图 |
+| 5 JNDI/JPA | 数据源、事务、持久化 | `MedicalCloudCourseDS:test-connection-in-pool` 成功；预约、病历、账单和重复模拟支付完整通过；锁等待交错复测容量 1 的号源仅产生 1 条预约，另一请求返回 409 | 在隔离数据库只读查询对应三张业务表并截图，遮盖账号/密钥 |
 
 实际链路：患者预约 `39a44b1b-a588-4d30-9941-d522f8bc4629` → 医生接诊 → 病历 `8db2c423-62c2-49ef-87a7-7f7eb841ce48` → 账单 `e2ae3f29-6aa1-4451-b6cb-ab3a83b471e9` → 状态 `PAID`。这组 ID 来自本次隔离环境，不应当视作每台机器固定结果。最终报告可引用 [部署步骤](../../course/deploy/README.md) 与 [接口/架构说明](../course-architecture/README.md)，再附现场截图。
+
+并发回归使用隔离库的额外测试患者与号源，先由独立数据库事务锁住容量 1 的号源，再同时发起两个预约。旧 WAR 两个请求都返回 200，数据库出现 2 条预约；修复后新号源上的相同交错为 200/409，数据库恰有 1 条预约。旧版超卖的测试行保留在隔离库中，未删除或改写；它不是业务演示数据，也不应作为正常容量统计截图。中文往返另使用第二机构的预约 `ff639067-8457-4b33-8c24-5a68c8038246`，只证明 Tomcat 表单编码与 PaaS 持久化一致，不表示真实医疗诊断。
 
 ## AI 辅助与人工复核
 
