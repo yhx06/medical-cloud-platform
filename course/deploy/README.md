@@ -28,10 +28,10 @@ $env:MEDICAL_COURSE_JWT_SECRET = '<至少 32 字符的随机密钥>'
 & course/deploy/scripts/check-environment.ps1 -JavaHome $env:JAVA_HOME -TomcatHome '<Tomcat 9 路径>' -WildFlyHome '<WildFly 10 路径>' -MysqlCli '<mysql.exe 路径>'
 ```
 
-启动 WildFly 后，在同一环境中注册 JDBC 模块、驱动与数据源；`ConnectorJar` 指向已下载的 MySQL Connector/J JAR。`configure-wildfly.ps1` 针对首次配置，若已有同名数据源，应先核查配置，不要盲目重复添加。
+启动 WildFly 后，在同一环境中注册 JDBC 模块、驱动与数据源；`ConnectorJar` 指向已下载的 MySQL Connector/J JAR。`Controller` 必须指向该隔离 WildFly 的管理地址（示例为 `127.0.0.1:9990`）。脚本先只读核对运行实例的 `home-dir` 与 `WildFlyHome`，不一致或无法核对时会在复制模块和写入 CLI 配置前停止。`configure-wildfly.ps1` 针对首次配置，若已有同名数据源，应先核查配置，不要盲目重复添加。
 
 ```powershell
-& course/deploy/scripts/configure-wildfly.ps1 -WildFlyHome '<WildFly 10 路径>' -ConnectorJar '<mysql-connector-j.jar 路径>' -DbPort 3307
+& course/deploy/scripts/configure-wildfly.ps1 -WildFlyHome '<WildFly 10 路径>' -Controller '127.0.0.1:9990' -ConnectorJar '<mysql-connector-j.jar 路径>' -DbPort 3307
 & course/deploy/scripts/deploy-wars.ps1 -TomcatHome '<Tomcat 9 路径>' -WildFlyHome '<WildFly 10 路径>'
 ```
 

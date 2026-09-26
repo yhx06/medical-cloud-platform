@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
+import com.medcloud.course.contract.Role;
 import org.mindrot.jbcrypt.BCrypt;
 
 import javax.crypto.Mac;
@@ -40,7 +41,8 @@ public class AuthService {
                 .setParameter("username", request.getUsername()).setMaxResults(1).getResultList();
         Account account = accounts.isEmpty() ? null : accounts.get(0);
         if (account == null || !"ACTIVE".equals(account.getStatus())
-                || !BCrypt.checkpw(request.getPassword(), account.getPasswordHash())) {
+                || !BCrypt.checkpw(request.getPassword(), account.getPasswordHash())
+                || !tenantActive(account)) {
             throw new SecurityException("invalid credentials");
         }
         return new LoginResponse(sign(account.getId()), account.getUsername(), account.getRole());
@@ -60,7 +62,7 @@ public class AuthService {
                 throw new SecurityException("expired or unsupported token");
             }
             Account account = manager.find(Account.class, payload.path("sub").asText());
-            if (account == null || !"ACTIVE".equals(account.getStatus())) {
+            if (account == null || !"ACTIVE".equals(account.getStatus()) || !tenantActive(account)) {
                 throw new SecurityException("inactive account");
             }
             return new CurrentActor(account.getId(), account.getRole(), account.getTenantId());
@@ -69,6 +71,19 @@ public class AuthService {
         } catch (Exception e) {
             throw new SecurityException("invalid token", e);
         }
+    }
+
+    private boolean tenantActive(Account account) {
+        if (account.getRole() != Role.DOCTOR && account.getRole() != Role.HOSPITAL_ADMIN) {
+            return true;
+        }
+        if (account.getTenantId() == null) {
+            return false;
+        }
+        List<String> statuses = manager.createQuery(
+                "select t.status from Tenant t where t.id = :tenantId", String.class)
+                .setParameter("tenantId", account.getTenantId()).getResultList();
+        return statuses.size() == 1 && "ACTIVE".equals(statuses.get(0));
     }
 
     private String sign(String userId) {

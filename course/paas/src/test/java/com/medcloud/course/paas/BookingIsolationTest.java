@@ -16,10 +16,15 @@ import org.mindrot.jbcrypt.BCrypt;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
+import javax.persistence.LockModeType;
 import javax.persistence.Persistence;
+import javax.persistence.TypedQuery;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
+import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -58,6 +63,45 @@ class BookingIsolationTest {
                     () -> auth.login(new LoginRequest("patient_demo", "Demo@123456")));
         } finally {
             manager.close();
+            factory.close();
+        }
+    }
+
+    @Test
+    void disabledTenantRejectsDoctorAndHospitalLoginAndExistingTokensAcrossTransactions() {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        EntityManager authManager = factory.createEntityManager();
+        EntityManager adminManager = factory.createEntityManager();
+        try {
+            adminManager.getTransaction().begin();
+            adminManager.persist(new Tenant("tenant-a", "仁和云诊所"));
+            adminManager.persist(new Account("doctor-a", "doctor_a",
+                    BCrypt.hashpw("Demo@123456", BCrypt.gensalt(4)), Role.DOCTOR, "tenant-a"));
+            adminManager.persist(new Account("hospital-a", "hospital_a",
+                    BCrypt.hashpw("Demo@123456", BCrypt.gensalt(4)), Role.HOSPITAL_ADMIN, "tenant-a"));
+            adminManager.getTransaction().commit();
+
+            AuthService auth = new AuthService(authManager, SECRET);
+            String doctorToken = auth.login(new LoginRequest("doctor_a", "Demo@123456")).getAccessToken();
+            String hospitalToken = auth.login(new LoginRequest("hospital_a", "Demo@123456")).getAccessToken();
+            assertEquals("doctor-a", auth.authenticate(doctorToken).getUserId());
+            assertEquals("hospital-a", auth.authenticate(hospitalToken).getUserId());
+            assertEquals("ACTIVE", authManager.find(Tenant.class, "tenant-a").getStatus());
+
+            adminManager.getTransaction().begin();
+            adminManager.createNativeQuery("update tenant set status = 'DISABLED' where id = 'tenant-a'")
+                    .executeUpdate();
+            adminManager.getTransaction().commit();
+
+            assertThrows(SecurityException.class,
+                    () -> auth.login(new LoginRequest("doctor_a", "Demo@123456")));
+            assertThrows(SecurityException.class,
+                    () -> auth.login(new LoginRequest("hospital_a", "Demo@123456")));
+            assertThrows(SecurityException.class, () -> auth.authenticate(doctorToken));
+            assertThrows(SecurityException.class, () -> auth.authenticate(hospitalToken));
+        } finally {
+            authManager.close();
+            adminManager.close();
             factory.close();
         }
     }
@@ -168,6 +212,74 @@ class BookingIsolationTest {
         } finally {
             workers.shutdownNow();
             factory.close();
+        }
+    }
+
+    @Test
+    void staleSnapshotOnOrdinaryReadCannotOverbookAfterSlotLock() {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        EntityManager stale = factory.createEntityManager();
+        EntityManager other = factory.createEntityManager();
+        try {
+            other.getTransaction().begin();
+            other.persist(new Tenant("tenant-a", "仁和云诊所"));
+            other.persist(new Department("department-a", "tenant-a", "全科"));
+            other.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            other.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
+            other.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
+            other.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
+                    Date.valueOf("2030-05-21"), Time.valueOf("09:00:00"), Time.valueOf("10:00:00"),
+                    1, new BigDecimal("39.00")));
+            other.getTransaction().commit();
+
+            other.getTransaction().begin();
+            new BookingService(other).book(new CurrentActor("patient-a", Role.PATIENT, null),
+                    "slot-a", Date.valueOf("2030-05-20"));
+            other.getTransaction().commit();
+
+            stale.getTransaction().begin();
+            assertThrows(IllegalStateException.class, () -> new BookingService(withStaleUnlockedAppointmentReads(stale)).book(
+                    new CurrentActor("patient-b", Role.PATIENT, null), "slot-a", Date.valueOf("2030-05-20")));
+            stale.getTransaction().rollback();
+        } finally {
+            if (stale.getTransaction().isActive()) stale.getTransaction().rollback();
+            if (other.getTransaction().isActive()) other.getTransaction().rollback();
+            stale.close();
+            other.close();
+            factory.close();
+        }
+    }
+
+    private static EntityManager withStaleUnlockedAppointmentReads(EntityManager delegate) {
+        return (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(),
+                new Class<?>[]{EntityManager.class}, (proxy, method, args) -> {
+                    Object result = invoke(delegate, method, args);
+                    if (!"createQuery".equals(method.getName()) || args == null || args.length != 2
+                            || !String.valueOf(args[0]).startsWith("select a from Appointment a where a.slotId")) {
+                        return result;
+                    }
+                    TypedQuery<?> query = (TypedQuery<?>) result;
+                    final LockModeType[] lock = {LockModeType.NONE};
+                    return Proxy.newProxyInstance(TypedQuery.class.getClassLoader(),
+                            new Class<?>[]{TypedQuery.class}, (queryProxy, queryMethod, queryArgs) -> {
+                                if ("setLockMode".equals(queryMethod.getName())) {
+                                    lock[0] = (LockModeType) queryArgs[0];
+                                }
+                                if ("getResultList".equals(queryMethod.getName())
+                                        && lock[0] != LockModeType.PESSIMISTIC_WRITE) {
+                                    return Collections.emptyList();
+                                }
+                                Object queryResult = invoke(query, queryMethod, queryArgs);
+                                return queryResult == query ? queryProxy : queryResult;
+                            });
+                });
+    }
+
+    private static Object invoke(Object target, java.lang.reflect.Method method, Object[] args) throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException failure) {
+            throw failure.getCause();
         }
     }
 

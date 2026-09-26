@@ -123,6 +123,7 @@ public class PortalServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
+        request.setCharacterEncoding("UTF-8");
         String path = request.getServletPath();
         if ("/login".equals(path)) {
             login(request, response);

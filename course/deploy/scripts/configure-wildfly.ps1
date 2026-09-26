@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$WildFlyHome,
     [Parameter(Mandatory = $true)][string]$ConnectorJar,
+    [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$Controller,
     [ValidateRange(1, 65535)][int]$DbPort = 3306,
     [switch]$DriverOnly
 )
@@ -10,6 +11,30 @@ $wildflyRoot = (Resolve-Path -LiteralPath $WildFlyHome).Path
 $jar = (Resolve-Path -LiteralPath $ConnectorJar).Path
 $cli = Join-Path $wildflyRoot 'bin\jboss-cli.bat'
 if (-not (Test-Path -LiteralPath $cli)) { throw "WildFly CLI missing: $cli" }
+$env:JBOSS_HOME = $wildflyRoot
+$previousJavaToolOptions = $env:JAVA_TOOL_OPTIONS
+$previousOutputEncoding = [Console]::OutputEncoding
+try {
+    $env:JAVA_TOOL_OPTIONS = (($previousJavaToolOptions, '-Dfile.encoding=UTF-8' |
+                Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' ')
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $homeRead = (& $cli "--controller=$Controller" --connect '--command=/core-service=server-environment:read-attribute(name=home-dir)' 2>&1 | Out-String)
+    $homeExitCode = $LASTEXITCODE
+} finally {
+    $env:JAVA_TOOL_OPTIONS = $previousJavaToolOptions
+    [Console]::OutputEncoding = $previousOutputEncoding
+}
+$homeMatch = [regex]::Match($homeRead, '"result"\s*=>\s*"((?:[^"\\]|\\.)*)"')
+if ($homeExitCode -ne 0 -or $homeRead -notmatch '"outcome"\s*=>\s*"success"' -or
+    -not $homeMatch.Success) {
+    throw "Could not verify WildFly controller $Controller home-dir: $homeRead"
+}
+$reportedHome = $homeMatch.Groups[1].Value -replace '\\\\', '\'
+$connectedRoot = [IO.Path]::GetFullPath($reportedHome).TrimEnd([char[]]@('\', '/'))
+if (-not [string]::Equals($connectedRoot, $wildflyRoot.TrimEnd([char[]]@('\', '/')),
+        [StringComparison]::OrdinalIgnoreCase)) {
+    throw "WildFly controller $Controller belongs to $connectedRoot; expected $wildflyRoot"
+}
 $moduleDirectory = Join-Path $wildflyRoot 'modules\system\layers\base\com\mysql\main'
 New-Item -ItemType Directory -Force -Path $moduleDirectory | Out-Null
 $installedJar = Join-Path $moduleDirectory 'mysql-connector-j.jar'
@@ -25,10 +50,9 @@ $moduleXml = Join-Path $moduleDirectory 'module.xml'
 if (-not (Test-Path -LiteralPath $moduleXml)) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\mysql-module.xml') -Destination $moduleXml
 }
-$env:JBOSS_HOME = $wildflyRoot
-$driverRead = (& $cli --connect '--command=/subsystem=datasources/jdbc-driver=mysql:read-resource' 2>&1 | Out-String)
+$driverRead = (& $cli "--controller=$Controller" --connect '--command=/subsystem=datasources/jdbc-driver=mysql:read-resource' 2>&1 | Out-String)
 if ($driverRead -notmatch '"outcome"\s*=>\s*"success"') {
-    $driverAdd = (& $cli --connect '--command=/subsystem=datasources/jdbc-driver=mysql:add(driver-name=mysql,driver-module-name=com.mysql,driver-class-name=com.mysql.cj.jdbc.Driver)' 2>&1 | Out-String)
+    $driverAdd = (& $cli "--controller=$Controller" --connect '--command=/subsystem=datasources/jdbc-driver=mysql:add(driver-name=mysql,driver-module-name=com.mysql,driver-class-name=com.mysql.cj.jdbc.Driver)' 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0 -or $driverAdd -notmatch '"outcome"\s*=>\s*"success"') {
         throw "Could not register MySQL driver: $driverAdd"
     }
@@ -43,7 +67,7 @@ $temporaryCli = New-TemporaryFile
 try {
     $template = Get-Content -LiteralPath $source -Raw -Encoding UTF8
     $template.Replace('__DB_PORT__', [string]$DbPort) | Set-Content -LiteralPath $temporaryCli.FullName -Encoding UTF8
-    $result = (& $cli --connect "--file=$($temporaryCli.FullName)" 2>&1 | Out-String)
+    $result = (& $cli "--controller=$Controller" --connect "--file=$($temporaryCli.FullName)" 2>&1 | Out-String)
 } finally {
     Remove-Item -LiteralPath $temporaryCli.FullName
 }

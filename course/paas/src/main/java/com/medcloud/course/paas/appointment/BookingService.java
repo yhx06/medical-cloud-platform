@@ -44,7 +44,7 @@ public class BookingService {
         }
         List<Appointment> existing = manager.createQuery(
                 "select a from Appointment a where a.slotId = :slotId", Appointment.class)
-                .setParameter("slotId", slotId).getResultList();
+                .setParameter("slotId", slotId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         for (Appointment appointment : existing) {
             if (appointment.getPatientId().equals(actor.getUserId())) {
                 throw new IllegalStateException("already booked");
