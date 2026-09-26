@@ -1,0 +1,112 @@
+package com.medcloud.course.paas.tenant;
+
+import com.medcloud.course.contract.DoctorCreateResponse;
+import com.medcloud.course.contract.DoctorView;
+import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.auth.AccessDeniedException;
+import com.medcloud.course.paas.auth.Account;
+import com.medcloud.course.paas.auth.CurrentActor;
+import org.mindrot.jbcrypt.BCrypt;
+
+import javax.ejb.Stateless;
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
+import javax.persistence.PersistenceException;
+import java.security.SecureRandom;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.List;
+import java.util.Locale;
+import java.util.UUID;
+
+@Stateless
+public class HospitalDoctorService {
+    private static final SecureRandom RANDOM = new SecureRandom();
+    @PersistenceContext(unitName = "medicalCloudCourse")
+    private EntityManager manager;
+    public HospitalDoctorService() { }
+    public HospitalDoctorService(EntityManager manager) { this.manager = manager; }
+
+    public List<DoctorView> list(CurrentActor actor) {
+        String tenantId = tenant(actor);
+        List<DoctorView> result = new ArrayList<DoctorView>();
+        List<Object[]> rows = manager.createQuery("select a, p from Account a, DoctorProfile p "
+                + "where a.id = p.userId and a.tenantId = :tenantId and p.tenantId = :tenantId "
+                + "and a.role = :role order by p.displayName, a.id", Object[].class)
+                .setParameter("tenantId", tenantId).setParameter("role", Role.DOCTOR)
+                .setMaxResults(200).getResultList();
+        for (Object[] row : rows) result.add(view((Account) row[0], (DoctorProfile) row[1]));
+        return result;
+    }
+
+    public DoctorCreateResponse create(CurrentActor actor, String username, String displayName, String departmentId) {
+        String tenantId = tenant(actor);
+        if (username == null || !username.matches("[A-Za-z0-9_]{3,64}"))
+            throw new IllegalArgumentException("invalid username");
+        String name = HospitalDepartmentService.name(displayName);
+        department(tenantId, departmentId);
+        Long exists = manager.createQuery("select count(a) from Account a where lower(a.username) = :username", Long.class)
+                .setParameter("username", username.toLowerCase(Locale.ROOT)).getSingleResult();
+        if (exists != 0) throw new IllegalStateException("username already exists");
+        byte[] bytes = new byte[24]; RANDOM.nextBytes(bytes);
+        String password = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        Account account = new Account(UUID.randomUUID().toString(), username,
+                BCrypt.hashpw(password, BCrypt.gensalt()), Role.DOCTOR, tenantId);
+        DoctorProfile profile = new DoctorProfile(account.getId(), tenantId, departmentId, name);
+        try {
+            manager.persist(account);
+            manager.persist(profile);
+            manager.flush();
+        } catch (PersistenceException failure) {
+            if (uniqueConflict(failure)) throw new IllegalStateException("username already exists", failure);
+            throw failure;
+        }
+        return new DoctorCreateResponse(account.getId(), username, name, departmentId, account.getStatus(), password);
+    }
+
+    public DoctorView update(CurrentActor actor, String userId, String displayName, String departmentId, String status) {
+        String tenantId = tenant(actor);
+        Account account = manager.find(Account.class, userId);
+        DoctorProfile profile = manager.find(DoctorProfile.class, userId);
+        if (account == null || profile == null || account.getRole() != Role.DOCTOR
+                || !tenantId.equals(account.getTenantId()) || !tenantId.equals(profile.getTenantId()))
+            throw new AccessDeniedException();
+        String name = HospitalDepartmentService.name(displayName);
+        department(tenantId, departmentId);
+        if (!"ACTIVE".equals(status) && !"DISABLED".equals(status)) throw new IllegalArgumentException("invalid status");
+        if ("DISABLED".equals(status) && !"DISABLED".equals(account.getStatus())) {
+            Long pending = manager.createQuery("select count(a) from Appointment a where a.doctorId = :doctorId "
+                    + "and a.tenantId = :tenantId and a.status in ('BOOKED', 'IN_PROGRESS')", Long.class)
+                    .setParameter("doctorId", userId).setParameter("tenantId", tenantId).getSingleResult();
+            if (pending > 0) throw new IllegalStateException("doctor has pending appointments");
+        }
+        account.setStatus(status);
+        profile.update(name, departmentId);
+        return view(account, profile);
+    }
+
+    private Department department(String tenantId, String departmentId) {
+        Department department = manager.find(Department.class, departmentId);
+        if (department == null || !tenantId.equals(department.getTenantId())) throw new AccessDeniedException();
+        if (!"ACTIVE".equals(department.getStatus())) throw new IllegalStateException("department disabled");
+        return department;
+    }
+
+    private String tenant(CurrentActor actor) { return new HospitalDepartmentService(manager).tenant(actor); }
+
+    private static DoctorView view(Account account, DoctorProfile profile) {
+        return new DoctorView(account.getId(), account.getUsername(), profile.getDisplayName(),
+                profile.getDepartmentId(), account.getStatus());
+    }
+
+    private static boolean uniqueConflict(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException) {
+                String state = ((SQLException) cause).getSQLState();
+                if (state != null && state.startsWith("23")) return true;
+            }
+        }
+        return false;
+    }
+}

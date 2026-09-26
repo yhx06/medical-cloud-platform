@@ -48,6 +48,7 @@ public class Account {
     }
 
     public void disable() { status = "DISABLED"; }
+    public void setStatus(String status) { this.status = status; }
     public String getId() { return id; }
     public String getUsername() { return username; }
     public String getPasswordHash() { return passwordHash; }

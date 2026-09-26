@@ -17,7 +17,7 @@ h3 { margin-bottom: .3rem; font-size: 1rem; }
 .error { background: #fff1ef; color: #9b2b21; }
 form { margin: 0; }
 label { display: block; color: #314f61; font-size: .94rem; }
-input, textarea { display: block; width: 100%; margin: .35rem 0 .9rem; padding: .67rem .75rem; border: 1px solid #b9cbd3; border-radius: 7px; font: inherit; }
+input, textarea, select { display: block; width: 100%; margin: .35rem 0 .9rem; padding: .67rem .75rem; border: 1px solid #b9cbd3; border-radius: 7px; font: inherit; background: white; }
 textarea { min-height: 5rem; resize: vertical; }
 button { border: 0; border-radius: 7px; background: #0b7895; color: white; padding: .65rem 1rem; font: inherit; cursor: pointer; }
 button:hover { background: #085d75; }

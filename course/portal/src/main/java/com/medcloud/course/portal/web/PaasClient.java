@@ -39,6 +39,10 @@ public final class PaasClient {
         return call("POST", path, token, request);
     }
 
+    public JsonNode put(String path, String token, Object request) {
+        return call("PUT", path, token, request);
+    }
+
     private JsonNode call(String method, String path, String token, Object request) {
         if (path == null || !path.startsWith("/") || path.startsWith("//")) {
             throw new IllegalArgumentException("invalid PaaS path");
@@ -53,7 +57,7 @@ public final class PaasClient {
             if (token != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + token);
             }
-            if ("POST".equals(method)) {
+            if ("POST".equals(method) || "PUT".equals(method)) {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 byte[] body = request == null ? "{}".getBytes(StandardCharsets.UTF_8)

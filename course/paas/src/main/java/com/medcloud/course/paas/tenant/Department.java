@@ -46,4 +46,9 @@ public class Department {
     public String getStatus() {
         return status;
     }
+
+    public void update(String name, String status) {
+        this.name = name;
+        this.status = status;
+    }
 }

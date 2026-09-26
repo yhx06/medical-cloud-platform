@@ -7,6 +7,8 @@ import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
 import com.medcloud.course.contract.RegisterRequest;
 import com.medcloud.course.contract.Role;
+import com.medcloud.course.contract.DepartmentRequest;
+import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.portal.factory.CloudServiceFactory;
 
 import javax.servlet.ServletException;
@@ -23,7 +25,8 @@ import java.util.Base64;
 import java.util.regex.Pattern;
 
 @WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/pay",
-        "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/platform"})
+        "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/hospital/department/create",
+        "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit", "/platform"})
 public class PortalServlet extends HttpServlet {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern UUID_ID = Pattern.compile(
@@ -101,6 +104,10 @@ public class PortalServlet extends HttpServlet {
             request.setAttribute("notice", WebEscaper.html(String.valueOf(flash)));
             session.removeAttribute("flash");
         }
+        if ("/hospital".equals(path) && session.getAttribute("initialPassword") != null) {
+            request.setAttribute("initialPassword", session.getAttribute("initialPassword"));
+            session.removeAttribute("initialPassword");
+        }
         try {
             if ("/patient".equals(path)) {
                 String tenantId = request.getParameter("tenantId");
@@ -119,12 +126,8 @@ public class PortalServlet extends HttpServlet {
             } else if ("/doctor".equals(path)) {
                 request.setAttribute("appointments", paas.get("/doctor/appointments", token(session)));
             } else if ("/hospital".equals(path)) {
-                String tenantId = request.getParameter("tenantId");
-                request.setAttribute("tenantId", WebEscaper.html(tenantId));
-                if (tenantId != null && !tenantId.trim().isEmpty()) {
-                    request.setAttribute("slots", paas.get("/catalog/slots?tenantId="
-                            + URLEncoder.encode(tenantId, StandardCharsets.UTF_8.name()), token(session)));
-                }
+                request.setAttribute("departments", paas.get("/hospital/departments", token(session)));
+                request.setAttribute("doctors", paas.get("/hospital/doctors", token(session)));
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
             request.setAttribute("error", WebEscaper.html(error.getMessage()));
@@ -175,6 +178,23 @@ public class PortalServlet extends HttpServlet {
             } else if ("/patient/pay".equals(path)) {
                 paas.post("/patient/orders/" + requiredId(required(request, "orderId")) + "/pay", token(session), null);
                 session.setAttribute("flash", "模拟缴费成功");
+            } else if ("/hospital/department/create".equals(path)) {
+                paas.post("/hospital/departments", token(session), new DepartmentRequest(required(request, "name"), null));
+                session.setAttribute("flash", "科室已创建");
+            } else if ("/hospital/department/edit".equals(path)) {
+                paas.put("/hospital/departments/" + requiredId(required(request, "id")), token(session),
+                        new DepartmentRequest(required(request, "name"), required(request, "status")));
+                session.setAttribute("flash", "科室已更新");
+            } else if ("/hospital/doctor/create".equals(path)) {
+                result = paas.post("/hospital/doctors", token(session), new DoctorRequest(required(request, "username"),
+                        required(request, "displayName"), requiredId(required(request, "departmentId")), null));
+                session.setAttribute("initialPassword", result.path("initialPassword").asText());
+                session.setAttribute("flash", "医生账号已创建，请记录一次性初始密码");
+            } else if ("/hospital/doctor/edit".equals(path)) {
+                paas.put("/hospital/doctors/" + requiredId(required(request, "id")), token(session),
+                        new DoctorRequest(null, required(request, "displayName"),
+                                requiredId(required(request, "departmentId")), required(request, "status")));
+                session.setAttribute("flash", "医生已更新");
             } else {
                 response.sendError(404);
                 return;
@@ -276,7 +296,7 @@ public class PortalServlet extends HttpServlet {
     private static Role roleForPath(String path) {
         if (path.startsWith("/patient")) return Role.PATIENT;
         if (path.startsWith("/doctor")) return Role.DOCTOR;
-        if ("/hospital".equals(path)) return Role.HOSPITAL_ADMIN;
+        if ("/hospital".equals(path) || path.startsWith("/hospital/")) return Role.HOSPITAL_ADMIN;
         if ("/platform".equals(path)) return Role.PLATFORM_ADMIN;
         return null;
     }
