@@ -6,12 +6,14 @@ import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.CurrentActor;
+import com.medcloud.course.paas.appointment.Appointment;
 import org.mindrot.jbcrypt.BCrypt;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import javax.persistence.PersistenceException;
+import javax.persistence.LockModeType;
 import java.security.SecureRandom;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -67,7 +69,8 @@ public class HospitalDoctorService {
 
     public DoctorView update(CurrentActor actor, String userId, String displayName, String departmentId, String status) {
         String tenantId = tenant(actor);
-        Account account = manager.find(Account.class, userId);
+        Account account = manager.find(Account.class, userId, LockModeType.PESSIMISTIC_WRITE);
+        if (account != null) manager.refresh(account, LockModeType.PESSIMISTIC_WRITE);
         DoctorProfile profile = manager.find(DoctorProfile.class, userId);
         if (account == null || profile == null || account.getRole() != Role.DOCTOR
                 || !tenantId.equals(account.getTenantId()) || !tenantId.equals(profile.getTenantId()))
@@ -76,10 +79,11 @@ public class HospitalDoctorService {
         department(tenantId, departmentId);
         if (!"ACTIVE".equals(status) && !"DISABLED".equals(status)) throw new IllegalArgumentException("invalid status");
         if ("DISABLED".equals(status) && !"DISABLED".equals(account.getStatus())) {
-            Long pending = manager.createQuery("select count(a) from Appointment a where a.doctorId = :doctorId "
-                    + "and a.tenantId = :tenantId and a.status in ('BOOKED', 'IN_PROGRESS')", Long.class)
-                    .setParameter("doctorId", userId).setParameter("tenantId", tenantId).getSingleResult();
-            if (pending > 0) throw new IllegalStateException("doctor has pending appointments");
+            List<Appointment> pending = manager.createQuery("select a from Appointment a where a.doctorId = :doctorId "
+                    + "and a.tenantId = :tenantId and a.status in ('BOOKED', 'IN_PROGRESS')", Appointment.class)
+                    .setParameter("doctorId", userId).setParameter("tenantId", tenantId)
+                    .setMaxResults(1).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+            if (!pending.isEmpty()) throw new IllegalStateException("doctor has pending appointments");
         }
         account.setStatus(status);
         profile.update(name, departmentId);

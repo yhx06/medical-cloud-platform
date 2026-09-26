@@ -10,6 +10,8 @@ import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
+import com.medcloud.course.paas.tenant.HospitalDoctorService;
 import com.medcloud.course.paas.tenant.Tenant;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
@@ -32,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -248,6 +251,116 @@ class BookingIsolationTest {
             other.close();
             factory.close();
         }
+    }
+
+    @Test
+    void disablingDoctorCannotCommitAroundAnUnfinishedBooking() throws Exception {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        CountDownLatch doctorRead = new CountDownLatch(1);
+        CountDownLatch releaseBooking = new CountDownLatch(1);
+        try {
+            EntityManager setup = factory.createEntityManager();
+            try {
+                setup.getTransaction().begin();
+                setup.persist(new Tenant("tenant-a", "仁和云诊所"));
+                setup.persist(new Department("department-a", "tenant-a", "全科"));
+                setup.persist(new Account("admin-a", "admin_a", "hash", Role.HOSPITAL_ADMIN, "tenant-a"));
+                setup.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+                setup.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "王医生"));
+                setup.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
+                setup.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
+                        Date.valueOf("2030-05-21"), Time.valueOf("09:00:00"), Time.valueOf("10:00:00"),
+                        1, new BigDecimal("39.00")));
+                setup.getTransaction().commit();
+            } finally { setup.close(); }
+
+            Future<Boolean> booking = workers.submit(() -> {
+                EntityManager manager = factory.createEntityManager();
+                try {
+                    manager.getTransaction().begin();
+                    new BookingService(pausingAfterDoctorRead(manager, doctorRead, releaseBooking)).book(
+                            new CurrentActor("patient-a", Role.PATIENT, null), "slot-a", Date.valueOf("2030-05-20"));
+                    manager.getTransaction().commit();
+                    return true;
+                } catch (IllegalStateException rejected) {
+                    if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+                    return false;
+                } finally { manager.close(); }
+            });
+            assertTrue(doctorRead.await(10, TimeUnit.SECONDS));
+            Future<Boolean> disabling = workers.submit(() -> {
+                EntityManager manager = factory.createEntityManager();
+                try {
+                    manager.getTransaction().begin();
+                    new HospitalDoctorService(withStaleUnlockedPendingReads(manager)).update(
+                            new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-a"),
+                            "doctor-a", "王医生", "department-a", "DISABLED");
+                    manager.getTransaction().commit();
+                    return true;
+                } catch (IllegalStateException rejected) {
+                    if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+                    return false;
+                } finally { manager.close(); }
+            });
+            try {
+                // Give the disable transaction time to reach its database check while booking is paused.
+                try { disabling.get(1500, TimeUnit.MILLISECONDS); }
+                catch (java.util.concurrent.TimeoutException expectedWhileDoctorLocked) { }
+            } finally { releaseBooking.countDown(); }
+            assertTrue(booking.get(10, TimeUnit.SECONDS));
+            assertFalse(disabling.get(10, TimeUnit.SECONDS));
+            EntityManager verify = factory.createEntityManager();
+            try {
+                assertEquals("ACTIVE", verify.find(Account.class, "doctor-a").getStatus());
+                assertEquals(1L, verify.createQuery("select count(a) from Appointment a where a.doctorId = :doctorId "
+                        + "and a.status = 'BOOKED'", Long.class).setParameter("doctorId", "doctor-a")
+                        .getSingleResult());
+            } finally { verify.close(); }
+        } finally {
+            releaseBooking.countDown();
+            workers.shutdownNow();
+            factory.close();
+        }
+    }
+
+    private static EntityManager pausingAfterDoctorRead(EntityManager delegate, CountDownLatch read,
+            CountDownLatch release) {
+        return (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(),
+                new Class<?>[]{EntityManager.class}, (proxy, method, args) -> {
+                    Object result = invoke(delegate, method, args);
+                    if ("find".equals(method.getName()) && args != null && args.length >= 2
+                            && args[0] == Account.class && "doctor-a".equals(args[1])) {
+                        read.countDown();
+                        if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("booking was not released");
+                    }
+                    return result;
+                });
+    }
+
+    private static EntityManager withStaleUnlockedPendingReads(EntityManager delegate) {
+        return (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(),
+                new Class<?>[]{EntityManager.class}, (proxy, method, args) -> {
+                    Object result = invoke(delegate, method, args);
+                    if (!"createQuery".equals(method.getName()) || args == null || args.length != 2
+                            || !String.valueOf(args[0]).contains("from Appointment a where a.doctorId")) {
+                        return result;
+                    }
+                    TypedQuery<?> query = (TypedQuery<?>) result;
+                    final LockModeType[] lock = {LockModeType.NONE};
+                    return Proxy.newProxyInstance(TypedQuery.class.getClassLoader(),
+                            new Class<?>[]{TypedQuery.class}, (queryProxy, queryMethod, queryArgs) -> {
+                                if ("setLockMode".equals(queryMethod.getName())) {
+                                    lock[0] = (LockModeType) queryArgs[0];
+                                }
+                                if (lock[0] != LockModeType.PESSIMISTIC_WRITE) {
+                                    if ("getSingleResult".equals(queryMethod.getName())) return 0L;
+                                    if ("getResultList".equals(queryMethod.getName())) return Collections.emptyList();
+                                }
+                                Object queryResult = invoke(query, queryMethod, queryArgs);
+                                return queryResult == query ? queryProxy : queryResult;
+                            });
+                });
     }
 
     private static EntityManager withStaleUnlockedAppointmentReads(EntityManager delegate) {

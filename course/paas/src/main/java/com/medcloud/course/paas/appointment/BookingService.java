@@ -31,13 +31,24 @@ public class BookingService {
         if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT) {
             throw new SecurityException("inactive patient");
         }
+        ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
+        if (candidate == null) throw new IllegalStateException("slot unavailable");
+        String candidateDoctorId = candidate.getDoctorId();
+        // Lock the doctor before the slot so a concurrent disable cannot pass its pending count.
+        Account doctor = manager.find(Account.class, candidateDoctorId, LockModeType.PESSIMISTIC_WRITE);
+        if (doctor == null) throw new IllegalStateException("slot directory unavailable");
+        manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
         ScheduleSlot slot = manager.find(ScheduleSlot.class, slotId, LockModeType.PESSIMISTIC_WRITE);
-        if (slot == null || !"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today)) {
+        if (slot == null) throw new IllegalStateException("slot unavailable");
+        manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
+        if (!"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today)) {
             throw new IllegalStateException("slot unavailable");
         }
+        if (!candidateDoctorId.equals(slot.getDoctorId())) {
+            throw new IllegalStateException("slot doctor changed");
+        }
         Tenant tenant = manager.find(Tenant.class, slot.getTenantId());
-        Account doctor = manager.find(Account.class, slot.getDoctorId());
-        if (tenant == null || !"ACTIVE".equals(tenant.getStatus()) || doctor == null
+        if (tenant == null || !"ACTIVE".equals(tenant.getStatus())
                 || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR
                 || !slot.getTenantId().equals(doctor.getTenantId())) {
             throw new IllegalStateException("slot directory unavailable");
