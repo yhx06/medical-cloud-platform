@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
+import com.medcloud.course.contract.RegisterRequest;
+import com.medcloud.course.contract.RegisterResponse;
 import com.medcloud.course.contract.Role;
 import org.mindrot.jbcrypt.BCrypt;
 
@@ -12,15 +14,20 @@ import javax.crypto.spec.SecretKeySpec;
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
+import javax.persistence.PersistenceException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Stateless
 public class AuthService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final long TOKEN_LIFETIME_SECONDS = 3600;
+    private static final Pattern USERNAME = Pattern.compile("[A-Za-z0-9_]{3,64}");
 
     @PersistenceContext(unitName = "medicalCloudCourse")
     private EntityManager manager;
@@ -31,6 +38,42 @@ public class AuthService {
     public AuthService(EntityManager manager, String signingSecret) {
         this.manager = manager;
         this.signingSecret = signingSecret;
+    }
+
+    public RegisterResponse register(RegisterRequest request) {
+        if (request == null || request.getUsername() == null || request.getPassword() == null
+                || !USERNAME.matcher(request.getUsername()).matches()) {
+            throw new IllegalArgumentException("invalid registration");
+        }
+        int passwordBytes = request.getPassword().getBytes(StandardCharsets.UTF_8).length;
+        if (passwordBytes < 8 || passwordBytes > 72) {
+            throw new IllegalArgumentException("invalid registration");
+        }
+        long existing = manager.createQuery("select count(a) from Account a where lower(a.username) = :username", Long.class)
+                .setParameter("username", request.getUsername().toLowerCase(java.util.Locale.ROOT))
+                .getSingleResult();
+        if (existing != 0) throw new IllegalStateException("username already exists");
+
+        Account account = new Account(UUID.randomUUID().toString(), request.getUsername(),
+                BCrypt.hashpw(request.getPassword(), BCrypt.gensalt()), Role.PATIENT, null);
+        try {
+            manager.persist(account);
+            manager.flush();
+        } catch (PersistenceException failure) {
+            if (isUniqueConflict(failure)) throw new IllegalStateException("username already exists", failure);
+            throw failure;
+        }
+        return new RegisterResponse(account.getId(), account.getUsername());
+    }
+
+    private static boolean isUniqueConflict(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException) {
+                String state = ((SQLException) cause).getSQLState();
+                if (state != null && state.startsWith("23")) return true;
+            }
+        }
+        return false;
     }
 
     public LoginResponse login(LoginRequest request) {

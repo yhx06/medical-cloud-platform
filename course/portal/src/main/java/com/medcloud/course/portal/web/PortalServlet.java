@@ -5,6 +5,7 @@ import com.medcloud.course.contract.BookingRequest;
 import com.medcloud.course.contract.CompleteConsultationRequest;
 import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
+import com.medcloud.course.contract.RegisterRequest;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.portal.factory.CloudServiceFactory;
 
@@ -21,7 +22,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.regex.Pattern;
 
-@WebServlet(urlPatterns = {"/", "/login", "/logout", "/patient", "/patient/book", "/patient/pay",
+@WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/pay",
         "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/platform"})
 public class PortalServlet extends HttpServlet {
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -58,12 +59,23 @@ public class PortalServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         String path = request.getServletPath();
+        if ("/register".equals(path)) {
+            HttpSession session = request.getSession(true);
+            csrfToken(session);
+            request.setAttribute("csrfToken", session.getAttribute("csrfToken"));
+            show(request, response, "register.jsp");
+            return;
+        }
         if ("/".equals(path) || "/login".equals(path)) {
             HttpSession session = request.getSession(false);
             if (session != null && session.getAttribute("role") instanceof Role) {
                 response.sendRedirect(request.getContextPath() + factory.forRole((Role) session.getAttribute("role"))
                         .getHomePath());
             } else {
+                if (session != null && session.getAttribute("flash") != null) {
+                    request.setAttribute("notice", WebEscaper.html(String.valueOf(session.getAttribute("flash"))));
+                    session.removeAttribute("flash");
+                }
                 show(request, response, "login.jsp");
             }
             return;
@@ -129,6 +141,10 @@ public class PortalServlet extends HttpServlet {
             login(request, response);
             return;
         }
+        if ("/register".equals(path)) {
+            register(request, response);
+            return;
+        }
         Role expected = roleForPath(path);
         if (expected == null) {
             response.sendError(404);
@@ -188,6 +204,46 @@ public class PortalServlet extends HttpServlet {
             request.setAttribute("error", WebEscaper.html(error.getMessage()));
             show(request, response, "login.jsp");
         }
+    }
+
+    private void register(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        HttpSession session = request.getSession(false);
+        if (session == null || session.getAttribute("csrfToken") == null
+                || !session.getAttribute("csrfToken").equals(request.getParameter("csrfToken"))) {
+            response.sendError(403);
+            return;
+        }
+        try {
+            String username = request.getParameter("username");
+            String password = request.getParameter("password");
+            String confirmation = request.getParameter("confirmPassword");
+            if (username == null || !username.matches("[A-Za-z0-9_]{3,64}") || password == null
+                    || password.getBytes(StandardCharsets.UTF_8).length < 8
+                    || password.getBytes(StandardCharsets.UTF_8).length > 72) {
+                throw new IllegalArgumentException("账号须为 3–64 位字母、数字或下划线，密码须为 8–72 个 UTF-8 字节");
+            }
+            if (!password.equals(confirmation)) {
+                throw new IllegalArgumentException("两次输入的密码不一致");
+            }
+            paas.post("/auth/register", null, new RegisterRequest(username, password));
+            session.setAttribute("flash", "注册成功，请登录");
+            response.sendRedirect(request.getContextPath() + "/login");
+        } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
+            request.setAttribute("error", WebEscaper.html(error.getMessage()));
+            request.setAttribute("csrfToken", session.getAttribute("csrfToken"));
+            show(request, response, "register.jsp");
+        }
+    }
+
+    private static String csrfToken(HttpSession session) {
+        Object existing = session.getAttribute("csrfToken");
+        if (existing != null) return String.valueOf(existing);
+        byte[] bytes = new byte[24];
+        RANDOM.nextBytes(bytes);
+        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        session.setAttribute("csrfToken", token);
+        return token;
     }
 
     private static String required(HttpServletRequest request, String key) {

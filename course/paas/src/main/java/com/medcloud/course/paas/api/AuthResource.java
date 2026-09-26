@@ -3,6 +3,8 @@ package com.medcloud.course.paas.api;
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
+import com.medcloud.course.contract.RegisterRequest;
+import com.medcloud.course.contract.RegisterResponse;
 import com.medcloud.course.paas.auth.AuthService;
 
 import javax.ejb.EJB;
@@ -26,5 +28,11 @@ public class AuthResource {
     @Path("login")
     public ApiResponse<LoginResponse> login(LoginRequest request) {
         return ApiResponse.success("logged in", auth.login(request));
+    }
+
+    @POST
+    @Path("register")
+    public ApiResponse<RegisterResponse> register(RegisterRequest request) {
+        return ApiResponse.success("registered", auth.register(request));
     }
 }
