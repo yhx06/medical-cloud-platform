@@ -6,6 +6,7 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 
 @Entity
 @Table(name = "payment_order", uniqueConstraints = @UniqueConstraint(columnNames = "appointment_id"))
@@ -28,6 +29,9 @@ public class PaymentOrder {
 
     @Column(nullable = false, length = 16)
     private String status;
+
+    @Column(name = "paid_at")
+    private Timestamp paidAt;
 
     protected PaymentOrder() { }
 
@@ -52,4 +56,5 @@ public class PaymentOrder {
     public String getTenantId() { return tenantId; }
     public BigDecimal getAmount() { return amount; }
     public String getStatus() { return status; }
+    public Timestamp getPaidAt() { return paidAt; }
 }

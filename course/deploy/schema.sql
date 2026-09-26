@@ -65,11 +65,12 @@ CREATE TABLE IF NOT EXISTS appointment (
     fee DECIMAL(10,2) NOT NULL,
     status VARCHAR(16) NOT NULL,
     booked_on DATE NOT NULL,
+    started_at DATETIME NULL,
     CONSTRAINT fk_course_appointment_patient FOREIGN KEY (patient_id) REFERENCES user_account(id),
     CONSTRAINT fk_course_appointment_slot FOREIGN KEY (slot_id) REFERENCES schedule_slot(id),
     CONSTRAINT fk_course_appointment_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
     CONSTRAINT fk_course_appointment_doctor FOREIGN KEY (doctor_id) REFERENCES user_account(id),
-    CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id),
+    INDEX idx_course_patient_slot (patient_id, slot_id),
     INDEX idx_course_doctor_appointment (doctor_id, tenant_id, booked_on)
 );
 
@@ -81,6 +82,9 @@ CREATE TABLE IF NOT EXISTS clinical_record (
     patient_id VARCHAR(36) NOT NULL,
     diagnosis VARCHAR(500) NOT NULL,
     advice VARCHAR(2000) NOT NULL,
+    complaint VARCHAR(500) NULL,
+    notes VARCHAR(2000) NULL,
+    completed_at DATETIME NULL,
     CONSTRAINT uk_course_record_appointment UNIQUE (appointment_id),
     CONSTRAINT fk_course_record_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id)
 );
@@ -92,6 +96,7 @@ CREATE TABLE IF NOT EXISTS payment_order (
     tenant_id VARCHAR(36) NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
     status VARCHAR(16) NOT NULL,
+    paid_at DATETIME NULL,
     CONSTRAINT uk_course_order_appointment UNIQUE (appointment_id),
     CONSTRAINT fk_course_order_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id)
 );

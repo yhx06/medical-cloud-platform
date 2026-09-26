@@ -4,12 +4,13 @@ import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
-import javax.persistence.UniqueConstraint;
+import javax.persistence.Index;
 import java.math.BigDecimal;
 import java.sql.Date;
+import java.sql.Timestamp;
 
 @Entity
-@Table(name = "appointment", uniqueConstraints = @UniqueConstraint(columnNames = {"patient_id", "slot_id"}))
+@Table(name = "appointment", indexes = @Index(name = "idx_course_patient_slot", columnList = "patient_id,slot_id"))
 public class Appointment {
     @Id
     @Column(length = 36)
@@ -36,6 +37,9 @@ public class Appointment {
     @Column(name = "booked_on", nullable = false)
     private Date bookedOn;
 
+    @Column(name = "started_at")
+    private Timestamp startedAt;
+
     protected Appointment() { }
 
     public Appointment(String id, String patientId, String slotId, String tenantId,
@@ -58,6 +62,7 @@ public class Appointment {
     public BigDecimal getFee() { return fee; }
     public String getStatus() { return status; }
     public Date getBookedOn() { return bookedOn; }
+    public Timestamp getStartedAt() { return startedAt; }
 
     public void start() {
         if (!"BOOKED".equals(status)) {

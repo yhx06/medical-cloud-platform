@@ -5,6 +5,7 @@ import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
+import java.sql.Timestamp;
 
 @Entity
 @Table(name = "clinical_record", uniqueConstraints = @UniqueConstraint(columnNames = "appointment_id"))
@@ -31,6 +32,15 @@ public class ClinicalRecord {
     @Column(nullable = false, length = 2000)
     private String advice;
 
+    @Column(length = 500)
+    private String complaint;
+
+    @Column(length = 2000)
+    private String notes;
+
+    @Column(name = "completed_at")
+    private Timestamp completedAt;
+
     protected ClinicalRecord() { }
 
     public ClinicalRecord(String id, String appointmentId, String tenantId, String doctorId,
@@ -54,4 +64,7 @@ public class ClinicalRecord {
     public String getPatientId() { return patientId; }
     public String getDiagnosis() { return diagnosis; }
     public String getAdvice() { return advice; }
+    public String getComplaint() { return complaint; }
+    public String getNotes() { return notes; }
+    public Timestamp getCompletedAt() { return completedAt; }
 }
