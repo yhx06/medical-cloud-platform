@@ -166,6 +166,17 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             (Test-Path $backup) | Should Be $false
             (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
         }
+        It 'rejects another patient-slot unique index before backup or DDL' {
+            Invoke-FixtureSql 'DROP DATABASE medical_cloud_course' | Out-Null
+            $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
+            $LASTEXITCODE | Should Be 0
+            Invoke-FixtureSql 'ALTER TABLE appointment ADD UNIQUE INDEX uk_other_patient_slot (patient_id, slot_id)' 'medical_cloud_course' | Out-Null
+            $backup = Join-Path $scratch 'extra-patient-slot-unique.sql'
+            (Invoke-Upgrade 'medical_cloud_course' $backup) | Should Not Be 0
+            (Test-Path $backup) | Should Be $false
+            (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
+            (Invoke-FixtureSql "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='medical_cloud_course' AND TABLE_NAME='appointment' AND INDEX_NAME='uk_other_patient_slot'" 'medical_cloud_course') | Should Be '2'
+        }
     }
 } finally {
     $env:MYSQL_PWD = $oldPassword

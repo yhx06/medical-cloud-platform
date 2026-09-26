@@ -41,9 +41,8 @@ AND TABLE_NAME IN ('appointment','clinical_record','payment_order')
 UNION ALL
 SELECT CONCAT('I:',TABLE_NAME,':',INDEX_NAME,':',NON_UNIQUE,':',GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX))
 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE()
-AND ((TABLE_NAME='appointment' AND INDEX_NAME IN ('uk_course_patient_slot','idx_course_patient_slot'))
-OR (TABLE_NAME='clinical_record' AND INDEX_NAME='uk_course_record_appointment')
-OR (TABLE_NAME='payment_order' AND INDEX_NAME='uk_course_order_appointment'))
+AND TABLE_NAME IN ('appointment','clinical_record','payment_order')
+AND (NON_UNIQUE=0 OR (TABLE_NAME='appointment' AND INDEX_NAME='idx_course_patient_slot'))
 GROUP BY TABLE_NAME,INDEX_NAME,NON_UNIQUE ORDER BY 1;
 '@
     $shape = @($preflight | & $mysqlPath @connection "--database=$Database" --batch --skip-column-names 2>&1)
@@ -62,7 +61,10 @@ GROUP BY TABLE_NAME,INDEX_NAME,NON_UNIQUE ORDER BY 1;
         'C:payment_order:patient_id:varchar(36):NO','C:payment_order:tenant_id:varchar(36):NO',
         'C:payment_order:amount:decimal(10,2):NO','C:payment_order:status:varchar(16):NO',
         'I:appointment:uk_course_patient_slot:0:patient_id,slot_id',
+        'I:appointment:PRIMARY:0:id',
         'I:clinical_record:uk_course_record_appointment:0:appointment_id',
+        'I:clinical_record:PRIMARY:0:id',
+        'I:payment_order:PRIMARY:0:id',
         'I:payment_order:uk_course_order_appointment:0:appointment_id'
     ) | Sort-Object
     if ((@($shape | Sort-Object) -join "`n") -cne ($expected -join "`n")) {
