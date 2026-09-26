@@ -1,0 +1,5 @@
+# Run after setting MYSQL_CONNECTOR_JAR, DB_USERNAME, and DB_PASSWORD in WildFly's environment.
+# The connector path and credentials are injected by the deployment script.
+module add --name=com.mysql --resources=__MYSQL_CONNECTOR_JAR__ --dependencies=javax.api,javax.transaction.api
+/subsystem=datasources/jdbc-driver=mysql:add(driver-name=mysql,driver-module-name=com.mysql,driver-class-name=com.mysql.cj.jdbc.Driver)
+data-source add --name=MedicalCloudCourseDS --jndi-name=java:/jdbc/MedicalCloudCourseDS --driver-name=mysql --connection-url=jdbc:mysql://127.0.0.1:3306/medical_cloud_course?useUnicode=true\&characterEncoding=UTF-8\&serverTimezone=Asia/Shanghai --user-name=__DB_USERNAME__ --password=__DB_PASSWORD__ --enabled=true
