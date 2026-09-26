@@ -1,6 +1,7 @@
 package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiError;
+import com.medcloud.course.paas.auth.AccessDeniedException;
 
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -15,7 +16,11 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         int status;
         String code;
         String message;
-        if (failure instanceof SecurityException) {
+        if (failure instanceof AccessDeniedException) {
+            status = 403;
+            code = "FORBIDDEN";
+            message = "Access denied";
+        } else if (failure instanceof SecurityException) {
             status = 401;
             code = "UNAUTHORIZED";
             message = "Authentication required or account inactive";

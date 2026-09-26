@@ -9,6 +9,8 @@
     <class>com.medcloud.course.paas.schedule.ScheduleSlot</class>
     <class>com.medcloud.course.paas.auth.Account</class>
     <class>com.medcloud.course.paas.appointment.Appointment</class>
+    <class>com.medcloud.course.paas.consultation.ClinicalRecord</class>
+    <class>com.medcloud.course.paas.order.PaymentOrder</class>
     <properties>
       <property name="javax.persistence.jdbc.driver" value="org.h2.Driver"/>
       <property name="javax.persistence.jdbc.url" value="jdbc:h2:mem:course_directory;MODE=MySQL;DB_CLOSE_DELAY=-1"/>

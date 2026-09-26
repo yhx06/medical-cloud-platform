@@ -40,7 +40,7 @@ public class AppointmentResource {
     @Path("patient/appointments")
     public ApiResponse<AppointmentView> book(@HeaderParam("Authorization") String authorization,
                                               BookingRequest request) {
-        CurrentActor actor = auth.authenticate(token(authorization));
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
         if (request == null || request.getSlotId() == null || request.getSlotId().trim().isEmpty()) {
             throw new IllegalArgumentException("slotId required");
         }
@@ -51,20 +51,12 @@ public class AppointmentResource {
     @GET
     @Path("doctor/appointments")
     public ApiResponse<List<AppointmentView>> forDoctor(@HeaderParam("Authorization") String authorization) {
-        CurrentActor actor = auth.authenticate(token(authorization));
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
         List<AppointmentView> views = new ArrayList<AppointmentView>();
         for (Appointment appointment : booking.forDoctor(actor)) {
             views.add(view(appointment));
         }
         return ApiResponse.success("appointments", views);
-    }
-
-    private static String token(String authorization) {
-        if (authorization == null || !authorization.startsWith("Bearer ")
-                || authorization.length() <= "Bearer ".length()) {
-            throw new SecurityException("bearer token required");
-        }
-        return authorization.substring("Bearer ".length());
     }
 
     private static AppointmentView view(Appointment appointment) {

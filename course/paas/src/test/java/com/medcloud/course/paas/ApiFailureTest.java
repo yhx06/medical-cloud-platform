@@ -2,6 +2,7 @@ package com.medcloud.course.paas;
 
 import com.medcloud.course.contract.ApiError;
 import com.medcloud.course.paas.api.ApiFailureMapper;
+import com.medcloud.course.paas.auth.AccessDeniedException;
 import org.junit.jupiter.api.Test;
 
 import javax.ws.rs.core.Response;
@@ -24,5 +25,12 @@ class ApiFailureTest {
         Response response = new ApiFailureMapper().toResponse(new IllegalStateException("slot full"));
         assertEquals(409, response.getStatus());
         assertEquals("CONFLICT", ((ApiError) response.getEntity()).getCode());
+    }
+
+    @Test
+    void crossTenantAccessIs403() {
+        Response response = new ApiFailureMapper().toResponse(new AccessDeniedException());
+        assertEquals(403, response.getStatus());
+        assertEquals("FORBIDDEN", ((ApiError) response.getEntity()).getCode());
     }
 }

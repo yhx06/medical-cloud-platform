@@ -58,4 +58,18 @@ public class Appointment {
     public BigDecimal getFee() { return fee; }
     public String getStatus() { return status; }
     public Date getBookedOn() { return bookedOn; }
+
+    public void start() {
+        if (!"BOOKED".equals(status)) {
+            throw new IllegalStateException("appointment cannot start");
+        }
+        status = "IN_PROGRESS";
+    }
+
+    public void complete() {
+        if (!"IN_PROGRESS".equals(status)) {
+            throw new IllegalStateException("appointment cannot complete");
+        }
+        status = "COMPLETED";
+    }
 }

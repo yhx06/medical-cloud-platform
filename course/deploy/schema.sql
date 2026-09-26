@@ -72,3 +72,26 @@ CREATE TABLE IF NOT EXISTS appointment (
     CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id),
     INDEX idx_course_doctor_appointment (doctor_id, tenant_id, booked_on)
 );
+
+CREATE TABLE IF NOT EXISTS clinical_record (
+    id VARCHAR(36) PRIMARY KEY,
+    appointment_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    doctor_id VARCHAR(36) NOT NULL,
+    patient_id VARCHAR(36) NOT NULL,
+    diagnosis VARCHAR(500) NOT NULL,
+    advice VARCHAR(2000) NOT NULL,
+    CONSTRAINT uk_course_record_appointment UNIQUE (appointment_id),
+    CONSTRAINT fk_course_record_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id)
+);
+
+CREATE TABLE IF NOT EXISTS payment_order (
+    id VARCHAR(36) PRIMARY KEY,
+    appointment_id VARCHAR(36) NOT NULL,
+    patient_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    CONSTRAINT uk_course_order_appointment UNIQUE (appointment_id),
+    CONSTRAINT fk_course_order_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id)
+);
