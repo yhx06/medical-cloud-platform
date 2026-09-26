@@ -55,3 +55,20 @@ CREATE TABLE IF NOT EXISTS schedule_slot (
     CONSTRAINT uk_course_doctor_slot UNIQUE (doctor_id, schedule_date, start_time),
     INDEX idx_course_slot_catalog (tenant_id, status, schedule_date)
 );
+
+CREATE TABLE IF NOT EXISTS appointment (
+    id VARCHAR(36) PRIMARY KEY,
+    patient_id VARCHAR(36) NOT NULL,
+    slot_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    doctor_id VARCHAR(36) NOT NULL,
+    fee DECIMAL(10,2) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    booked_on DATE NOT NULL,
+    CONSTRAINT fk_course_appointment_patient FOREIGN KEY (patient_id) REFERENCES user_account(id),
+    CONSTRAINT fk_course_appointment_slot FOREIGN KEY (slot_id) REFERENCES schedule_slot(id),
+    CONSTRAINT fk_course_appointment_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+    CONSTRAINT fk_course_appointment_doctor FOREIGN KEY (doctor_id) REFERENCES user_account(id),
+    CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id),
+    INDEX idx_course_doctor_appointment (doctor_id, tenant_id, booked_on)
+);
