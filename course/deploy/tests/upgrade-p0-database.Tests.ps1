@@ -136,6 +136,36 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             ($shape -contains 'I:idx_course_patient_slot:1:patient_id,slot_id') | Should Be $true
             ($shape -contains 'I:uk_course_patient_slot:0:patient_id,slot_id') | Should Be $false
         }
+        It 'rejects a same-named legacy database missing a required clinical column before backup or DDL' {
+            Invoke-FixtureSql 'DROP DATABASE medical_cloud_course' | Out-Null
+            $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
+            $LASTEXITCODE | Should Be 0
+            Invoke-FixtureSql 'ALTER TABLE clinical_record DROP COLUMN diagnosis' 'medical_cloud_course' | Out-Null
+            $backup = Join-Path $scratch 'missing-diagnosis.sql'
+            (Invoke-Upgrade 'medical_cloud_course' $backup) | Should Not Be 0
+            (Test-Path $backup) | Should Be $false
+            (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
+        }
+        It 'rejects missing clinical appointment uniqueness before backup or DDL' {
+            Invoke-FixtureSql 'DROP DATABASE medical_cloud_course' | Out-Null
+            $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
+            $LASTEXITCODE | Should Be 0
+            Invoke-FixtureSql 'ALTER TABLE clinical_record ADD INDEX idx_record_appointment (appointment_id), DROP INDEX uk_course_record_appointment' 'medical_cloud_course' | Out-Null
+            $backup = Join-Path $scratch 'missing-record-unique.sql'
+            (Invoke-Upgrade 'medical_cloud_course' $backup) | Should Not Be 0
+            (Test-Path $backup) | Should Be $false
+            (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
+        }
+        It 'rejects missing order appointment uniqueness before backup or DDL' {
+            Invoke-FixtureSql 'DROP DATABASE medical_cloud_course' | Out-Null
+            $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
+            $LASTEXITCODE | Should Be 0
+            Invoke-FixtureSql 'ALTER TABLE payment_order ADD INDEX idx_order_appointment (appointment_id), DROP INDEX uk_course_order_appointment' 'medical_cloud_course' | Out-Null
+            $backup = Join-Path $scratch 'missing-order-unique.sql'
+            (Invoke-Upgrade 'medical_cloud_course' $backup) | Should Not Be 0
+            (Test-Path $backup) | Should Be $false
+            (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
+        }
     }
 } finally {
     $env:MYSQL_PWD = $oldPassword
