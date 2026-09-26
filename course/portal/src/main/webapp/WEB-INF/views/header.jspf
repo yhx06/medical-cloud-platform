@@ -1,0 +1,19 @@
+<%@ page import="com.medcloud.course.portal.web.WebEscaper" %>
+<% String context = request.getContextPath(); %>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %> · 医疗云</title>
+  <link rel="stylesheet" href="<%= context %>/assets/course.css">
+</head>
+<body>
+<header class="topbar">
+  <div><strong>医疗云</strong><span class="subtle">课程版 SaaS Portal · Tomcat 9</span></div>
+  <nav><span><%= WebEscaper.html(String.valueOf(request.getAttribute("username"))) %></span><a href="<%= context %>/logout">退出登录</a></nav>
+</header>
+<main class="container">
+  <h1><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %></h1>
+  <% if (request.getAttribute("notice") != null) { %><p class="notice"><%= request.getAttribute("notice") %></p><% } %>
+  <% if (request.getAttribute("error") != null) { %><p class="error"><%= request.getAttribute("error") %></p><% } %>

@@ -9,6 +9,7 @@
   </parent>
   <artifactId>paas</artifactId>
   <packaging>war</packaging>
+  <build><finalName>paas</finalName></build>
   <dependencies>
     <dependency>
       <groupId>com.medcloud.course</groupId>

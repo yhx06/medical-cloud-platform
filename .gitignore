@@ -1,5 +1,6 @@
 # Java
 backend/target/
+course/**/target/
 *.class
 
 # Node
