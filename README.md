@@ -1,8 +1,10 @@
 # 基于多租户医疗云的在线预约与诊疗服务平台
 
-云服务工程课程项目基础框架。当前版本可演示 JWT 登录、四角色权限控制、租户隔离、角色工作台和统一错误响应；预约、接诊、订单、文件和统计保留清晰模块契约，便于小组并行迭代。
+本仓库有两条互不覆盖的实现路径。课程验收主路径是 `course/`：JDK 8、Tomcat 9 门户 WAR、WildFly 10 PaaS WAR、MySQL/JNDI/JPA 和 PowerDesigner 模型，可演示登录、预约、接诊、病历及模拟缴费。`backend/` 与 `frontend/` 保留原 Java 21/Spring Boot/Vue 实现，便于对比和后续扩展。
 
-## 技术栈
+按老师环境复现时请先看 [课程版部署与验收](course/deploy/README.md)、[架构及接口](docs/course-architecture/README.md)、[实验记录](docs/course-labs/README.md)。课程版入口为 `http://127.0.0.1:8088/portal/login`，隔离环境启动后可访问。以下快速开始仅适用于原 Java 21/Vue 版本。
+
+## 原版技术栈（非课程验收主路径）
 
 - 后端：Java 21、Spring Boot 3.4.5、Spring Security、JPA、Flyway
 - 前端：Vue 3、TypeScript、Vite、Pinia、Vue Router

@@ -53,10 +53,11 @@ public final class PaasClient {
             if (token != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + token);
             }
-            if (request != null) {
+            if ("POST".equals(method)) {
                 connection.setDoOutput(true);
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
-                byte[] body = JSON.writeValueAsBytes(request);
+                byte[] body = request == null ? "{}".getBytes(StandardCharsets.UTF_8)
+                        : JSON.writeValueAsBytes(request);
                 try (OutputStream output = connection.getOutputStream()) {
                     output.write(body);
                 }

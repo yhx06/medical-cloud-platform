@@ -1,6 +1,7 @@
 # Java
 backend/target/
 course/**/target/
+course/.runtime/
 *.class
 
 # Node

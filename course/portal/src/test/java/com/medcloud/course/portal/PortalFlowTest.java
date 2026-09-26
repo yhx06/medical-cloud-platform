@@ -81,4 +81,25 @@ class PortalFlowTest {
         assertFalse(failure.getMessage().contains("Secret@123456"));
         assertEquals("诊疗服务暂时不可用，请稍后重试", failure.getMessage());
     }
+
+    @Test
+    void emptyPostStillUsesJsonContentTypeForWildFly() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicReference<String> contentType = new AtomicReference<String>();
+        server.createContext("/api/doctor/appointments/abc/start", exchange -> {
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            byte[] response = "{\"code\":\"OK\",\"data\":\"abc\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            PaasClient client = new PaasClient("http://127.0.0.1:" + server.getAddress().getPort() + "/api");
+            client.post("/doctor/appointments/abc/start", "signed-token", null);
+            assertTrue(contentType.get() != null && contentType.get().startsWith("application/json"));
+        } finally {
+            server.stop(0);
+        }
+    }
 }
