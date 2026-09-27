@@ -24,6 +24,7 @@
         <label>建议<textarea name="advice" maxlength="2000" required></textarea></label>
         <button type="submit">完成接诊并生成账单</button>
       </form>
+      <% } else if ("CANCELED".equals(appointment.path("status").asText())) { %><span class="subtle">已取消</span>
       <% } else { %><span class="subtle">已完成</span><% } %>
     </td></tr>
   <% } %>

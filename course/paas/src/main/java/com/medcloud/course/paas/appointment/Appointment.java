@@ -71,6 +71,13 @@ public class Appointment {
         status = "IN_PROGRESS";
     }
 
+    public void cancel() {
+        if (!"BOOKED".equals(status)) {
+            throw new IllegalStateException("appointment cannot cancel");
+        }
+        status = "CANCELED";
+    }
+
     public void complete() {
         if (!"IN_PROGRESS".equals(status)) {
             throw new IllegalStateException("appointment cannot complete");

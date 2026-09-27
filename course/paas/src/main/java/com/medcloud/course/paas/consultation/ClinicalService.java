@@ -6,6 +6,7 @@ import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.order.PaymentOrder;
+import com.medcloud.course.paas.schedule.ScheduleSlot;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
@@ -23,8 +24,18 @@ public class ClinicalService {
     public ClinicalService(EntityManager manager) { this.manager = manager; }
 
     public Appointment start(CurrentActor actor, String appointmentId) {
+        Appointment candidate = manager.find(Appointment.class, appointmentId);
+        requireDoctor(actor, candidate);
+        Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
+        manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
+        if (!"ACTIVE".equals(doctor.getStatus())) throw new AccessDeniedException();
+        ScheduleSlot slot = manager.find(ScheduleSlot.class, candidate.getSlotId(), LockModeType.PESSIMISTIC_WRITE);
+        if (slot == null) throw new AccessDeniedException();
+        manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
         Appointment appointment = manager.find(Appointment.class, appointmentId, LockModeType.PESSIMISTIC_WRITE);
+        manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
         requireDoctor(actor, appointment);
+        if (!slot.getId().equals(appointment.getSlotId())) throw new AccessDeniedException();
         appointment.start();
         return appointment;
     }

@@ -5,6 +5,10 @@ import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.portal.factory.CloudServiceFactory;
+import com.medcloud.course.portal.web.PortalServlet;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockHttpSession;
 import com.medcloud.course.portal.web.PaasClient;
 import com.medcloud.course.portal.web.PaasUnavailableException;
 import com.sun.net.httpserver.HttpServer;
@@ -21,6 +25,37 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PortalFlowTest {
+    @Test
+    void patientCancellationPostsOnlyValidatedAppointmentWithCsrf() throws Exception {
+        String id = "11111111-1111-1111-1111-111111111111";
+        AtomicReference<String> called = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/patient/appointments/" + id + "/cancel", exchange -> {
+            called.set(exchange.getRequestMethod() + " " + exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] response = "{\"code\":\"OK\",\"data\":{}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            PortalServlet servlet = new PortalServlet(new PaasClient(
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/api"), new CloudServiceFactory());
+            MockHttpSession session = new MockHttpSession();
+            session.setAttribute("role", Role.PATIENT);
+            session.setAttribute("accessToken", "signed-token");
+            session.setAttribute("csrfToken", "csrf");
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/portal/patient/cancel");
+            request.setContextPath("/portal"); request.setServletPath("/patient/cancel"); request.setSession(session);
+            request.addParameter("appointmentId", id); request.addParameter("csrfToken", "csrf");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            servlet.service(request, response);
+            assertEquals("POST Bearer signed-token", called.get());
+            assertEquals("/portal/patient", response.getRedirectedUrl());
+            assertEquals("预约已取消", session.getAttribute("flash"));
+        } finally { server.stop(0); }
+    }
+
     @Test
     void cloudFactorySelectsOnlyRoleAllowedActions() {
         CloudServiceFactory factory = new CloudServiceFactory();

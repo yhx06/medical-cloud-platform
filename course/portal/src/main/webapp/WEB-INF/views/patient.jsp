@@ -33,6 +33,26 @@
   <% } %>
 </section>
 <section class="card">
+  <h2>我的预约历史</h2>
+  <% JsonNode appointments = (JsonNode) request.getAttribute("appointments");
+     if (appointments != null && appointments.isArray()) { %>
+  <div class="table-wrap"><table><thead><tr><th>预约编号</th><th>医院 / 科室 / 医生</th><th>就诊时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
+  <% for (JsonNode appointment : appointments) { %>
+    <tr><td><%= WebEscaper.html(appointment.path("id").asText()) %></td>
+    <td><%= WebEscaper.html(appointment.path("hospitalName").asText()) %> / <%= WebEscaper.html(appointment.path("departmentName").asText()) %> / <%= WebEscaper.html(appointment.path("doctorName").asText()) %></td>
+    <td><%= WebEscaper.html(appointment.path("slotDate").asText()) %> <%= WebEscaper.html(appointment.path("startTime").asText()) %>–<%= WebEscaper.html(appointment.path("endTime").asText()) %></td>
+    <td><%= WebEscaper.html(appointment.path("status").asText()) %></td>
+    <td><% if ("BOOKED".equals(appointment.path("status").asText())) { %>
+      <form method="post" action="<%= context %>/patient/cancel">
+        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="appointmentId" value="<%= WebEscaper.html(appointment.path("id").asText()) %>">
+        <button type="submit">取消预约</button>
+      </form><% } %></td></tr>
+  <% } %></tbody></table></div>
+  <% if (appointments.size() == 0) { %><p class="subtle">暂无预约记录。</p><% } %>
+  <% } %>
+</section>
+<section class="card">
   <h2>查看病历与账单</h2>
   <form method="get" action="<%= context %>/patient" class="inline-form">
     <label>预约编号<input name="appointmentId" value="<%= request.getAttribute("appointmentId") == null ? "" : request.getAttribute("appointmentId") %>" required></label>

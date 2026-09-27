@@ -28,7 +28,7 @@ import java.sql.Time;
 import java.util.Base64;
 import java.util.regex.Pattern;
 
-@WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/pay",
+@WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/cancel", "/patient/pay",
         "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/hospital/department/create",
         "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit",
         "/hospital/slot/create", "/hospital/slot/edit", "/platform"})
@@ -136,6 +136,7 @@ public class PortalServlet extends HttpServlet {
                     request.setAttribute("record", paas.get("/patient/appointments/" + id + "/record", token(session)));
                     request.setAttribute("order", paas.get("/patient/appointments/" + id + "/order", token(session)));
                 }
+                request.setAttribute("appointments", paas.get("/patient/appointments", token(session)));
             } else if ("/doctor".equals(path)) {
                 request.setAttribute("appointments", paas.get("/doctor/appointments", token(session)));
             } else if ("/hospital".equals(path)) {
@@ -180,6 +181,10 @@ public class PortalServlet extends HttpServlet {
                 result = paas.post("/patient/appointments", token(session),
                         new BookingRequest(required(request, "slotId")));
                 session.setAttribute("flash", "预约成功，预约编号：" + result.path("id").asText());
+            } else if ("/patient/cancel".equals(path)) {
+                paas.post("/patient/appointments/" + requiredId(required(request, "appointmentId")) + "/cancel",
+                        token(session), null);
+                session.setAttribute("flash", "预约已取消");
             } else if ("/doctor/start".equals(path)) {
                 paas.post("/doctor/appointments/" + requiredId(required(request, "appointmentId")) + "/start",
                         token(session), null);

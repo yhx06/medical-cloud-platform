@@ -2,6 +2,7 @@ package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.AppointmentView;
+import com.medcloud.course.contract.AppointmentHistoryView;
 import com.medcloud.course.contract.BookingRequest;
 import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.appointment.BookingService;
@@ -14,10 +15,12 @@ import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
+import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 import java.sql.Date;
 import java.time.LocalDate;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -46,6 +49,21 @@ public class AppointmentResource {
         }
         return ApiResponse.success("booked", view(booking.book(actor, request.getSlotId(),
                 Date.valueOf(LocalDate.now()))));
+    }
+
+    @GET
+    @Path("patient/appointments")
+    public ApiResponse<List<AppointmentHistoryView>> forPatient(@HeaderParam("Authorization") String authorization) {
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
+        return ApiResponse.success("appointments", booking.forPatient(actor));
+    }
+
+    @POST
+    @Path("patient/appointments/{id}/cancel")
+    public ApiResponse<AppointmentView> cancel(@HeaderParam("Authorization") String authorization,
+            @PathParam("id") String appointmentId) {
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
+        return ApiResponse.success("canceled", view(booking.cancel(actor, appointmentId, Instant.now())));
     }
 
     @GET
