@@ -34,18 +34,7 @@ public class ClinicalService {
 
     public Appointment start(CurrentActor actor, String appointmentId, Instant now) {
         if (now == null) throw new IllegalArgumentException("start time required");
-        Appointment candidate = manager.find(Appointment.class, appointmentId);
-        requireDoctor(actor, candidate);
-        Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
-        manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
-        if (!"ACTIVE".equals(doctor.getStatus())) throw new AccessDeniedException();
-        ScheduleSlot slot = manager.find(ScheduleSlot.class, candidate.getSlotId(), LockModeType.PESSIMISTIC_WRITE);
-        if (slot == null) throw new AccessDeniedException();
-        manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
-        Appointment appointment = manager.find(Appointment.class, appointmentId, LockModeType.PESSIMISTIC_WRITE);
-        manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
-        requireDoctor(actor, appointment);
-        if (!slot.getId().equals(appointment.getSlotId())) throw new AccessDeniedException();
+        Appointment appointment = lockedDoctorAppointment(actor, appointmentId);
         appointment.start(now);
         return appointment;
     }
@@ -58,6 +47,19 @@ public class ClinicalService {
                                    String diagnosis, String advice, String notes, Instant now) {
         if (diagnosis == null || diagnosis.trim().isEmpty() || advice == null || advice.trim().isEmpty()
                 || now == null) throw new IllegalArgumentException("diagnosis, advice and time required");
+        Appointment appointment = lockedDoctorAppointment(actor, appointmentId);
+        appointment.complete();
+        ClinicalRecord record = new ClinicalRecord(UUID.randomUUID().toString(), appointmentId,
+                appointment.getTenantId(), appointment.getDoctorId(), appointment.getPatientId(),
+                complaint, diagnosis, advice, notes, now);
+        PaymentOrder order = new PaymentOrder(UUID.randomUUID().toString(), appointmentId,
+                appointment.getPatientId(), appointment.getTenantId(), appointment.getFee());
+        manager.persist(record);
+        manager.persist(order);
+        return record;
+    }
+
+    private Appointment lockedDoctorAppointment(CurrentActor actor, String appointmentId) {
         Appointment candidate = manager.find(Appointment.class, appointmentId);
         requireDoctor(actor, candidate);
         Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
@@ -70,15 +72,7 @@ public class ClinicalService {
         manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
         requireDoctor(actor, appointment);
         if (!slot.getId().equals(appointment.getSlotId())) throw new AccessDeniedException();
-        appointment.complete();
-        ClinicalRecord record = new ClinicalRecord(UUID.randomUUID().toString(), appointmentId,
-                appointment.getTenantId(), appointment.getDoctorId(), appointment.getPatientId(),
-                complaint, diagnosis, advice, notes, now);
-        PaymentOrder order = new PaymentOrder(UUID.randomUUID().toString(), appointmentId,
-                appointment.getPatientId(), appointment.getTenantId(), appointment.getFee());
-        manager.persist(record);
-        manager.persist(order);
-        return record;
+        return appointment;
     }
 
     public List<ClinicalRecord> forDoctor(CurrentActor actor, Date from, Date to) {
