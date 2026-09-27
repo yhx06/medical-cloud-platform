@@ -14,9 +14,21 @@ public final class SlotView {
     private final Time endTime;
     private final int capacity;
     private final BigDecimal fee;
+    private final int remaining;
+    private final String status;
 
     public SlotView(String id, String tenantId, String departmentId, String doctorId, Date date,
                     Time startTime, Time endTime, int capacity, BigDecimal fee) {
+        this(id, tenantId, departmentId, doctorId, date, startTime, endTime, capacity, fee, capacity);
+    }
+
+    public SlotView(String id, String tenantId, String departmentId, String doctorId, Date date,
+                    Time startTime, Time endTime, int capacity, BigDecimal fee, int remaining) {
+        this(id, tenantId, departmentId, doctorId, date, startTime, endTime, capacity, fee, remaining, "PUBLISHED");
+    }
+
+    public SlotView(String id, String tenantId, String departmentId, String doctorId, Date date,
+                    Time startTime, Time endTime, int capacity, BigDecimal fee, int remaining, String status) {
         this.id = id;
         this.tenantId = tenantId;
         this.departmentId = departmentId;
@@ -26,6 +38,8 @@ public final class SlotView {
         this.endTime = endTime;
         this.capacity = capacity;
         this.fee = fee;
+        this.remaining = remaining;
+        this.status = status;
     }
 
     public String getId() { return id; }
@@ -37,4 +51,6 @@ public final class SlotView {
     public Time getEndTime() { return endTime; }
     public int getCapacity() { return capacity; }
     public BigDecimal getFee() { return fee; }
+    public int getRemaining() { return remaining; }
+    public String getStatus() { return status; }
 }

@@ -9,6 +9,7 @@ import com.medcloud.course.contract.RegisterRequest;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.DepartmentRequest;
 import com.medcloud.course.contract.DoctorRequest;
+import com.medcloud.course.contract.SlotRequest;
 import com.medcloud.course.portal.factory.CloudServiceFactory;
 
 import javax.servlet.ServletException;
@@ -21,12 +22,16 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.math.BigDecimal;
+import java.sql.Date;
+import java.sql.Time;
 import java.util.Base64;
 import java.util.regex.Pattern;
 
 @WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/pay",
         "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/hospital/department/create",
-        "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit", "/platform"})
+        "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit",
+        "/hospital/slot/create", "/hospital/slot/edit", "/platform"})
 public class PortalServlet extends HttpServlet {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern UUID_ID = Pattern.compile(
@@ -112,9 +117,17 @@ public class PortalServlet extends HttpServlet {
             if ("/patient".equals(path)) {
                 String tenantId = request.getParameter("tenantId");
                 request.setAttribute("tenantId", WebEscaper.html(tenantId));
+                request.setAttribute("departmentId", WebEscaper.html(request.getParameter("departmentId")));
+                request.setAttribute("doctorId", WebEscaper.html(request.getParameter("doctorId")));
+                request.setAttribute("date", WebEscaper.html(request.getParameter("date")));
                 if (tenantId != null && !tenantId.trim().isEmpty()) {
-                    String query = URLEncoder.encode(tenantId, StandardCharsets.UTF_8.name());
-                    request.setAttribute("slots", paas.get("/catalog/slots?tenantId=" + query, token(session)));
+                    String query = "tenantId=" + URLEncoder.encode(tenantId, StandardCharsets.UTF_8.name());
+                    for (String key : new String[] {"departmentId", "doctorId", "date"}) {
+                        String value = request.getParameter(key);
+                        if (value != null && !value.trim().isEmpty())
+                            query += "&" + key + "=" + URLEncoder.encode(value.trim(), StandardCharsets.UTF_8.name());
+                    }
+                    request.setAttribute("slots", paas.get("/catalog/slots?" + query, token(session)));
                 }
                 String appointmentId = request.getParameter("appointmentId");
                 request.setAttribute("appointmentId", WebEscaper.html(appointmentId));
@@ -128,6 +141,7 @@ public class PortalServlet extends HttpServlet {
             } else if ("/hospital".equals(path)) {
                 request.setAttribute("departments", paas.get("/hospital/departments", token(session)));
                 request.setAttribute("doctors", paas.get("/hospital/doctors", token(session)));
+                request.setAttribute("slots", paas.get("/hospital/slots", token(session)));
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
             request.setAttribute("error", WebEscaper.html(error.getMessage()));
@@ -195,6 +209,12 @@ public class PortalServlet extends HttpServlet {
                         new DoctorRequest(null, required(request, "displayName"),
                                 requiredId(required(request, "departmentId")), required(request, "status")));
                 session.setAttribute("flash", "医生已更新");
+            } else if ("/hospital/slot/create".equals(path)) {
+                paas.post("/hospital/slots", token(session), slotRequest(request, false));
+                session.setAttribute("flash", "号源已发布");
+            } else if ("/hospital/slot/edit".equals(path)) {
+                paas.put("/hospital/slots/" + requiredId(required(request, "id")), token(session), slotRequest(request, true));
+                session.setAttribute("flash", "号源已更新");
             } else {
                 response.sendError(404);
                 return;
@@ -271,6 +291,23 @@ public class PortalServlet extends HttpServlet {
         if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException("请填写完整信息");
         return value.trim();
     }
+
+    private static SlotRequest slotRequest(HttpServletRequest request, boolean edit) {
+        try {
+            int capacity = Integer.parseInt(required(request, "capacity"));
+            BigDecimal fee = new BigDecimal(required(request, "fee"));
+            Date date = Date.valueOf(required(request, "date"));
+            Time start = Time.valueOf(clock(required(request, "startTime")));
+            Time end = Time.valueOf(clock(required(request, "endTime")));
+            return new SlotRequest(requiredId(required(request, "departmentId")),
+                    requiredId(required(request, "doctorId")), date, start, end, capacity, fee,
+                    edit ? required(request, "status") : null);
+        } catch (IllegalArgumentException failure) {
+            throw new IllegalArgumentException("号源信息格式不正确");
+        }
+    }
+
+    private static String clock(String value) { return value.matches("[0-9]{2}:[0-9]{2}") ? value + ":00" : value; }
 
     private static String requiredId(String value) {
         if (value == null || !UUID_ID.matcher(value).matches()) {

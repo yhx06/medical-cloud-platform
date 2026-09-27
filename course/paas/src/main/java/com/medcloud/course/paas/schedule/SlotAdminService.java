@@ -1,0 +1,127 @@
+package com.medcloud.course.paas.schedule;
+
+import com.medcloud.course.contract.Role;
+import com.medcloud.course.contract.SlotRequest;
+import com.medcloud.course.paas.auth.AccessDeniedException;
+import com.medcloud.course.paas.auth.Account;
+import com.medcloud.course.paas.auth.CurrentActor;
+import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
+import com.medcloud.course.paas.tenant.HospitalDepartmentService;
+
+import javax.ejb.Stateless;
+import javax.persistence.EntityManager;
+import javax.persistence.LockModeType;
+import javax.persistence.PersistenceContext;
+import java.sql.Date;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.List;
+import java.util.UUID;
+
+@Stateless
+public class SlotAdminService {
+    @PersistenceContext(unitName = "medicalCloudCourse") private EntityManager manager;
+    public SlotAdminService() { }
+    public SlotAdminService(EntityManager manager) { this.manager = manager; }
+
+    public List<ScheduleSlot> list(CurrentActor actor) {
+        String tenantId = tenant(actor);
+        return manager.createQuery("select s from ScheduleSlot s where s.tenantId = :tenantId "
+                + "order by s.date desc, s.startTime, s.id", ScheduleSlot.class)
+                .setParameter("tenantId", tenantId).setMaxResults(200).getResultList();
+    }
+
+    public int remaining(ScheduleSlot slot) {
+        Long occupied = manager.createQuery("select count(a) from Appointment a where a.slotId = :slotId "
+                + "and a.status <> 'CANCELED'", Long.class)
+                .setParameter("slotId", slot.getId()).getSingleResult();
+        return Math.max(0, slot.getCapacity() - occupied.intValue());
+    }
+
+    public ScheduleSlot create(CurrentActor actor, SlotRequest request) {
+        String tenantId = tenant(actor);
+        validate(request, false);
+        // Booking locks doctor then slot. Keep the same order for edits and publication.
+        activeDoctor(tenantId, request.getDepartmentId(), request.getDoctorId());
+        unique(tenantId, request, null);
+        ScheduleSlot slot = new ScheduleSlot(UUID.randomUUID().toString(), tenantId, request.getDepartmentId(),
+                request.getDoctorId(), request.getDate(), request.getStartTime(), request.getEndTime(),
+                request.getCapacity(), request.getFee());
+        manager.persist(slot);
+        return slot;
+    }
+
+    public ScheduleSlot update(CurrentActor actor, String slotId, SlotRequest request) {
+        String tenantId = tenant(actor);
+        validate(request, true);
+        manager.flush();
+        ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
+        if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
+        // Lock both possible doctors before the slot; this also serializes a concurrent doctor disable.
+        String first = candidate.getDoctorId().compareTo(request.getDoctorId()) <= 0
+                ? candidate.getDoctorId() : request.getDoctorId();
+        String second = first.equals(candidate.getDoctorId()) ? request.getDoctorId() : candidate.getDoctorId();
+        lockDoctor(first);
+        if (!second.equals(first)) lockDoctor(second);
+        ScheduleSlot slot = manager.find(ScheduleSlot.class, slotId, LockModeType.PESSIMISTIC_WRITE);
+        manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
+        if (!tenantId.equals(slot.getTenantId())) throw new AccessDeniedException();
+        activeDoctor(tenantId, request.getDepartmentId(), request.getDoctorId());
+        Long booked = manager.createQuery("select count(a) from Appointment a where a.slotId = :slotId "
+                + "and a.status <> 'CANCELED'", Long.class).setParameter("slotId", slotId).getSingleResult();
+        if (booked > 0 && (!slot.getDepartmentId().equals(request.getDepartmentId())
+                || !slot.getDoctorId().equals(request.getDoctorId()) || !slot.getDate().equals(request.getDate())
+                || !slot.getStartTime().equals(request.getStartTime()) || !slot.getEndTime().equals(request.getEndTime())
+                || slot.getFee().compareTo(request.getFee()) != 0 || request.getCapacity() < slot.getCapacity()
+                || "WITHDRAWN".equals(request.getStatus()))) {
+            throw new IllegalStateException("slot has bookings");
+        }
+        unique(tenantId, request, slotId);
+        slot.update(request.getDepartmentId(), request.getDoctorId(), request.getDate(), request.getStartTime(),
+                request.getEndTime(), request.getCapacity(), request.getFee(), request.getStatus());
+        return slot;
+    }
+
+    private void validate(SlotRequest request, boolean update) {
+        if (request == null || request.getDepartmentId() == null || request.getDoctorId() == null
+                || request.getDate() == null || request.getStartTime() == null || request.getEndTime() == null
+                || request.getCapacity() <= 0 || request.getFee() == null || request.getFee().signum() < 0
+                || !request.getEndTime().after(request.getStartTime())
+                || (update && !("PUBLISHED".equals(request.getStatus()) || "WITHDRAWN".equals(request.getStatus())))
+                || (!update && request.getStatus() != null && !"PUBLISHED".equals(request.getStatus()))) {
+            throw new IllegalArgumentException("invalid slot");
+        }
+        if (request.getDate().before(Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai")))))
+            throw new IllegalArgumentException("past slot");
+    }
+
+    private void activeDoctor(String tenantId, String departmentId, String doctorId) {
+        Department department = manager.find(Department.class, departmentId);
+        if (department == null || !tenantId.equals(department.getTenantId())) throw new AccessDeniedException();
+        if (!"ACTIVE".equals(department.getStatus())) throw new IllegalStateException("department disabled");
+        Account doctor = lockDoctor(doctorId);
+        DoctorProfile profile = manager.find(DoctorProfile.class, doctorId);
+        if (doctor == null || profile == null || !tenantId.equals(doctor.getTenantId())
+                || !tenantId.equals(profile.getTenantId()) || doctor.getRole() != Role.DOCTOR
+                || !departmentId.equals(profile.getDepartmentId())) throw new AccessDeniedException();
+        if (!"ACTIVE".equals(doctor.getStatus())) throw new IllegalStateException("doctor disabled");
+    }
+
+    private Account lockDoctor(String doctorId) {
+        Account doctor = manager.find(Account.class, doctorId, LockModeType.PESSIMISTIC_WRITE);
+        if (doctor != null) manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
+        return doctor;
+    }
+
+    private void unique(String tenantId, SlotRequest request, String exceptId) {
+        Long count = manager.createQuery("select count(s) from ScheduleSlot s where s.tenantId = :tenantId "
+                + "and s.doctorId = :doctorId and s.date = :date and s.startTime = :startTime and s.id <> :exceptId", Long.class)
+                .setParameter("tenantId", tenantId).setParameter("doctorId", request.getDoctorId())
+                .setParameter("date", request.getDate()).setParameter("startTime", request.getStartTime())
+                .setParameter("exceptId", exceptId == null ? "" : exceptId).getSingleResult();
+        if (count != 0) throw new IllegalStateException("duplicate slot");
+    }
+
+    private String tenant(CurrentActor actor) { return new HospitalDepartmentService(manager).tenant(actor); }
+}

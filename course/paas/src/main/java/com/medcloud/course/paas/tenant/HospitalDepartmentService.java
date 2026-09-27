@@ -71,7 +71,7 @@ public class HospitalDepartmentService {
         return value.trim();
     }
 
-    String tenant(CurrentActor actor) {
+    public String tenant(CurrentActor actor) {
         if (actor == null || actor.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
         Account account = manager.find(Account.class, actor.getUserId());
         if (account == null || account.getRole() != Role.HOSPITAL_ADMIN || !"ACTIVE".equals(account.getStatus())

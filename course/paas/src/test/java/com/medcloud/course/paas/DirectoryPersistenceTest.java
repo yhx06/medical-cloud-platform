@@ -1,8 +1,11 @@
 package com.medcloud.course.paas;
 
+import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.schedule.DirectoryService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.Tenant;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +31,10 @@ class DirectoryPersistenceTest {
             manager.persist(new Tenant("tenant-b", "安康云门诊"));
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Department("department-b", "tenant-b", "儿科"));
+            manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new Account("doctor-b", "doctor_b", "hash", Role.DOCTOR, "tenant-b"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "甲医生"));
+            manager.persist(new DoctorProfile("doctor-b", "tenant-b", "department-b", "乙医生"));
             DirectoryService directory = new DirectoryService(manager);
             directory.publish(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
                     Date.valueOf("2030-05-21"), Time.valueOf("09:00:00"), Time.valueOf("10:00:00"),

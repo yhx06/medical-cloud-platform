@@ -101,4 +101,21 @@ public class ScheduleSlot {
     public String getStatus() {
         return status;
     }
+
+    public void update(String departmentId, String doctorId, Date date, Time startTime, Time endTime,
+                       int capacity, BigDecimal fee, String status) {
+        if (departmentId == null || doctorId == null || date == null || startTime == null || endTime == null
+                || capacity <= 0 || fee == null || fee.signum() < 0 || !endTime.after(startTime)
+                || !("PUBLISHED".equals(status) || "WITHDRAWN".equals(status))) {
+            throw new IllegalArgumentException("invalid slot");
+        }
+        this.departmentId = departmentId;
+        this.doctorId = doctorId;
+        this.date = date;
+        this.startTime = startTime;
+        this.endTime = endTime;
+        this.capacity = capacity;
+        this.fee = fee;
+        this.status = status;
+    }
 }

@@ -5,16 +5,21 @@
   <h2>查询号源</h2>
   <form method="get" action="<%= context %>/patient" class="inline-form">
     <label>医院编号<input name="tenantId" value="<%= request.getAttribute("tenantId") == null ? "" : request.getAttribute("tenantId") %>" placeholder="例如 tenant-a" required></label>
+    <label>科室编号<input name="departmentId" value="<%= request.getAttribute("departmentId") == null ? "" : request.getAttribute("departmentId") %>"></label>
+    <label>医生编号<input name="doctorId" value="<%= request.getAttribute("doctorId") == null ? "" : request.getAttribute("doctorId") %>"></label>
+    <label>日期<input type="date" name="date" value="<%= request.getAttribute("date") == null ? "" : request.getAttribute("date") %>"></label>
     <button type="submit">查询</button>
   </form>
   <% JsonNode slots = (JsonNode) request.getAttribute("slots");
      if (slots != null && slots.isArray()) { %>
-  <div class="table-wrap"><table><thead><tr><th>日期</th><th>时段</th><th>医生</th><th>诊费</th><th>操作</th></tr></thead><tbody>
+  <div class="table-wrap"><table><thead><tr><th>日期</th><th>时段</th><th>科室</th><th>医生</th><th>余量/容量</th><th>诊费</th><th>操作</th></tr></thead><tbody>
   <% for (JsonNode slot : slots) { %>
     <tr>
       <td><%= WebEscaper.html(slot.path("date").asText()) %></td>
       <td><%= WebEscaper.html(slot.path("startTime").asText()) %>–<%= WebEscaper.html(slot.path("endTime").asText()) %></td>
+      <td><%= WebEscaper.html(slot.path("departmentId").asText()) %></td>
       <td><%= WebEscaper.html(slot.path("doctorId").asText()) %></td>
+      <td><%= WebEscaper.html(slot.path("remaining").asText()) %>/<%= WebEscaper.html(slot.path("capacity").asText()) %></td>
       <td>¥<%= WebEscaper.html(slot.path("fee").asText()) %></td>
       <td><form method="post" action="<%= context %>/patient/book">
         <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
