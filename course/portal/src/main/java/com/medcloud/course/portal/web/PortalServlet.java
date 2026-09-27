@@ -139,6 +139,21 @@ public class PortalServlet extends HttpServlet {
                 request.setAttribute("appointments", paas.get("/patient/appointments", token(session)));
             } else if ("/doctor".equals(path)) {
                 request.setAttribute("appointments", paas.get("/doctor/appointments", token(session)));
+                String from = request.getParameter("from");
+                String to = request.getParameter("to");
+                StringBuilder recordsPath = new StringBuilder("/doctor/records");
+                if (from != null && !from.trim().isEmpty()) {
+                    Date.valueOf(from);
+                    recordsPath.append("?from=").append(URLEncoder.encode(from, "UTF-8"));
+                }
+                if (to != null && !to.trim().isEmpty()) {
+                    Date.valueOf(to);
+                    recordsPath.append(recordsPath.indexOf("?") < 0 ? "?" : "&")
+                            .append("to=").append(URLEncoder.encode(to, "UTF-8"));
+                }
+                request.setAttribute("from", WebEscaper.html(from));
+                request.setAttribute("to", WebEscaper.html(to));
+                request.setAttribute("records", paas.get(recordsPath.toString(), token(session)));
             } else if ("/hospital".equals(path)) {
                 request.setAttribute("departments", paas.get("/hospital/departments", token(session)));
                 request.setAttribute("doctors", paas.get("/hospital/doctors", token(session)));
@@ -190,9 +205,12 @@ public class PortalServlet extends HttpServlet {
                         token(session), null);
                 session.setAttribute("flash", "接诊已开始");
             } else if ("/doctor/complete".equals(path)) {
+                CompleteConsultationRequest clinicalRequest = new CompleteConsultationRequest(
+                        required(request, "diagnosis"), required(request, "advice"));
+                clinicalRequest.setComplaint(required(request, "complaint"));
+                clinicalRequest.setNotes(request.getParameter("notes"));
                 paas.post("/doctor/appointments/" + requiredId(required(request, "appointmentId")) + "/complete",
-                        token(session), new CompleteConsultationRequest(required(request, "diagnosis"),
-                                required(request, "advice")));
+                        token(session), clinicalRequest);
                 session.setAttribute("flash", "病历与账单已生成");
             } else if ("/patient/pay".equals(path)) {
                 paas.post("/patient/orders/" + requiredId(required(request, "orderId")) + "/pay", token(session), null);

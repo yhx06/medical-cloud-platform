@@ -26,6 +26,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PortalFlowTest {
     @Test
+    void doctorCompletionPostsUtf8ClinicalFields() throws Exception {
+        String id = "11111111-1111-1111-1111-111111111111";
+        AtomicReference<String> body = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/doctor/appointments/" + id + "/complete", exchange -> {
+            byte[] bytes = new byte[4096];
+            int count = exchange.getRequestBody().read(bytes);
+            body.set(new String(bytes, 0, count, StandardCharsets.UTF_8));
+            byte[] response = "{\"code\":\"OK\",\"data\":{}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response); exchange.close();
+        });
+        server.start();
+        try {
+            PortalServlet servlet = new PortalServlet(new PaasClient(
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/api"), new CloudServiceFactory());
+            MockHttpSession session = new MockHttpSession();
+            session.setAttribute("role", Role.DOCTOR); session.setAttribute("accessToken", "signed-token");
+            session.setAttribute("csrfToken", "csrf");
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/portal/doctor/complete");
+            request.setContextPath("/portal"); request.setServletPath("/doctor/complete"); request.setSession(session);
+            request.addParameter("appointmentId", id); request.addParameter("csrfToken", "csrf");
+            request.addParameter("complaint", "头痛发热"); request.addParameter("diagnosis", "感冒");
+            request.addParameter("advice", "补水休息"); request.addParameter("notes", "观察两日");
+            servlet.service(request, new MockHttpServletResponse());
+            assertTrue(body.get().contains("\"complaint\":\"头痛发热\""));
+            assertTrue(body.get().contains("\"notes\":\"观察两日\""));
+        } finally { server.stop(0); }
+    }
+    @Test
     void patientCancellationPostsOnlyValidatedAppointmentWithCsrf() throws Exception {
         String id = "11111111-1111-1111-1111-111111111111";
         AtomicReference<String> called = new AtomicReference<String>();

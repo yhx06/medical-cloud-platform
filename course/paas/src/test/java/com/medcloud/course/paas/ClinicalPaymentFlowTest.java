@@ -71,6 +71,12 @@ class ClinicalPaymentFlowTest {
             assertThrows(SecurityException.class, () -> clinical.start(doctorB, appointment.getId()));
             clinicalApi.start(doctorBearer, appointment.getId());
             manager.getTransaction().commit();
+            assertEquals("IN_PROGRESS", appointment.getStatus());
+            org.junit.jupiter.api.Assertions.assertNotNull(appointment.getStartedAt());
+            assertThrows(IllegalArgumentException.class, () -> clinical.complete(doctorA, appointment.getId(),
+                    null, " ", "建议休息", null, java.time.Instant.parse("2030-05-21T01:00:00Z")));
+            assertThrows(IllegalArgumentException.class, () -> clinical.complete(doctorA, appointment.getId(),
+                    null, "诊断", " ", null, java.time.Instant.parse("2030-05-21T01:00:00Z")));
             manager.getTransaction().begin();
             String recordId = clinicalApi.complete(doctorBearer, appointment.getId(),
                     new CompleteConsultationRequest("急性上呼吸道感染", "建议休息和补水")).getData().getId();
@@ -78,14 +84,17 @@ class ClinicalPaymentFlowTest {
             ClinicalRecord record = clinical.forPatient(patientA, appointment.getId());
             assertEquals(recordId, record.getId());
             assertEquals("急性上呼吸道感染", record.getDiagnosis());
+            org.junit.jupiter.api.Assertions.assertNotNull(record.getCompletedAt());
             assertEquals("COMPLETED", manager.find(Appointment.class, appointment.getId()).getStatus());
             assertEquals(record.getId(), clinical.forPatient(patientA, appointment.getId()).getId());
             assertEquals(record.getId(), clinicalApi.record(patientBearer, appointment.getId()).getData().getId());
+            assertEquals(record.getId(), clinicalApi.records(doctorBearer, null, null).getData().get(0).getId());
             assertThrows(SecurityException.class, () -> clinical.forPatient(patientB, appointment.getId()));
             manager.getTransaction().begin();
             assertThrows(SecurityException.class, () -> clinical.complete(doctorB, appointment.getId(), "伪造", "伪造"));
             assertThrows(IllegalStateException.class, () -> clinical.complete(doctorA, appointment.getId(), "覆盖", "覆盖"));
             manager.getTransaction().rollback();
+            assertEquals(1L, manager.createQuery("select count(r) from ClinicalRecord r", Long.class).getSingleResult());
 
             PaymentOrder order = payments.forPatient(patientA, appointment.getId());
             assertEquals(order.getId(), paymentApi.order(patientBearer, appointment.getId()).getData().getId());

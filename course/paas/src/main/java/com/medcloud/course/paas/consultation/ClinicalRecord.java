@@ -6,6 +6,7 @@ import javax.persistence.Id;
 import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import java.sql.Timestamp;
+import java.time.Instant;
 
 @Entity
 @Table(name = "clinical_record", uniqueConstraints = @UniqueConstraint(columnNames = "appointment_id"))
@@ -45,9 +46,15 @@ public class ClinicalRecord {
 
     public ClinicalRecord(String id, String appointmentId, String tenantId, String doctorId,
                           String patientId, String diagnosis, String advice) {
+        this(id, appointmentId, tenantId, doctorId, patientId, null, diagnosis, advice, null, Instant.now());
+    }
+
+    public ClinicalRecord(String id, String appointmentId, String tenantId, String doctorId,
+                          String patientId, String complaint, String diagnosis, String advice, String notes, Instant now) {
         if (diagnosis == null || diagnosis.trim().isEmpty() || advice == null || advice.trim().isEmpty()) {
             throw new IllegalArgumentException("diagnosis and advice required");
         }
+        if (now == null) throw new IllegalArgumentException("completion time required");
         this.id = id;
         this.appointmentId = appointmentId;
         this.tenantId = tenantId;
@@ -55,6 +62,9 @@ public class ClinicalRecord {
         this.patientId = patientId;
         this.diagnosis = diagnosis;
         this.advice = advice;
+        this.complaint = complaint == null || complaint.trim().isEmpty() ? null : complaint.trim();
+        this.notes = notes == null || notes.trim().isEmpty() ? null : notes.trim();
+        this.completedAt = Timestamp.from(now);
     }
 
     public String getId() { return id; }

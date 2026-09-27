@@ -117,7 +117,8 @@ class PortalServletTest {
         });
         server.start();
         try {
-            String body = "csrfToken=csrf&appointmentId=" + id + "&diagnosis="
+            String body = "csrfToken=csrf&appointmentId=" + id + "&complaint="
+                    + URLEncoder.encode("咽痛", "UTF-8") + "&diagnosis="
                     + URLEncoder.encode("急性咽炎", "UTF-8") + "&advice="
                     + URLEncoder.encode("多喝温水，三日复诊", "UTF-8");
             BrowserFormRequest request = new BrowserFormRequest(body);

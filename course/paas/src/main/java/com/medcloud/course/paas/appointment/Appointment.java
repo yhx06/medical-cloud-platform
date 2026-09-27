@@ -75,11 +75,15 @@ public class Appointment {
     public Timestamp getBookedAt() { return bookedAt; }
     public Timestamp getStartedAt() { return startedAt; }
 
-    public void start() {
+    public void start() { start(Instant.now()); }
+
+    public void start(Instant now) {
+        if (now == null) throw new IllegalArgumentException("start time required");
         if (!"BOOKED".equals(status)) {
             throw new IllegalStateException("appointment cannot start");
         }
         status = "IN_PROGRESS";
+        startedAt = Timestamp.from(now);
     }
 
     public void cancel() {
