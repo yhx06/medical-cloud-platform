@@ -29,7 +29,7 @@ function Get-Shape {
     $sql = @'
 SELECT CONCAT('C:',TABLE_NAME,':',COLUMN_NAME,':',IS_NULLABLE,':',DATA_TYPE)
 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA='medical_cloud_course'
-AND ((TABLE_NAME='appointment' AND COLUMN_NAME='started_at')
+AND ((TABLE_NAME='appointment' AND COLUMN_NAME IN ('started_at','booked_at'))
 OR (TABLE_NAME='clinical_record' AND COLUMN_NAME IN ('complaint','notes','completed_at'))
 OR (TABLE_NAME='payment_order' AND COLUMN_NAME='paid_at'))
 UNION ALL
@@ -63,9 +63,9 @@ try {
     $env:MEDICAL_COURSE_DB_PASSWORD = ''
     $env:MYSQL_PWD = ''
     $freshSchema = Get-Content -LiteralPath (Join-Path $deploy 'schema.sql') -Raw -Encoding UTF8
-    $legacy = $freshSchema -replace '(?m)^    (?:started_at DATETIME|complaint VARCHAR\(500\)|notes VARCHAR\(2000\)|completed_at DATETIME|paid_at DATETIME) NULL,\r?\n', ''
+    $legacy = $freshSchema -replace '(?m)^    (?:booked_at DATETIME\(6\)|started_at DATETIME|complaint VARCHAR\(500\)|notes VARCHAR\(2000\)|completed_at DATETIME|paid_at DATETIME) NULL,\r?\n', ''
     $legacy = $legacy.Replace('INDEX idx_course_patient_slot (patient_id, slot_id)', 'CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id)')
-    if ($legacy -eq $freshSchema -or $legacy -match '(?:started_at|completed_at|paid_at) DATETIME NULL') { throw 'Legacy fixture could not be derived from current schema' }
+    if ($legacy -eq $freshSchema -or $legacy -match '(?:booked_at DATETIME\(6\)|started_at DATETIME|completed_at DATETIME|paid_at DATETIME) NULL') { throw 'Legacy fixture could not be derived from current schema' }
     $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
     if ($LASTEXITCODE -ne 0) { throw 'Legacy fixture schema failed' }
     Invoke-FixtureSql @'
@@ -103,6 +103,8 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             (Invoke-FixtureSql 'SELECT paid_at IS NULL FROM payment_order WHERE id="o"' 'medical_cloud_course') | Should Be '1'
             $shape = @(Get-Shape)
             ($shape -contains 'C:appointment:started_at:YES:datetime') | Should Be $true
+            ($shape -contains 'C:appointment:booked_at:YES:datetime') | Should Be $true
+            (Invoke-FixtureSql 'SELECT booked_at IS NULL FROM appointment WHERE id="a-booked"' 'medical_cloud_course') | Should Be '1'
             ($shape -contains 'C:clinical_record:complaint:YES:varchar') | Should Be $true
             ($shape -contains 'C:clinical_record:notes:YES:varchar') | Should Be $true
             ($shape -contains 'C:clinical_record:completed_at:YES:datetime') | Should Be $true
@@ -129,6 +131,7 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             $LASTEXITCODE | Should Be 0
             $shape = @(Get-Shape)
             ($shape -contains 'C:appointment:started_at:YES:datetime') | Should Be $true
+            ($shape -contains 'C:appointment:booked_at:YES:datetime') | Should Be $true
             ($shape -contains 'C:clinical_record:complaint:YES:varchar') | Should Be $true
             ($shape -contains 'C:clinical_record:notes:YES:varchar') | Should Be $true
             ($shape -contains 'C:clinical_record:completed_at:YES:datetime') | Should Be $true

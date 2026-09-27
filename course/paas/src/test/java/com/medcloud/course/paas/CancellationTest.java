@@ -35,6 +35,24 @@ class CancellationTest {
     private static final Instant START = Instant.parse("2030-05-21T01:00:00Z");
 
     @Test
+    void sameDayHistoryUsesPersistedBookingInstantBeforeRandomId() {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        EntityManager manager = factory.createEntityManager();
+        try {
+            seed(manager);
+            manager.getTransaction().begin();
+            manager.persist(new Appointment("z-older", "patient-a", "slot-a", "tenant-a", "doctor-a",
+                    BigDecimal.TEN, Date.valueOf("2030-05-20"), Instant.parse("2030-05-20T01:00:00Z")));
+            manager.persist(new Appointment("a-newer", "patient-a", "slot-a", "tenant-a", "doctor-a",
+                    BigDecimal.TEN, Date.valueOf("2030-05-20"), Instant.parse("2030-05-20T02:00:00Z")));
+            manager.getTransaction().commit();
+            List<AppointmentHistoryView> history = new BookingService(manager).forPatient(PATIENT);
+            assertEquals("a-newer", history.get(0).getId());
+            assertEquals("z-older", history.get(1).getId());
+        } finally { close(manager, factory); }
+    }
+
+    @Test
     void cancellationPreservesHistoryAndAllowsSamePatientToRebook() {
         EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
         EntityManager manager = factory.createEntityManager();
@@ -42,8 +60,12 @@ class CancellationTest {
             seed(manager);
             BookingService service = new BookingService(manager);
             manager.getTransaction().begin();
+            Instant earliestBooking = Instant.now();
             Appointment first = service.book(PATIENT, "slot-a", Date.valueOf("2030-05-20"));
             manager.getTransaction().commit();
+            assertNotNull(first.getBookedAt());
+            assertFalse(first.getBookedAt().toInstant().isBefore(earliestBooking));
+            assertFalse(first.getBookedAt().toInstant().isAfter(Instant.now()));
             manager.getTransaction().begin();
             assertEquals("CANCELED", service.cancel(PATIENT, first.getId(), BEFORE).getStatus());
             manager.getTransaction().commit();
@@ -161,14 +183,20 @@ class CancellationTest {
             Future<Boolean> booking = workers.submit(() -> transition(factory, start,
                     manager -> new BookingService(manager).book(OTHER, "slot-a", Date.valueOf("2030-05-20"))));
             start.countDown();
-            cancellation.get(10, TimeUnit.SECONDS);
-            consultation.get(10, TimeUnit.SECONDS);
-            booking.get(10, TimeUnit.SECONDS);
+            boolean canceled = cancellation.get(10, TimeUnit.SECONDS);
+            boolean started = consultation.get(10, TimeUnit.SECONDS);
+            boolean booked = booking.get(10, TimeUnit.SECONDS);
+            assertNotEquals(canceled, started, "exactly one transition of the original booking must win");
+            if (started) assertFalse(booked, "an in-progress booking still occupies the last place");
             EntityManager verify = factory.createEntityManager();
             try {
                 List<Appointment> rows = verify.createQuery("select a from Appointment a where a.slotId = 'slot-a'",
                         Appointment.class).getResultList();
-                assertTrue(rows.stream().filter(row -> !"CANCELED".equals(row.getStatus())).count() <= 1);
+                assertEquals(canceled ? "CANCELED" : "IN_PROGRESS", verify.find(Appointment.class, id).getStatus());
+                assertEquals(started || booked ? 1L : 0L,
+                        rows.stream().filter(row -> !"CANCELED".equals(row.getStatus())).count());
+                assertEquals(booked ? 1L : 0L,
+                        rows.stream().filter(row -> OTHER.getUserId().equals(row.getPatientId())).count());
                 assertFalse(rows.stream().anyMatch(row -> "CANCELED".equals(row.getStatus())
                         && row.getStartedAt() != null));
             } finally { verify.close(); }
@@ -184,8 +212,11 @@ class CancellationTest {
             action.accept(manager);
             manager.getTransaction().commit();
             return true;
-        } catch (IllegalStateException | javax.persistence.PersistenceException rejected) {
+        } catch (IllegalStateException rejected) {
             if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+            if (!"appointment cannot cancel".equals(rejected.getMessage())
+                    && !"appointment cannot start".equals(rejected.getMessage())
+                    && !"slot full".equals(rejected.getMessage())) throw rejected;
             return false;
         } finally { manager.close(); }
     }

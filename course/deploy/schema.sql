@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS appointment (
     fee DECIMAL(10,2) NOT NULL,
     status VARCHAR(16) NOT NULL,
     booked_on DATE NOT NULL,
+    booked_at DATETIME(6) NULL,
     started_at DATETIME NULL,
     CONSTRAINT fk_course_appointment_patient FOREIGN KEY (patient_id) REFERENCES user_account(id),
     CONSTRAINT fk_course_appointment_slot FOREIGN KEY (slot_id) REFERENCES schedule_slot(id),

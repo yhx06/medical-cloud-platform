@@ -2,11 +2,13 @@ package com.medcloud.course.contract;
 
 import java.sql.Date;
 import java.sql.Time;
+import java.sql.Timestamp;
 
 public final class AppointmentHistoryView {
     private final String id;
     private final String status;
     private final Date bookedOn;
+    private final Timestamp bookedAt;
     private final String tenantId;
     private final String hospitalName;
     private final String departmentId;
@@ -18,10 +20,10 @@ public final class AppointmentHistoryView {
     private final Time startTime;
     private final Time endTime;
 
-    public AppointmentHistoryView(String id, String status, Date bookedOn, String tenantId,
+    public AppointmentHistoryView(String id, String status, Date bookedOn, Timestamp bookedAt, String tenantId,
             String hospitalName, String departmentId, String departmentName, String doctorId,
             String doctorName, String slotId, Date slotDate, Time startTime, Time endTime) {
-        this.id = id; this.status = status; this.bookedOn = bookedOn; this.tenantId = tenantId;
+        this.id = id; this.status = status; this.bookedOn = bookedOn; this.bookedAt = bookedAt; this.tenantId = tenantId;
         this.hospitalName = hospitalName; this.departmentId = departmentId;
         this.departmentName = departmentName; this.doctorId = doctorId; this.doctorName = doctorName;
         this.slotId = slotId; this.slotDate = slotDate; this.startTime = startTime; this.endTime = endTime;
@@ -29,6 +31,7 @@ public final class AppointmentHistoryView {
     public String getId() { return id; }
     public String getStatus() { return status; }
     public Date getBookedOn() { return bookedOn; }
+    public Timestamp getBookedAt() { return bookedAt; }
     public String getTenantId() { return tenantId; }
     public String getHospitalName() { return hospitalName; }
     public String getDepartmentId() { return departmentId; }

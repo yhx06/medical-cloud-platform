@@ -114,7 +114,7 @@ public class BookingService {
     public List<AppointmentHistoryView> forPatient(CurrentActor actor) {
         requirePatient(actor);
         List<Appointment> rows = manager.createQuery("select a from Appointment a where a.patientId = :patientId "
-                + "order by a.bookedOn desc, a.id desc", Appointment.class)
+                + "order by a.bookedOn desc, a.bookedAt desc, a.id desc", Appointment.class)
                 .setParameter("patientId", actor.getUserId()).setMaxResults(100).getResultList();
         java.util.ArrayList<AppointmentHistoryView> views = new java.util.ArrayList<AppointmentHistoryView>();
         for (Appointment appointment : rows) {
@@ -123,7 +123,7 @@ public class BookingService {
             Department department = slot == null ? null : manager.find(Department.class, slot.getDepartmentId());
             DoctorProfile doctor = manager.find(DoctorProfile.class, appointment.getDoctorId());
             views.add(new AppointmentHistoryView(appointment.getId(), appointment.getStatus(),
-                    appointment.getBookedOn(), appointment.getTenantId(), tenant == null ? "" : tenant.getName(),
+                    appointment.getBookedOn(), appointment.getBookedAt(), appointment.getTenantId(), tenant == null ? "" : tenant.getName(),
                     slot == null ? "" : slot.getDepartmentId(), department == null ? "" : department.getName(),
                     appointment.getDoctorId(), doctor == null ? "" : doctor.getDisplayName(),
                     appointment.getSlotId(), slot == null ? null : slot.getDate(),

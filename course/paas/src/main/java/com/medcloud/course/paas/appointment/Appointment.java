@@ -8,6 +8,7 @@ import javax.persistence.Index;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.Instant;
 
 @Entity
 @Table(name = "appointment", indexes = @Index(name = "idx_course_patient_slot", columnList = "patient_id,slot_id"))
@@ -37,6 +38,9 @@ public class Appointment {
     @Column(name = "booked_on", nullable = false)
     private Date bookedOn;
 
+    @Column(name = "booked_at")
+    private Timestamp bookedAt;
+
     @Column(name = "started_at")
     private Timestamp startedAt;
 
@@ -44,6 +48,11 @@ public class Appointment {
 
     public Appointment(String id, String patientId, String slotId, String tenantId,
                        String doctorId, BigDecimal fee, Date bookedOn) {
+        this(id, patientId, slotId, tenantId, doctorId, fee, bookedOn, Instant.now());
+    }
+
+    public Appointment(String id, String patientId, String slotId, String tenantId,
+                       String doctorId, BigDecimal fee, Date bookedOn, Instant bookedAt) {
         this.id = id;
         this.patientId = patientId;
         this.slotId = slotId;
@@ -51,6 +60,7 @@ public class Appointment {
         this.doctorId = doctorId;
         this.fee = fee;
         this.bookedOn = bookedOn;
+        this.bookedAt = Timestamp.from(bookedAt);
         this.status = "BOOKED";
     }
 
@@ -62,6 +72,7 @@ public class Appointment {
     public BigDecimal getFee() { return fee; }
     public String getStatus() { return status; }
     public Date getBookedOn() { return bookedOn; }
+    public Timestamp getBookedAt() { return bookedAt; }
     public Timestamp getStartedAt() { return startedAt; }
 
     public void start() {

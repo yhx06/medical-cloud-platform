@@ -21,6 +21,7 @@ import javax.ws.rs.core.MediaType;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,7 +49,7 @@ public class AppointmentResource {
             throw new IllegalArgumentException("slotId required");
         }
         return ApiResponse.success("booked", view(booking.book(actor, request.getSlotId(),
-                Date.valueOf(LocalDate.now()))));
+                Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai"))))));
     }
 
     @GET

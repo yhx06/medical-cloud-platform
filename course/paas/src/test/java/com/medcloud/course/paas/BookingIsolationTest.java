@@ -26,6 +26,7 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -40,6 +41,58 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BookingIsolationTest {
     private static final String SECRET = "course-test-signing-secret-at-least-32-characters";
+
+    @Test
+    void concurrentCancellationAndBookingPreserveLastPlaceCapacity() throws Exception {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        String firstId;
+        EntityManager setup = factory.createEntityManager();
+        try {
+            setup.getTransaction().begin();
+            setup.persist(new Tenant("tenant-a", "仁和云诊所"));
+            setup.persist(new Department("department-a", "tenant-a", "全科"));
+            setup.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            setup.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
+            setup.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
+            setup.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
+                    Date.valueOf("2030-05-21"), Time.valueOf("09:00:00"), Time.valueOf("10:00:00"),
+                    1, BigDecimal.TEN));
+            setup.getTransaction().commit();
+            setup.getTransaction().begin();
+            firstId = new BookingService(setup).book(new CurrentActor("patient-a", Role.PATIENT, null),
+                    "slot-a", Date.valueOf("2030-05-20")).getId();
+            setup.getTransaction().commit();
+        } finally { setup.close(); }
+        try {
+            CountDownLatch start = new CountDownLatch(1);
+            Future<Boolean> cancel = workers.submit(() -> {
+                EntityManager manager = factory.createEntityManager();
+                try {
+                    start.await();
+                    manager.getTransaction().begin();
+                    new BookingService(manager).cancel(new CurrentActor("patient-a", Role.PATIENT, null),
+                            firstId, Instant.parse("2030-05-21T00:59:59Z"));
+                    manager.getTransaction().commit();
+                    return true;
+                } finally {
+                    if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+                    manager.close();
+                }
+            });
+            Future<Boolean> book = workers.submit(() -> attemptBooking(factory, start, "patient-b"));
+            start.countDown();
+            assertTrue(cancel.get(10, TimeUnit.SECONDS));
+            boolean booked = book.get(10, TimeUnit.SECONDS);
+            EntityManager verify = factory.createEntityManager();
+            try {
+                assertEquals("CANCELED", verify.find(Appointment.class, firstId).getStatus());
+                assertEquals(booked ? 1L : 0L,
+                        verify.createQuery("select count(a) from Appointment a where a.slotId = 'slot-a' "
+                                + "and a.status <> 'CANCELED'", Long.class).getSingleResult());
+            } finally { verify.close(); }
+        } finally { workers.shutdownNow(); factory.close(); }
+    }
 
     @Test
     void canceledHistoryFreesCapacityForAnotherPatient() {
@@ -437,10 +490,11 @@ class BookingIsolationTest {
                     "slot-a", Date.valueOf("2030-05-20"));
             manager.getTransaction().commit();
             return true;
-        } catch (IllegalStateException | javax.persistence.PersistenceException rejected) {
+        } catch (IllegalStateException rejected) {
             if (manager.getTransaction().isActive()) {
                 manager.getTransaction().rollback();
             }
+            if (!"slot full".equals(rejected.getMessage())) throw rejected;
             return false;
         } finally {
             manager.close();

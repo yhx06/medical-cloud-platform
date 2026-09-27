@@ -1,7 +1,9 @@
 -- Apply only after upgrade-p0-database.ps1 validates the complete legacy shape and writes a backup.
 USE medical_cloud_course;
 
-ALTER TABLE appointment ADD COLUMN started_at DATETIME NULL;
+ALTER TABLE appointment
+    ADD COLUMN booked_at DATETIME(6) NULL,
+    ADD COLUMN started_at DATETIME NULL;
 ALTER TABLE clinical_record
     ADD COLUMN complaint VARCHAR(500) NULL,
     ADD COLUMN notes VARCHAR(2000) NULL,
