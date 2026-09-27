@@ -26,9 +26,11 @@ import javax.persistence.Persistence;
 import java.math.BigDecimal;
 import java.sql.Date;
 import java.sql.Time;
+import java.sql.Timestamp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class ClinicalPaymentFlowTest {
     @Test
@@ -102,10 +104,18 @@ class ClinicalPaymentFlowTest {
             assertThrows(SecurityException.class, () -> payments.forPatient(patientB, appointment.getId()));
             manager.getTransaction().begin();
             assertThrows(SecurityException.class, () -> payments.pay(patientB, order.getId()));
+            assertThrows(SecurityException.class, () -> payments.pay(
+                    new CurrentActor("doctor-a", Role.HOSPITAL_ADMIN, "tenant-a"), order.getId()));
             PaymentOrder paid = payments.pay(patientA, order.getId());
+            Timestamp firstPaidAt = paid.getPaidAt();
+            assertNotNull(firstPaidAt);
             PaymentOrder paidAgain = payments.pay(patientA, order.getId());
             assertEquals("PAID", paymentApi.pay(patientBearer, order.getId()).getData().getStatus());
+            assertEquals(firstPaidAt, paidAgain.getPaidAt());
+            assertNotNull(paymentApi.order(patientBearer, appointment.getId()).getData().getPaidAt());
             manager.getTransaction().commit();
+            manager.clear();
+            assertEquals(firstPaidAt, manager.find(PaymentOrder.class, order.getId()).getPaidAt());
             assertEquals("PAID", paid.getStatus());
             assertEquals(order.getId(), paidAgain.getId());
             assertEquals(1L, manager.createQuery("select count(o) from PaymentOrder o", Long.class).getSingleResult());

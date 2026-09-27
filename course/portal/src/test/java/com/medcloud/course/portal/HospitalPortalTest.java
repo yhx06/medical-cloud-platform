@@ -18,7 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class HospitalPortalTest {
     @Test
@@ -56,6 +57,50 @@ class HospitalPortalTest {
             assertEquals(403, denied.getStatus());
             assertEquals(1, calls.get());
         } finally { server.stop(0); }
+    }
+
+    @Test
+    void hospitalFiltersOrdersWithoutSendingSubmittedTenant() throws Exception {
+        AtomicReference<String> orderQuery = new AtomicReference<String>();
+        AtomicReference<String> authorization = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/", exchange -> {
+            if (exchange.getRequestURI().getPath().equals("/api/hospital/orders")) {
+                orderQuery.set(exchange.getRequestURI().getRawQuery());
+                authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            }
+            byte[] response = "{\"code\":\"OK\",\"data\":[]}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            PortalServlet servlet = new PortalServlet(
+                    new PaasClient("http://127.0.0.1:" + server.getAddress().getPort() + "/api"),
+                    new CloudServiceFactory());
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/portal/hospital");
+            request.setContextPath("/portal");
+            request.setServletPath("/hospital");
+            request.addParameter("status", "PAID");
+            request.addParameter("from", "2030-05-21");
+            request.addParameter("to", "2030-05-22");
+            request.addParameter("tenantId", "other-tenant");
+            MockHttpSession session = new MockHttpSession();
+            session.setAttribute("role", Role.HOSPITAL_ADMIN);
+            session.setAttribute("accessToken", "signed-token");
+            session.setAttribute("csrfToken", "csrf");
+            request.setSession(session);
+
+            servlet.service(request, new MockHttpServletResponse());
+
+            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22", orderQuery.get());
+            assertEquals("Bearer signed-token", authorization.get());
+            assertFalse(orderQuery.get().contains("tenantId"));
+            assertEquals(0, ((JsonNode) request.getAttribute("orders")).size());
+        } finally {
+            server.stop(0);
+        }
     }
 
     private static MockHttpServletRequest request(String path, String id, String csrf) {

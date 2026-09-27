@@ -140,4 +140,28 @@
   <% if (slots.size() == 0) { %><p class="subtle">尚无号源。</p><% } %>
   <% } %>
 </section>
+<section class="card">
+  <h2>诊疗账单</h2>
+  <form method="get" action="<%= context %>/hospital" class="inline-form">
+    <label>缴费状态<select name="status"><option value="">全部</option><option value="PAID" <%= "PAID".equals(request.getAttribute("status")) ? "selected" : "" %>>已缴费</option><option value="UNPAID" <%= "UNPAID".equals(request.getAttribute("status")) ? "selected" : "" %>>未缴费</option></select></label>
+    <label>开始日期<input type="date" name="from" value="<%= request.getAttribute("from") == null ? "" : request.getAttribute("from") %>"></label>
+    <label>结束日期<input type="date" name="to" value="<%= request.getAttribute("to") == null ? "" : request.getAttribute("to") %>"></label>
+    <button type="submit">查询账单</button>
+  </form>
+  <p class="subtle">日期按北京时间的缴费日筛选；未缴费账单没有缴费日期。</p>
+  <% JsonNode orders = (JsonNode) request.getAttribute("orders");
+     if (orders != null && orders.isArray()) { %>
+  <div class="table-wrap"><table><thead><tr><th>账单编号</th><th>预约编号</th><th>金额</th><th>状态</th><th>缴费时间</th></tr></thead><tbody>
+    <% for (JsonNode order : orders) { %>
+    <tr><td><%= WebEscaper.html(order.path("id").asText()) %></td>
+      <td><%= WebEscaper.html(order.path("appointmentId").asText()) %></td>
+      <td>¥<%= WebEscaper.html(order.path("amount").asText()) %></td>
+      <td><%= WebEscaper.html(order.path("status").asText()) %></td>
+      <td><%= WebEscaper.html(order.path("paidAt").isNull() && "PAID".equals(order.path("status").asText())
+              ? "历史时间未知" : order.path("paidAt").asText("—")) %></td></tr>
+    <% } %>
+  </tbody></table></div>
+  <% if (orders.size() == 0) { %><p class="subtle">暂无符合条件的账单。</p><% } %>
+  <% } %>
+</section>
 <%@ include file="footer.jspf" %>

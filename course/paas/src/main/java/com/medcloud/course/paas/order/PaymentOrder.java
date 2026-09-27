@@ -7,6 +7,7 @@ import javax.persistence.Table;
 import javax.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Instant;
 
 @Entity
 @Table(name = "payment_order", uniqueConstraints = @UniqueConstraint(columnNames = "appointment_id"))
@@ -47,6 +48,14 @@ public class PaymentOrder {
     public void pay() {
         if (!"PAID".equals(status)) {
             status = "PAID";
+        }
+    }
+
+    public void pay(Instant now) {
+        if (now == null) throw new IllegalArgumentException("payment time required");
+        if (!"PAID".equals(status)) {
+            status = "PAID";
+            paidAt = Timestamp.from(now);
         }
     }
 

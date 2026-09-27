@@ -158,6 +158,29 @@ public class PortalServlet extends HttpServlet {
                 request.setAttribute("departments", paas.get("/hospital/departments", token(session)));
                 request.setAttribute("doctors", paas.get("/hospital/doctors", token(session)));
                 request.setAttribute("slots", paas.get("/hospital/slots", token(session)));
+                String status = request.getParameter("status");
+                String from = request.getParameter("from");
+                String to = request.getParameter("to");
+                StringBuilder ordersPath = new StringBuilder("/hospital/orders");
+                if (status != null && !status.trim().isEmpty()) {
+                    if (!"PAID".equals(status) && !"UNPAID".equals(status))
+                        throw new IllegalArgumentException("缴费状态无效");
+                    ordersPath.append("?status=").append(URLEncoder.encode(status, "UTF-8"));
+                }
+                if (from != null && !from.trim().isEmpty()) {
+                    Date.valueOf(from);
+                    ordersPath.append(ordersPath.indexOf("?") < 0 ? "?" : "&")
+                            .append("from=").append(URLEncoder.encode(from, "UTF-8"));
+                }
+                if (to != null && !to.trim().isEmpty()) {
+                    Date.valueOf(to);
+                    ordersPath.append(ordersPath.indexOf("?") < 0 ? "?" : "&")
+                            .append("to=").append(URLEncoder.encode(to, "UTF-8"));
+                }
+                request.setAttribute("status", WebEscaper.html(status));
+                request.setAttribute("from", WebEscaper.html(from));
+                request.setAttribute("to", WebEscaper.html(to));
+                request.setAttribute("orders", paas.get(ordersPath.toString(), token(session)));
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
             request.setAttribute("error", WebEscaper.html(error.getMessage()));

@@ -65,6 +65,9 @@
     <h3>医生建议</h3><p><%= WebEscaper.html(record.path("advice").asText()) %></p></div>
   <% } if (order != null) { %>
     <div class="result"><h3>诊疗账单</h3><p>金额：¥<%= WebEscaper.html(order.path("amount").asText()) %> · 状态：<%= WebEscaper.html(order.path("status").asText()) %></p>
+    <% if ("PAID".equals(order.path("status").asText())) { %>
+      <p>缴费时间：<%= WebEscaper.html(order.path("paidAt").isNull() ? "历史时间未知" : order.path("paidAt").asText("历史时间未知")) %></p>
+    <% } %>
     <% if ("UNPAID".equals(order.path("status").asText())) { %>
       <form method="post" action="<%= context %>/patient/pay">
         <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
