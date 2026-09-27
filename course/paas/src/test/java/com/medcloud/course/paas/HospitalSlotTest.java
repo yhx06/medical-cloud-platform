@@ -11,19 +11,103 @@ import com.medcloud.course.paas.schedule.SlotAdminService;
 import com.medcloud.course.paas.tenant.Department;
 import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.Tenant;
+import com.medcloud.course.paas.tenant.HospitalDepartmentService;
 import org.junit.jupiter.api.Test;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
 import javax.persistence.Persistence;
 import java.math.BigDecimal;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Date;
 import java.sql.Time;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class HospitalSlotTest {
+    @Test void departmentDisableCannotCommitAroundUnfinishedPublication() throws Exception {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        CountDownLatch departmentRead = new CountDownLatch(1);
+        CountDownLatch releasePublication = new CountDownLatch(1);
+        CurrentActor admin = new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-a");
+        try {
+            EntityManager setup = factory.createEntityManager();
+            try {
+                setup.getTransaction().begin();
+                setup.persist(new Tenant("tenant-a", "甲医院"));
+                setup.persist(new Department("dept-a", "tenant-a", "内科"));
+                setup.persist(new Account("admin-a", "admin_a", "hash", Role.HOSPITAL_ADMIN, "tenant-a"));
+                setup.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+                setup.persist(new DoctorProfile("doctor-a", "tenant-a", "dept-a", "甲医生"));
+                setup.getTransaction().commit();
+            } finally { setup.close(); }
+            Future<Boolean> publishing = workers.submit(() -> {
+                EntityManager manager = factory.createEntityManager();
+                try {
+                    manager.getTransaction().begin();
+                    new SlotAdminService(pausingAfterDepartmentRead(manager, departmentRead, releasePublication))
+                            .create(admin, new SlotRequest("dept-a", "doctor-a", Date.valueOf("2035-05-01"),
+                                    Time.valueOf("09:00:00"), Time.valueOf("10:00:00"), 1, BigDecimal.TEN, null));
+                    manager.getTransaction().commit();
+                    return true;
+                } finally {
+                    if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+                    manager.close();
+                }
+            });
+            assertTrue(departmentRead.await(10, TimeUnit.SECONDS));
+            Future<Boolean> disabling = workers.submit(() -> {
+                EntityManager manager = factory.createEntityManager();
+                try {
+                    manager.getTransaction().begin();
+                    new HospitalDepartmentService(manager).update(admin, "dept-a", "内科", "DISABLED");
+                    manager.getTransaction().commit();
+                    return true;
+                } catch (IllegalStateException rejected) {
+                    if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+                    return false;
+                } finally { manager.close(); }
+            });
+            try { disabling.get(500, TimeUnit.MILLISECONDS); }
+            catch (java.util.concurrent.TimeoutException waitingOnDepartmentLock) { }
+            finally { releasePublication.countDown(); }
+            assertTrue(publishing.get(10, TimeUnit.SECONDS));
+            assertFalse(disabling.get(10, TimeUnit.SECONDS));
+            EntityManager verify = factory.createEntityManager();
+            try {
+                assertEquals("ACTIVE", verify.find(Department.class, "dept-a").getStatus());
+                assertEquals(1L, verify.createQuery("select count(s) from ScheduleSlot s where s.departmentId = 'dept-a'", Long.class)
+                        .getSingleResult());
+            } finally { verify.close(); }
+        } finally {
+            releasePublication.countDown(); workers.shutdownNow(); factory.close();
+        }
+    }
+
+    private static EntityManager pausingAfterDepartmentRead(EntityManager delegate, CountDownLatch read,
+                                                              CountDownLatch release) {
+        return (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(),
+                new Class<?>[]{EntityManager.class}, (proxy, method, args) -> {
+                    Object result;
+                    try { result = method.invoke(delegate, args); }
+                    catch (InvocationTargetException failure) { throw failure.getCause(); }
+                    if ("find".equals(method.getName()) && args != null && args.length >= 2
+                            && args[0] == Department.class && "dept-a".equals(args[1])) {
+                        read.countDown();
+                        if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("publication was not released");
+                    }
+                    return result;
+                });
+    }
+
     @Test void publishesOnlyOwnActiveResourcesAndDerivesTenant() {
         Fixture f = new Fixture();
         try {

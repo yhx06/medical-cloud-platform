@@ -54,7 +54,7 @@ public class BookingService {
             throw new IllegalStateException("slot directory unavailable");
         }
         List<Appointment> existing = manager.createQuery(
-                "select a from Appointment a where a.slotId = :slotId", Appointment.class)
+                "select a from Appointment a where a.slotId = :slotId and a.status <> 'CANCELED'", Appointment.class)
                 .setParameter("slotId", slotId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
         for (Appointment appointment : existing) {
             if (appointment.getPatientId().equals(actor.getUserId())) {

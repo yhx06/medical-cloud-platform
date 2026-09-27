@@ -42,6 +42,37 @@ class BookingIsolationTest {
     private static final String SECRET = "course-test-signing-secret-at-least-32-characters";
 
     @Test
+    void canceledHistoryFreesCapacityForAnotherPatient() {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        EntityManager manager = factory.createEntityManager();
+        try {
+            manager.getTransaction().begin();
+            manager.persist(new Tenant("tenant-a", "仁和云诊所"));
+            manager.persist(new Department("department-a", "tenant-a", "全科"));
+            manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
+            manager.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
+            manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
+                    Date.valueOf("2030-05-21"), Time.valueOf("09:00:00"), Time.valueOf("10:00:00"),
+                    1, BigDecimal.TEN));
+            manager.persist(new Appointment("canceled-a", "patient-a", "slot-a", "tenant-a",
+                    "doctor-a", BigDecimal.TEN, Date.valueOf("2030-05-20")));
+            manager.getTransaction().commit();
+            manager.getTransaction().begin();
+            manager.createNativeQuery("update appointment set status = 'CANCELED' where id = 'canceled-a'").executeUpdate();
+            manager.getTransaction().commit(); manager.clear();
+            manager.getTransaction().begin();
+            Appointment replacement = new BookingService(manager).book(
+                    new CurrentActor("patient-b", Role.PATIENT, null), "slot-a", Date.valueOf("2030-05-20"));
+            manager.getTransaction().commit();
+            assertEquals("patient-b", replacement.getPatientId());
+        } finally {
+            if (manager.getTransaction().isActive()) manager.getTransaction().rollback();
+            manager.close(); factory.close();
+        }
+    }
+
+    @Test
     void loginRejectsDisabledAccountAndTokenReflectsActiveDatabaseState() {
         EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
         EntityManager manager = factory.createEntityManager();

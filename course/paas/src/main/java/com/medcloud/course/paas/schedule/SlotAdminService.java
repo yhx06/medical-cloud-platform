@@ -42,7 +42,9 @@ public class SlotAdminService {
     public ScheduleSlot create(CurrentActor actor, SlotRequest request) {
         String tenantId = tenant(actor);
         validate(request, false);
-        // Booking locks doctor then slot. Keep the same order for edits and publication.
+        // Department disable locks the department; publication must acquire it first.
+        lockDepartment(tenantId, request.getDepartmentId());
+        // Booking locks doctor then slot. Keep that relative order.
         activeDoctor(tenantId, request.getDepartmentId(), request.getDoctorId());
         unique(tenantId, request, null);
         ScheduleSlot slot = new ScheduleSlot(UUID.randomUUID().toString(), tenantId, request.getDepartmentId(),
@@ -58,16 +60,26 @@ public class SlotAdminService {
         manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
-        // Lock both possible doctors before the slot; this also serializes a concurrent doctor disable.
-        String first = candidate.getDoctorId().compareTo(request.getDoctorId()) <= 0
-                ? candidate.getDoctorId() : request.getDoctorId();
-        String second = first.equals(candidate.getDoctorId()) ? request.getDoctorId() : candidate.getDoctorId();
+        String candidateDepartmentId = candidate.getDepartmentId();
+        String candidateDoctorId = candidate.getDoctorId();
+        // Lock both departments, then both doctors, then the slot to serialize admin edits.
+        String firstDepartment = candidateDepartmentId.compareTo(request.getDepartmentId()) <= 0
+                ? candidateDepartmentId : request.getDepartmentId();
+        String secondDepartment = firstDepartment.equals(candidateDepartmentId)
+                ? request.getDepartmentId() : candidateDepartmentId;
+        lockDepartment(tenantId, firstDepartment);
+        if (!secondDepartment.equals(firstDepartment)) lockDepartment(tenantId, secondDepartment);
+        String first = candidateDoctorId.compareTo(request.getDoctorId()) <= 0
+                ? candidateDoctorId : request.getDoctorId();
+        String second = first.equals(candidateDoctorId) ? request.getDoctorId() : candidateDoctorId;
         lockDoctor(first);
         if (!second.equals(first)) lockDoctor(second);
+        activeDoctor(tenantId, request.getDepartmentId(), request.getDoctorId());
         ScheduleSlot slot = manager.find(ScheduleSlot.class, slotId, LockModeType.PESSIMISTIC_WRITE);
         manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
         if (!tenantId.equals(slot.getTenantId())) throw new AccessDeniedException();
-        activeDoctor(tenantId, request.getDepartmentId(), request.getDoctorId());
+        if (!candidateDepartmentId.equals(slot.getDepartmentId())
+                || !candidateDoctorId.equals(slot.getDoctorId())) throw new IllegalStateException("slot changed");
         Long booked = manager.createQuery("select count(a) from Appointment a where a.slotId = :slotId "
                 + "and a.status <> 'CANCELED'", Long.class).setParameter("slotId", slotId).getSingleResult();
         if (booked > 0 && (!slot.getDepartmentId().equals(request.getDepartmentId())
@@ -112,6 +124,14 @@ public class SlotAdminService {
         Account doctor = manager.find(Account.class, doctorId, LockModeType.PESSIMISTIC_WRITE);
         if (doctor != null) manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
         return doctor;
+    }
+
+    private Department lockDepartment(String tenantId, String departmentId) {
+        Department department = manager.find(Department.class, departmentId, LockModeType.PESSIMISTIC_WRITE);
+        if (department != null) manager.refresh(department, LockModeType.PESSIMISTIC_WRITE);
+        if (department == null || !tenantId.equals(department.getTenantId())) throw new AccessDeniedException();
+        if (!"ACTIVE".equals(department.getStatus())) throw new IllegalStateException("department disabled");
+        return department;
     }
 
     private void unique(String tenantId, SlotRequest request, String exceptId) {

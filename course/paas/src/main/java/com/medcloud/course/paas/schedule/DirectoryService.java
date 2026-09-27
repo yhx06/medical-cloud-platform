@@ -62,6 +62,8 @@ public class DirectoryService {
                         + "and profile.tenantId = slot.tenantId and profile.departmentId = slot.departmentId "
                         + "and doctor.tenantId = slot.tenantId and doctor.status = 'ACTIVE' "
                         + "and doctor.role = :doctorRole) "
+                        + "and (select count(a) from Appointment a where a.slotId = slot.id "
+                        + "and a.status <> 'CANCELED') < slot.capacity "
                         + "order by slot.date, slot.startTime, slot.id", ScheduleSlot.class)
                 .setParameter("tenantId", tenantId)
                 .setParameter("minimumDate", minimumDate)

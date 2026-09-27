@@ -24,6 +24,30 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SlotSearchTest {
+    @Test void fullSlotsBeforePageBoundaryDoNotHideLaterAvailability() {
+        EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
+        EntityManager manager = factory.createEntityManager();
+        try {
+            manager.getTransaction().begin();
+            manager.persist(new Tenant("tenant-a", "甲医院"));
+            manager.persist(new Department("dept-a", "tenant-a", "内科"));
+            manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "dept-a", "甲"));
+            for (int index = 0; index < 200; index++) {
+                String id = String.format("full-%03d", index);
+                slot(manager, id, "dept-a", "doctor-a", "2035-05-01", 1);
+                manager.persist(new Appointment(UUID.randomUUID().toString(), "patient-" + index, id,
+                        "tenant-a", "doctor-a", BigDecimal.TEN, Date.valueOf("2035-04-30")));
+            }
+            slot(manager, "available-after-full", "dept-a", "doctor-a", "2035-05-02", 1);
+            manager.getTransaction().commit(); manager.clear();
+            List<SlotAvailability> result = new DirectoryService(manager).availableSlots("tenant-a", null, null,
+                    null, Date.valueOf("2035-01-01"));
+            assertEquals(1, result.size());
+            assertEquals("available-after-full", result.get(0).getSlot().getId());
+        } finally { manager.close(); factory.close(); }
+    }
+
     @Test void filtersCombinedScopeAndExcludesFullOrInactiveSlots() {
         EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
         EntityManager manager = factory.createEntityManager();
