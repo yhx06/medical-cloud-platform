@@ -4,6 +4,7 @@ import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.PaymentOrderView;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.api.PaymentResource;
+import com.medcloud.course.paas.api.HospitalResource;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -67,13 +68,13 @@ class HospitalOrderTest {
 
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
             String bearer = "Bearer " + auth.login(new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
-            PaymentResource api = new PaymentResource(auth, service);
+            HospitalResource api = new HospitalResource(auth, service);
             assertEquals(4, api.orders(bearer, null, null, null).getData().size());
             assertEquals("in-range", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")
                     .getData().get(0).getId());
             assertEquals("2030-05-21 00:00:00", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")
                     .getData().get(0).getPaidAt());
-            assertThrows(SecurityException.class, () -> api.pay(bearer, "in-range"));
+            assertThrows(SecurityException.class, () -> new PaymentResource(auth, service).pay(bearer, "in-range"));
         } finally {
             manager.close();
             factory.close();
@@ -98,7 +99,7 @@ class HospitalOrderTest {
                     Date.valueOf("2030-05-22"), Date.valueOf("2030-05-21")));
             assertThrows(SecurityException.class, () -> service.forHospital(
                     new CurrentActor("admin-a", Role.PATIENT, "tenant-a"), null, null, null));
-            PaymentResource api = new PaymentResource(new AuthService(manager,
+            HospitalResource api = new HospitalResource(new AuthService(manager,
                     "course-test-signing-secret-at-least-32-characters"), service);
             String bearer = "Bearer " + new AuthService(manager,
                     "course-test-signing-secret-at-least-32-characters")

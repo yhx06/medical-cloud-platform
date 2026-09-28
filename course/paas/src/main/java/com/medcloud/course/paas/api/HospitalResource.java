@@ -6,6 +6,9 @@ import com.medcloud.course.contract.DepartmentView;
 import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.contract.DoctorView;
+import com.medcloud.course.contract.PaymentOrderView;
+import com.medcloud.course.paas.order.PaymentOrder;
+import com.medcloud.course.paas.order.PaymentService;
 import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Department;
@@ -21,6 +24,9 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import java.sql.Date;
+import java.time.LocalDate;
 import javax.ws.rs.core.MediaType;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,11 +38,29 @@ public class HospitalResource {
     @EJB private AuthService auth;
     @EJB private HospitalDepartmentService departments;
     @EJB private HospitalDoctorService doctors;
+    @EJB private PaymentService payments;
     public HospitalResource() { }
+    public HospitalResource(AuthService auth, PaymentService payments) { this.auth = auth; this.payments = payments; }
     public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors) {
         this.auth = auth; this.departments = departments; this.doctors = doctors;
     }
     private CurrentActor actor(String authorization) { return auth.authenticate(BearerTokens.require(authorization)); }
+
+    @GET @Path("orders")
+    public ApiResponse<List<PaymentOrderView>> orders(@HeaderParam("Authorization") String authorization,
+            @QueryParam("status") String status, @QueryParam("from") String from, @QueryParam("to") String to) {
+        List<PaymentOrderView> views = new ArrayList<PaymentOrderView>();
+        for (PaymentOrder order : payments.forHospital(actor(authorization), status, parseDate(from), parseDate(to))) {
+            views.add(new PaymentOrderView(order.getId(), order.getAppointmentId(), order.getAmount(),
+                    order.getStatus(), order.getPaidAt()));
+        }
+        return ApiResponse.success("orders", views);
+    }
+    private static Date parseDate(String value) {
+        if (value == null || value.trim().isEmpty()) return null;
+        try { return Date.valueOf(LocalDate.parse(value)); }
+        catch (RuntimeException invalid) { throw new IllegalArgumentException("invalid date"); }
+    }
 
     @GET @Path("departments")
     public ApiResponse<List<DepartmentView>> departments(@HeaderParam("Authorization") String authorization) {
