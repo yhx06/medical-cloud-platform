@@ -47,9 +47,8 @@ public class PaymentService {
     }
 
     public List<PaymentOrder> forHospital(CurrentActor actor, String status, Date from, Date to) {
-        if (actor == null || actor.getRole() != Role.HOSPITAL_ADMIN) {
-            throw new SecurityException("hospital administrator role required");
-        }
+        if (actor == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
         Account admin = manager.find(Account.class, actor.getUserId());
         if (admin == null || admin.getRole() != Role.HOSPITAL_ADMIN || !"ACTIVE".equals(admin.getStatus())
                 || admin.getTenantId() == null) {
@@ -82,9 +81,8 @@ public class PaymentService {
     }
 
     private void requirePatient(CurrentActor actor) {
-        if (actor == null || actor.getRole() != Role.PATIENT) {
-            throw new SecurityException("patient role required");
-        }
+        if (actor == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.PATIENT) throw new AccessDeniedException();
         Account patient = manager.find(Account.class, actor.getUserId());
         if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT) {
             throw new SecurityException("inactive patient");

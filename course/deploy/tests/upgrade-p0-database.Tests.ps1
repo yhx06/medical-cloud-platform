@@ -180,6 +180,24 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
             (@(Get-Shape | Where-Object { $_ -like 'C:*' })).Count | Should Be 0
             (Invoke-FixtureSql "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='medical_cloud_course' AND TABLE_NAME='appointment' AND INDEX_NAME='uk_other_patient_slot'" 'medical_cloud_course') | Should Be '2'
         }
+        It 'rejects withdrawal after a competing booking commits beyond an old MySQL snapshot' {
+            $fixtureDatabase = 'course_slot_test_' + [guid]::NewGuid().ToString('N')
+            Invoke-FixtureSql "CREATE DATABASE $fixtureDatabase CHARACTER SET utf8mb4" | Out-Null
+            $priorUrl = $env:COURSE_MYSQL_TEST_URL
+            $priorTestUser = $env:COURSE_MYSQL_TEST_USER
+            $priorTestPassword = $env:COURSE_MYSQL_TEST_PASSWORD
+            try {
+                $env:COURSE_MYSQL_TEST_URL = "jdbc:mysql://127.0.0.1:$port/${fixtureDatabase}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai"
+                $env:COURSE_MYSQL_TEST_USER = 'root'
+                $env:COURSE_MYSQL_TEST_PASSWORD = ''
+                $integrationOutput = @(& mvn -f (Join-Path $deploy '../pom.xml') '-Dtest=MySqlSlotSnapshotTest' '-Dsurefire.failIfNoSpecifiedTests=false' test 2>&1)
+                if ($LASTEXITCODE -ne 0) { throw (($integrationOutput | Select-Object -Last 32) -join [Environment]::NewLine) }
+            } finally {
+                $env:COURSE_MYSQL_TEST_URL = $priorUrl
+                $env:COURSE_MYSQL_TEST_USER = $priorTestUser
+                $env:COURSE_MYSQL_TEST_PASSWORD = $priorTestPassword
+            }
+        }
     }
 } finally {
     $env:MYSQL_PWD = $oldPassword

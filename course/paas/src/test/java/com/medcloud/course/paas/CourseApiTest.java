@@ -10,6 +10,7 @@ import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.appointment.BookingService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.Tenant;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
@@ -34,6 +35,7 @@ class CourseApiTest {
             manager.persist(new Tenant("tenant-a", "仁和云诊所"));
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             manager.persist(new Account("patient-a", "patient_a", BCrypt.hashpw("Demo@123456", BCrypt.gensalt(4)),
                     Role.PATIENT, null));
             manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",

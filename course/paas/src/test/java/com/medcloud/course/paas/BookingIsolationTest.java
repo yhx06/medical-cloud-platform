@@ -53,6 +53,7 @@ class BookingIsolationTest {
             setup.persist(new Tenant("tenant-a", "仁和云诊所"));
             setup.persist(new Department("department-a", "tenant-a", "全科"));
             setup.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            setup.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             setup.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
             setup.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
             setup.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
@@ -103,6 +104,7 @@ class BookingIsolationTest {
             manager.persist(new Tenant("tenant-a", "仁和云诊所"));
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             manager.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
             manager.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
             manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
@@ -202,6 +204,7 @@ class BookingIsolationTest {
             manager.persist(new Tenant("tenant-a", "仁和云诊所"));
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             manager.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
             manager.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
             manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
@@ -241,6 +244,7 @@ class BookingIsolationTest {
             manager.persist(new Tenant("tenant-b", "安康云门诊"));
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             manager.persist(new Account("doctor-b", "doctor_b", "hash", Role.DOCTOR, "tenant-b"));
             manager.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
             manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
@@ -273,6 +277,7 @@ class BookingIsolationTest {
                 setup.persist(new Tenant("tenant-a", "仁和云诊所"));
                 setup.persist(new Department("department-a", "tenant-a", "全科"));
                 setup.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+                setup.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
                 setup.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
                 setup.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
                 setup.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
@@ -312,6 +317,7 @@ class BookingIsolationTest {
             other.persist(new Tenant("tenant-a", "仁和云诊所"));
             other.persist(new Department("department-a", "tenant-a", "全科"));
             other.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+            other.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             other.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
             other.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
             other.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",

@@ -2,6 +2,7 @@ package com.medcloud.course.paas.schedule;
 
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.SlotRequest;
+import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -80,9 +81,11 @@ public class SlotAdminService {
         if (!tenantId.equals(slot.getTenantId())) throw new AccessDeniedException();
         if (!candidateDepartmentId.equals(slot.getDepartmentId())
                 || !candidateDoctorId.equals(slot.getDoctorId())) throw new IllegalStateException("slot changed");
-        Long booked = manager.createQuery("select count(a) from Appointment a where a.slotId = :slotId "
-                + "and a.status <> 'CANCELED'", Long.class).setParameter("slotId", slotId).getSingleResult();
-        if (booked > 0 && (!slot.getDepartmentId().equals(request.getDepartmentId())
+        // A locking current read must see bookings committed after the tenant snapshot.
+        List<Appointment> booked = manager.createQuery("select a from Appointment a where a.slotId = :slotId "
+                + "and a.status <> 'CANCELED'", Appointment.class).setParameter("slotId", slotId)
+                .setMaxResults(1).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        if (!booked.isEmpty() && (!slot.getDepartmentId().equals(request.getDepartmentId())
                 || !slot.getDoctorId().equals(request.getDoctorId()) || !slot.getDate().equals(request.getDate())
                 || !slot.getStartTime().equals(request.getStartTime()) || !slot.getEndTime().equals(request.getEndTime())
                 || slot.getFee().compareTo(request.getFee()) != 0 || request.getCapacity() < slot.getCapacity()

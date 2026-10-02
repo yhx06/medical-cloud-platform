@@ -31,16 +31,21 @@ public class BookingService {
     public BookingService(EntityManager manager) { this.manager = manager; }
 
     public Appointment book(CurrentActor actor, String slotId, Date today) {
-        if (actor == null || actor.getRole() != Role.PATIENT) {
-            throw new SecurityException("patient role required");
-        }
+        if (actor == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.PATIENT) throw new AccessDeniedException();
         Account patient = manager.find(Account.class, actor.getUserId());
         if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT) {
             throw new SecurityException("inactive patient");
         }
+        manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null) throw new IllegalStateException("slot unavailable");
+        String candidateDepartmentId = candidate.getDepartmentId();
         String candidateDoctorId = candidate.getDoctorId();
+        // Match publication/department-disable order: department -> doctor -> slot -> appointment.
+        Department department = manager.find(Department.class, candidateDepartmentId, LockModeType.PESSIMISTIC_READ);
+        if (department == null) throw new IllegalStateException("slot directory unavailable");
+        manager.refresh(department, LockModeType.PESSIMISTIC_READ);
         // Lock the doctor before the slot so a concurrent disable cannot pass its pending count.
         Account doctor = manager.find(Account.class, candidateDoctorId, LockModeType.PESSIMISTIC_WRITE);
         if (doctor == null) throw new IllegalStateException("slot directory unavailable");
@@ -48,16 +53,23 @@ public class BookingService {
         ScheduleSlot slot = manager.find(ScheduleSlot.class, slotId, LockModeType.PESSIMISTIC_WRITE);
         if (slot == null) throw new IllegalStateException("slot unavailable");
         manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
-        if (!"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today)) {
+        Instant start = LocalDateTime.of(slot.getDate().toLocalDate(), slot.getStartTime().toLocalTime())
+                .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+        if (!"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today) || !Instant.now().isBefore(start)) {
             throw new IllegalStateException("slot unavailable");
         }
-        if (!candidateDoctorId.equals(slot.getDoctorId())) {
-            throw new IllegalStateException("slot doctor changed");
+        if (!candidateDoctorId.equals(slot.getDoctorId()) || !candidateDepartmentId.equals(slot.getDepartmentId())) {
+            throw new IllegalStateException("slot directory changed");
         }
+        DoctorProfile profile = manager.find(DoctorProfile.class, candidateDoctorId);
+        if (profile != null) manager.refresh(profile, LockModeType.PESSIMISTIC_READ);
         Tenant tenant = manager.find(Tenant.class, slot.getTenantId());
         if (tenant == null || !"ACTIVE".equals(tenant.getStatus())
                 || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR
-                || !slot.getTenantId().equals(doctor.getTenantId())) {
+                || !slot.getTenantId().equals(doctor.getTenantId())
+                || !"ACTIVE".equals(department.getStatus()) || !slot.getTenantId().equals(department.getTenantId())
+                || profile == null || !slot.getTenantId().equals(profile.getTenantId())
+                || !slot.getDepartmentId().equals(profile.getDepartmentId())) {
             throw new IllegalStateException("slot directory unavailable");
         }
         List<Appointment> existing = manager.createQuery(
@@ -78,9 +90,8 @@ public class BookingService {
     }
 
     public List<Appointment> forDoctor(CurrentActor actor) {
-        if (actor == null || actor.getRole() != Role.DOCTOR) {
-            throw new SecurityException("doctor role required");
-        }
+        if (actor == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.DOCTOR) throw new AccessDeniedException();
         Account doctor = manager.find(Account.class, actor.getUserId());
         if (doctor == null || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR) {
             throw new SecurityException("inactive doctor");

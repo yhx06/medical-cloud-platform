@@ -16,6 +16,7 @@ import com.medcloud.course.paas.order.PaymentOrder;
 import com.medcloud.course.paas.order.PaymentService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.Tenant;
 import org.junit.jupiter.api.Test;
 import org.mindrot.jbcrypt.BCrypt;
@@ -44,6 +45,7 @@ class ClinicalPaymentFlowTest {
             manager.persist(new Department("department-a", "tenant-a", "全科"));
             manager.persist(new Account("doctor-a", "doctor_a", BCrypt.hashpw("Doctor@123456", BCrypt.gensalt(4)),
                     Role.DOCTOR, "tenant-a"));
+            manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
             manager.persist(new Account("doctor-b", "doctor_b", "hash", Role.DOCTOR, "tenant-b"));
             manager.persist(new Account("patient-a", "patient_a", BCrypt.hashpw("Demo@123456", BCrypt.gensalt(4)),
                     Role.PATIENT, null));

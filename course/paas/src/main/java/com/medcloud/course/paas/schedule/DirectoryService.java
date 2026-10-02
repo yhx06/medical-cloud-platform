@@ -8,6 +8,9 @@ import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 import java.sql.Date;
+import java.sql.Time;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 
 @Stateless
@@ -45,9 +48,11 @@ public class DirectoryService {
                                                   Date date, Date minimumDate) {
         if (tenantId == null || tenantId.trim().isEmpty() || minimumDate == null)
             throw new IllegalArgumentException("invalid slot search");
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         List<ScheduleSlot> candidates = manager.createQuery(
                 "select slot from ScheduleSlot slot "
                         + "where slot.tenantId = :tenantId and slot.date >= :minimumDate "
+                        + "and (slot.date > :currentDate or (slot.date = :currentDate and slot.startTime > :currentTime)) "
                         + "and (:departmentId is null or slot.departmentId = :departmentId) "
                         + "and (:doctorId is null or slot.doctorId = :doctorId) "
                         + "and (:date is null or slot.date = :date) "
@@ -67,6 +72,8 @@ public class DirectoryService {
                         + "order by slot.date, slot.startTime, slot.id", ScheduleSlot.class)
                 .setParameter("tenantId", tenantId)
                 .setParameter("minimumDate", minimumDate)
+                .setParameter("currentDate", Date.valueOf(now.toLocalDate()))
+                .setParameter("currentTime", Time.valueOf(now.toLocalTime()))
                 .setParameter("departmentId", emptyToNull(departmentId))
                 .setParameter("doctorId", emptyToNull(doctorId))
                 .setParameter("date", date)

@@ -9,6 +9,7 @@ import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.consultation.ClinicalService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Department;
+import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.Tenant;
 import org.junit.jupiter.api.Test;
 
@@ -226,6 +227,7 @@ class CancellationTest {
         manager.persist(new Tenant("tenant-a", "仁和云诊所"));
         manager.persist(new Department("department-a", "tenant-a", "全科"));
         manager.persist(new Account("doctor-a", "doctor_a", "hash", Role.DOCTOR, "tenant-a"));
+        manager.persist(new DoctorProfile("doctor-a", "tenant-a", "department-a", "Doctor"));
         manager.persist(new Account("patient-a", "patient_a", "hash", Role.PATIENT, null));
         manager.persist(new Account("patient-b", "patient_b", "hash", Role.PATIENT, null));
         manager.persist(new ScheduleSlot("slot-a", "tenant-a", "department-a", "doctor-a",
