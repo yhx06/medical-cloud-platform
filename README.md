@@ -1,8 +1,10 @@
 # 基于多租户医疗云的在线预约与诊疗服务平台
 
-本仓库有两条互不覆盖的实现路径。课程验收主路径是 `course/`：JDK 8、Tomcat 9 门户 WAR、WildFly 10 PaaS WAR、MySQL/JNDI/JPA 和 PowerDesigner 模型，可演示登录、预约、接诊、病历及模拟缴费。`backend/` 与 `frontend/` 保留原 Java 21/Spring Boot/Vue 实现，便于对比和后续扩展。
+本仓库有两条互不覆盖的实现路径。课程验收主路径是 `course/`：JDK 8、Tomcat 9 门户 WAR、WildFly 10 PaaS WAR、MySQL/JNDI/JPA 和 PowerDesigner 模型，已补齐患者注册、医院科室/医生/号源管理、组合筛选、预约取消与重约、接诊病历、模拟缴费及医院订单查询。`backend/` 与 `frontend/` 保留原 Java 21/Spring Boot/Vue 实现，便于对比和后续扩展。
 
 按老师环境复现时请先看 [课程版部署与验收](course/deploy/README.md)、[架构及接口](docs/course-architecture/README.md)、[实验记录](docs/course-labs/README.md)。课程版入口为 `http://127.0.0.1:8088/portal/login`，隔离环境启动后可访问。以下快速开始仅适用于原 Java 21/Vue 版本。
+
+最新 [P0 验收记录（2026-10-02）](docs/course-labs/2026-10-02-p0-acceptance.md)记录了真实双容器流程、MySQL 并发回归及数据保留检查；本机隔离环境入口为 `http://127.0.0.1:8188/portal/login`。
 
 ## 原版技术栈（非课程验收主路径）
 

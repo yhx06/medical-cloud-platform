@@ -37,7 +37,7 @@ try {
         $tables[$tableCode] = $table
         foreach ($line in ($entry.Groups[2].Value -split '\r?\n')) {
             $definition = $line.Trim().TrimEnd(',')
-            if ($definition -notmatch '^([A-Za-z_][\w]*)\s+(VARCHAR\(\d+\)|DECIMAL\(\d+,\d+\)|INT|DATE|TIME)') {
+            if ($definition -notmatch '^([A-Za-z_][\w]*)\s+(VARCHAR\(\d+\)|DECIMAL\(\d+,\d+\)|DATETIME(?:\(6\))?|INT|DATE|TIME)\b?') {
                 continue
             }
             $columnCode = $Matches[1]
@@ -48,6 +48,24 @@ try {
             $column.Mandatory = $definition -match '\bNOT NULL\b|\bPRIMARY KEY\b'
             $column.Primary = $definition -match '\bPRIMARY KEY\b'
             $columns["$tableCode.$columnCode"] = $column
+        }
+        foreach ($unique in [regex]::Matches($entry.Groups[2].Value, 'CONSTRAINT\s+(\w+)\s+UNIQUE\s*\(([^)]+)\)')) {
+            $key = $table.Keys.CreateNew()
+            $key.Name = $unique.Groups[1].Value
+            $key.Code = $unique.Groups[1].Value
+            foreach ($name in ($unique.Groups[2].Value -split ',')) {
+                [void]$key.Columns.Add($columns["$tableCode.$($name.Trim())"])
+            }
+        }
+        foreach ($index in [regex]::Matches($entry.Groups[2].Value, 'INDEX\s+(\w+)\s*\(([^)]+)\)')) {
+            $item = $table.Indexes.CreateNew()
+            $item.Name = $index.Groups[1].Value
+            $item.Code = $index.Groups[1].Value
+            $item.Unique = $false
+            foreach ($name in ($index.Groups[2].Value -split ',')) {
+                $indexColumn = $item.IndexColumns.CreateNew()
+                $indexColumn.Column = $columns["$tableCode.$($name.Trim())"]
+            }
         }
     }
 
@@ -83,10 +101,24 @@ try {
 
     $diagram = $model.PhysicalDiagrams.Item(0)
     $diagram.Name = 'Medical Cloud ER Diagram'
+    $diagram.DisplayPreferences = $diagram.DisplayPreferences.Replace('Table.Keys=No', 'Table.Keys=Yes').Replace('Table.Indexes=No', 'Table.Indexes=Yes')
     [void]$diagram.AttachAllObjects()
     [void]$diagram.AutoLayout()
     $model.Save($modelPath, $true, '')
-    $diagram.ExportImage($diagramPath)
+    # Render the native vector export onto a padded canvas; the PNG exporter clips borders.
+    $vectorPath = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString() + '.emf')
+    try {
+        $diagram.ExportImage($vectorPath)
+        Add-Type -AssemblyName System.Drawing
+        $vector = [Drawing.Imaging.Metafile]::new($vectorPath)
+        $bitmap = [Drawing.Bitmap]::new($vector.Width + 80, $vector.Height + 80)
+        $graphics = [Drawing.Graphics]::FromImage($bitmap)
+        try {
+            $graphics.Clear([Drawing.Color]::White)
+            $graphics.DrawImage($vector, 40, 40, $vector.Width, $vector.Height)
+            $bitmap.Save($diagramPath, [Drawing.Imaging.ImageFormat]::Png)
+        } finally { $graphics.Dispose(); $bitmap.Dispose(); $vector.Dispose() }
+    } finally { if (Test-Path -LiteralPath $vectorPath) { Remove-Item -LiteralPath $vectorPath } }
     [pscustomobject]@{Model = $modelPath; Diagram = $diagramPath;
                        Tables = $model.Tables.Count; References = $model.References.Count}
 } finally {
