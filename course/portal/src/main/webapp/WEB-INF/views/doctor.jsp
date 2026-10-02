@@ -38,10 +38,12 @@
 </section>
 <section class="card" id="clinical-history">
   <div class="section-heading"><div><p class="section-kicker">02 / CLINICAL RECORDS</p><h2>我的病历</h2></div></div>
-  <form method="get" action="<%= context %>/doctor" class="inline-form">
+  <p class="subtle" id="record-filter-help">按接诊完成日期筛选；起止日期可留空，开始日期不得晚于结束日期。</p>
+  <form method="get" action="<%= context %>/doctor#clinical-history" class="inline-form" aria-describedby="record-filter-help">
     <label>开始日期<input type="date" name="from" value="<%= request.getAttribute("from") == null ? "" : request.getAttribute("from") %>"></label>
     <label>结束日期<input type="date" name="to" value="<%= request.getAttribute("to") == null ? "" : request.getAttribute("to") %>"></label>
     <button type="submit">筛选</button>
+    <a class="reset-link" href="<%= context %>/doctor#clinical-history">重置筛选</a>
   </form>
   <% JsonNode records = (JsonNode) request.getAttribute("records");
      if (records != null && records.isArray()) { %>

@@ -115,28 +115,7 @@ public class PortalServlet extends HttpServlet {
         }
         try {
             if ("/patient".equals(path)) {
-                String tenantId = request.getParameter("tenantId");
-                request.setAttribute("tenantId", WebEscaper.html(tenantId));
-                request.setAttribute("departmentId", WebEscaper.html(request.getParameter("departmentId")));
-                request.setAttribute("doctorId", WebEscaper.html(request.getParameter("doctorId")));
-                request.setAttribute("date", WebEscaper.html(request.getParameter("date")));
-                if (tenantId != null && !tenantId.trim().isEmpty()) {
-                    String query = "tenantId=" + URLEncoder.encode(tenantId, StandardCharsets.UTF_8.name());
-                    for (String key : new String[] {"departmentId", "doctorId", "date"}) {
-                        String value = request.getParameter(key);
-                        if (value != null && !value.trim().isEmpty())
-                            query += "&" + key + "=" + URLEncoder.encode(value.trim(), StandardCharsets.UTF_8.name());
-                    }
-                    request.setAttribute("slots", paas.get("/catalog/slots?" + query, token(session)));
-                }
-                String appointmentId = request.getParameter("appointmentId");
-                request.setAttribute("appointmentId", WebEscaper.html(appointmentId));
-                if (appointmentId != null && !appointmentId.trim().isEmpty()) {
-                    String id = requiredId(appointmentId);
-                    request.setAttribute("record", paas.get("/patient/appointments/" + id + "/record", token(session)));
-                    request.setAttribute("order", paas.get("/patient/appointments/" + id + "/order", token(session)));
-                }
-                request.setAttribute("appointments", paas.get("/patient/appointments", token(session)));
+                patient(request, session);
             } else if ("/doctor".equals(path)) {
                 request.setAttribute("appointments", paas.get("/doctor/appointments", token(session)));
                 String from = request.getParameter("from");
@@ -186,6 +165,107 @@ public class PortalServlet extends HttpServlet {
             request.setAttribute("error", WebEscaper.html(error.getMessage()));
         }
         show(request, response, path.substring(1) + ".jsp");
+    }
+
+    private void patient(HttpServletRequest request, HttpSession session) throws IOException {
+        // Independent reads: a catalog failure must not hide existing appointments or records.
+        try {
+            request.setAttribute("appointments", paas.get("/patient/appointments", token(session)));
+        } catch (PaasRejectedException | PaasUnavailableException failure) {
+            patientError(request, failure);
+        }
+        String tenant = parameter(request, "tenantId");
+        String department = parameter(request, "departmentId");
+        String doctor = parameter(request, "doctorId");
+        String date = parameter(request, "date");
+        boolean refreshDirectory = "1".equals(request.getParameter("refreshDirectory"));
+        if (refreshDirectory && request.getParameter("previousTenantId") != null
+                && !tenant.equals(parameter(request, "previousTenantId"))) {
+            department = ""; doctor = "";
+        } else if (refreshDirectory && request.getParameter("previousDepartmentId") != null
+                && !department.equals(parameter(request, "previousDepartmentId"))) {
+            doctor = "";
+        }
+        try {
+            JsonNode hospitals = paas.get("/catalog/hospitals", null);
+            request.setAttribute("hospitals", hospitals);
+            if (!tenant.isEmpty()) {
+                if (!containsOption(hospitals, tenant)) {
+                    tenant = ""; department = ""; doctor = "";
+                    throw new IllegalArgumentException("所选医院已不可用，请重新选择医院");
+                }
+                String tenantQuery = "tenantId=" + encode(tenant);
+                JsonNode departments = paas.get("/catalog/departments?" + tenantQuery, null);
+                request.setAttribute("departments", departments);
+                if (!department.isEmpty() && !containsOption(departments, department)) {
+                    department = ""; doctor = "";
+                    throw new IllegalArgumentException("所选科室不属于当前医院或已停用，请重新选择科室");
+                }
+                JsonNode doctors = paas.get("/catalog/doctors?" + tenantQuery
+                        + (department.isEmpty() ? "" : "&departmentId=" + encode(department)), null);
+                request.setAttribute("doctors", doctors);
+                if (!doctor.isEmpty() && !containsOption(doctors, doctor)) {
+                    doctor = "";
+                    throw new IllegalArgumentException("所选医生不属于当前科室或已停用，请重新选择医生");
+                }
+                if (!refreshDirectory) {
+                    request.setAttribute("slots", paas.get("/catalog/slots?"
+                            + patientFilters(tenant, department, doctor, date), null));
+                }
+            } else {
+                department = ""; doctor = "";
+            }
+        } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException failure) {
+            patientError(request, failure);
+        }
+        request.setAttribute("tenantId", WebEscaper.html(tenant));
+        request.setAttribute("departmentId", WebEscaper.html(department));
+        request.setAttribute("doctorId", WebEscaper.html(doctor));
+        request.setAttribute("date", WebEscaper.html(date));
+        request.setAttribute("patientFilters", patientFilters(tenant, department, doctor, date));
+        String appointment = parameter(request, "appointmentId");
+        request.setAttribute("appointmentId", WebEscaper.html(appointment));
+        if (!appointment.isEmpty()) {
+            try {
+                String id = requiredId(appointment);
+                request.setAttribute("record", paas.get("/patient/appointments/" + id + "/record", token(session)));
+                request.setAttribute("order", paas.get("/patient/appointments/" + id + "/order", token(session)));
+            } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException failure) {
+                patientError(request, failure);
+            }
+        }
+    }
+
+    private static String parameter(HttpServletRequest request, String key) {
+        String value = request.getParameter(key);
+        return value == null ? "" : value.trim();
+    }
+
+    private static boolean containsOption(JsonNode options, String id) {
+        if (options != null && options.isArray())
+            for (JsonNode option : options) if (id.equals(option.path("id").asText())) return true;
+        return false;
+    }
+
+    private static String encode(String value) throws IOException {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8.name());
+    }
+
+    private static String patientFilters(String tenant, String department, String doctor, String date) throws IOException {
+        StringBuilder query = new StringBuilder();
+        String[] keys = {"tenantId", "departmentId", "doctorId", "date"};
+        String[] values = {tenant, department, doctor, date};
+        for (int i = 0; i < keys.length; i++) if (!values[i].isEmpty()) {
+            if (query.length() > 0) query.append('&');
+            query.append(keys[i]).append('=').append(encode(values[i]));
+        }
+        return query.toString();
+    }
+
+    private static void patientError(HttpServletRequest request, RuntimeException failure) {
+        String escaped = WebEscaper.html(failure.getMessage());
+        Object previous = request.getAttribute("error");
+        request.setAttribute("error", previous == null ? escaped : previous + "；" + escaped);
     }
 
     @Override

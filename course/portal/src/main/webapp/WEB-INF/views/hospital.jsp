@@ -143,11 +143,12 @@
 </section>
 <section class="card" id="orders">
   <div class="section-heading"><div><p class="section-kicker">04 / BILLING</p><h2>诊疗账单</h2></div><span class="section-tag">本院账单</span></div>
-  <form method="get" action="<%= context %>/hospital" class="inline-form">
+  <form method="get" action="<%= context %>/hospital#orders" class="inline-form">
     <label>缴费状态<select name="status"><option value="">全部</option><option value="PAID" <%= "PAID".equals(request.getAttribute("status")) ? "selected" : "" %>>已缴费</option><option value="UNPAID" <%= "UNPAID".equals(request.getAttribute("status")) ? "selected" : "" %>>未缴费</option></select></label>
     <label>开始日期<input type="date" name="from" value="<%= request.getAttribute("from") == null ? "" : request.getAttribute("from") %>"></label>
     <label>结束日期<input type="date" name="to" value="<%= request.getAttribute("to") == null ? "" : request.getAttribute("to") %>"></label>
     <button type="submit">查询账单</button>
+    <a class="reset-link" href="<%= context %>/hospital#orders">重置筛选</a>
   </form>
   <p class="subtle">日期按北京时间的缴费日筛选；未缴费账单没有缴费日期。</p>
   <% JsonNode orders = (JsonNode) request.getAttribute("orders");

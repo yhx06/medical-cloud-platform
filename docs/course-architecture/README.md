@@ -10,12 +10,15 @@ Tomcat 保留登录会话并提供患者、医生和医院操作页面，不直�
 
 ## HTTP 接口目录
 
-所有路径以下列前缀为基准：`http://127.0.0.1:8080/paas/api`。正常响应使用 `{ "code": "OK", "message": "...", "data": ... }`；失败响应包含 `code`、公共 `message` 和 `requestId`。除注册、登录和号源目录外，发送 `Authorization: Bearer <令牌>`。
+所有路径以下列前缀为基准：`http://127.0.0.1:8080/paas/api`。正常响应使用 `{ "code": "OK", "message": "...", "data": ... }`；失败响应包含 `code`、公共 `message` 和 `requestId`。除注册、登录和公开挂号目录外，发送 `Authorization: Bearer <令牌>`。
 
 | 方法与路径 | 用途 | 调用者 |
 | --- | --- | --- |
 | `POST /auth/login` | 登录、签发令牌 | 全部账号 |
 | `POST /auth/register` | `{ "username": "...", "password": "..." }`，只创建患者 | 公开注册 |
+| `GET /catalog/hospitals` | 启用医院的 `id/name` 列表 | 公开目录 |
+| `GET /catalog/departments?tenantId=...` | 必填医院；返回该启用医院的启用科室 `id/name` | 公开目录 |
+| `GET /catalog/doctors?tenantId=...&departmentId=...` | 必填医院，科室可选；返回启用且机构/科室/角色关联有效的医生 `id/name` | 公开目录 |
 | `GET /catalog/slots?tenantId=...&departmentId=...&doctorId=...&date=YYYY-MM-DD` | 必填机构；其他筛选可选；返回尚未开诊且有余量的号源 | 公开目录 |
 | `GET/POST /hospital/departments`、`PUT /hospital/departments/{id}` | 本机构科室列表、创建、修改与停用 | 医院管理员 |
 | `GET/POST /hospital/doctors`、`PUT /hospital/doctors/{id}` | 本机构医生列表、创建及修改；创建返回一次性初始密码 | 医院管理员 |
@@ -33,6 +36,8 @@ Tomcat 保留登录会话并提供患者、医生和医院操作页面，不直�
 | `GET /hospital/orders?status=PAID&from=YYYY-MM-DD&to=YYYY-MM-DD` | 本机构订单；可选状态与支付日期筛选，最多最近 100 条 | 医院管理员 |
 
 空体 POST 仍需携带 `Content-Type: application/json`，可发送 `{}`。停用账号登录返回 401；越权接诊返回 403；重复预约或重复完成接诊返回 409。模拟缴费的幂等性不等于真实支付网关的安全性。
+
+公开挂号目录不返回登录账号、密码哈希、患者或病历信息。门户以该目录生成医院—科室—医生下拉选项，并将号源编号映射为科室与医生名称；号源接口的原字段和构造契约不变。更换上级选择通过只读 GET 更新选项，禁用脚本时使用“更新选项”按钮；正常号源查询不会因陈旧或伪造的下级筛选改成不带筛选的查询。完成预约可直接进入本人病历与账单，快捷入口和手动查询保留当前挂号筛选，读取权限仍由 PaaS 校验。交互验证见 [2026-10-03 验收记录](../course-labs/2026-10-03-interaction-acceptance.md)。
 
 已登录但角色不符的预约/订单操作返回 403。目录与预约写入均按上海时间检查开诊截止；预约在锁内重验科室状态与医生当前科室，不能使用缓存的旧号源编号绕过目录筛选。预约按科室→医生→号源→预约顺序加锁；修改号源也按此顺序用当前读判断已提交预约，避免 MySQL REPEATABLE READ 的旧快照放行撤回。
 

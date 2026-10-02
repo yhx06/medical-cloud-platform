@@ -23,6 +23,7 @@ class SlotSearchPortalTest {
     @Test void patientForwardsAllFiltersWithoutUnfilteredFallback() throws Exception {
         AtomicReference<String> query = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        catalog(server);
         server.createContext("/api/catalog/slots", exchange -> {
             query.set(exchange.getRequestURI().getRawQuery());
             byte[] reply = "{\"code\":\"OK\",\"data\":[]}".getBytes(StandardCharsets.UTF_8);
@@ -37,7 +38,101 @@ class SlotSearchPortalTest {
             request.addParameter("doctorId", "doc a"); request.addParameter("date", "2035-05-01");
             servlet.service(request, new MockHttpServletResponse());
             assertEquals("tenantId=tenant+a&departmentId=dept+a&doctorId=doc+a&date=2035-05-01", query.get());
+            assertNotNull(request.getAttribute("hospitals"), "Patient workspace needs a hospital directory");
+            assertEquals("甲医院", ((JsonNode) request.getAttribute("hospitals")).get(0).path("name").asText());
+            assertEquals("tenantId=tenant+a&departmentId=dept+a&doctorId=doc+a&date=2035-05-01",
+                    request.getAttribute("patientFilters"));
         } finally { server.stop(0); }
+    }
+
+    @Test void staleDepartmentDoesNotBecomeAnUnfilteredSearchAndHistoryRemainsVisible() throws Exception {
+        AtomicReference<String> query = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        catalog(server);
+        server.createContext("/api/catalog/slots", exchange -> {
+            query.set(exchange.getRequestURI().getRawQuery()); reply(exchange, "[]");
+        });
+        server.start();
+        try {
+            MockHttpServletRequest request = request("GET", "/patient", Role.PATIENT);
+            request.addParameter("tenantId", "tenant a"); request.addParameter("departmentId", "other-tenant-dept");
+            servlet(server).service(request, new MockHttpServletResponse());
+            assertNull(query.get(), "Never drop a forged or stale filter and broaden the slot query");
+            assertNotNull(request.getAttribute("error"));
+            assertEquals("", request.getAttribute("departmentId"));
+            assertNotNull(request.getAttribute("appointments"), "Booking catalog errors must not hide history");
+        } finally { server.stop(0); }
+    }
+
+    @Test void changedHospitalResetsLowerSelectionsForTheExplicitDirectoryRefresh() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        catalog(server); server.start();
+        try {
+            MockHttpServletRequest request = request("GET", "/patient", Role.PATIENT);
+            request.addParameter("tenantId", "tenant a");
+            request.addParameter("previousTenantId", "old-tenant");
+            request.addParameter("departmentId", "old-dept"); request.addParameter("doctorId", "old-doc");
+            request.addParameter("refreshDirectory", "1");
+            servlet(server).service(request, new MockHttpServletResponse());
+            assertEquals("", request.getAttribute("departmentId")); assertEquals("", request.getAttribute("doctorId"));
+            assertEquals("tenantId=tenant+a", request.getAttribute("patientFilters"));
+            assertNotNull(request.getAttribute("departments"));
+            assertNull(request.getAttribute("slots")); assertNull(request.getAttribute("error"));
+        } finally { server.stop(0); }
+    }
+
+    @Test void forgedPreviousParentMustNotEraseInvalidFiltersOnSlotQueries() throws Exception {
+        AtomicReference<String> query = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        catalog(server);
+        server.createContext("/api/catalog/slots", exchange -> {
+            query.set(exchange.getRequestURI().getRawQuery()); reply(exchange, "[]");
+        });
+        server.start();
+        try {
+            for (String previousKey : new String[] {"previousTenantId", "previousDepartmentId"}) {
+                MockHttpServletRequest request = request("GET", "/patient", Role.PATIENT);
+                request.addParameter("tenantId", "tenant a");
+                request.addParameter("departmentId", "previousDepartmentId".equals(previousKey) ? "dept a" : "other-tenant-dept");
+                request.addParameter("doctorId", "other-tenant-doctor");
+                request.addParameter(previousKey, "forged");
+                servlet(server).service(request, new MockHttpServletResponse());
+                assertNull(query.get(), previousKey + " must not bypass catalog membership validation");
+                assertNotNull(request.getAttribute("error"));
+            }
+        } finally { server.stop(0); }
+    }
+
+    @Test void unavailableDirectoryDoesNotHideAppointmentsOrSelectedRecord() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        String id = "12345678-1234-1234-1234-123456789012";
+        server.createContext("/api/catalog/hospitals", exchange -> { exchange.sendResponseHeaders(503, -1); exchange.close(); });
+        server.createContext("/api/patient/appointments", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            reply(exchange, path.endsWith("/record") ? "{\"diagnosis\":\"虚构诊断\"}"
+                    : path.endsWith("/order") ? "{\"status\":\"UNPAID\",\"amount\":39}" : "[{\"id\":\"" + id + "\",\"status\":\"COMPLETED\"}]");
+        });
+        server.start();
+        try {
+            MockHttpServletRequest request = request("GET", "/patient", Role.PATIENT);
+            request.addParameter("appointmentId", id);
+            servlet(server).service(request, new MockHttpServletResponse());
+            assertNotNull(request.getAttribute("error"));
+            assertNotNull(request.getAttribute("appointments")); assertNotNull(request.getAttribute("record"));
+            assertNotNull(request.getAttribute("order"));
+        } finally { server.stop(0); }
+    }
+
+    private static void catalog(HttpServer server) {
+        server.createContext("/api/catalog/hospitals", exchange -> reply(exchange, "[{\"id\":\"tenant a\",\"name\":\"甲医院\"}]"));
+        server.createContext("/api/catalog/departments", exchange -> reply(exchange, "[{\"id\":\"dept a\",\"name\":\"内科\"}]"));
+        server.createContext("/api/catalog/doctors", exchange -> reply(exchange, "[{\"id\":\"doc a\",\"name\":\"甲医生\"}]"));
+        server.createContext("/api/patient/appointments", exchange -> reply(exchange, "[]"));
+    }
+
+    private static void reply(com.sun.net.httpserver.HttpExchange exchange, String data) throws java.io.IOException {
+        byte[] body = ("{\"code\":\"OK\",\"data\":" + data + "}").getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
     }
 
     @Test void hospitalSlotFormUsesOwnSessionAndCsrf() throws Exception {

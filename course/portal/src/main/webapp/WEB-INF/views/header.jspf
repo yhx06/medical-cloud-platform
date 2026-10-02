@@ -9,6 +9,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %> · 医疗云</title>
   <link rel="stylesheet" href="<%= context %>/assets/course.css">
+  <script src="<%= context %>/assets/portal.js" defer></script>
 </head>
 <body class="workspace-page">
 <a class="skip-link" href="#main-content">跳转到主要内容</a>

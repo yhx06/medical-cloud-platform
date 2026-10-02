@@ -54,6 +54,14 @@ class WorkspaceJspTest {
                 request.setAttribute("portalTitle", "测试工作台");
                 request.setAttribute("username", "<script>account</script>");
                 request.setAttribute("csrfToken", "fixture-csrf");
+                if ("patient".equals(page)) {
+                    request.setAttribute("tenantId", "tenant-id"); request.setAttribute("departmentId", "department-id");
+                    request.setAttribute("doctorId", "doctor-id"); request.setAttribute("date", "2030-01-01");
+                    request.setAttribute("patientFilters", "tenantId=tenant-id&departmentId=department-id&doctorId=doctor-id&date=2030-01-01");
+                    request.setAttribute("hospitals", JSON.readTree("[{\"id\":\"tenant-id\",\"name\":\"演示医院 <script>unsafe</script>\"}]"));
+                    request.setAttribute("departments", JSON.readTree("[{\"id\":\"department-id\",\"name\":\"演示内科\"}]"));
+                    request.setAttribute("doctors", JSON.readTree("[{\"id\":\"doctor-id\",\"name\":\"张医生\"}]"));
+                }
                 if ("patient".equals(page) || "doctor".equals(page)) {
                     request.setAttribute("appointments", JSON.readTree("["
                             + "{\"id\":\"booked-id\",\"status\":\"BOOKED\",\"patientId\":\"patient-id\",\"slotId\":\"slot-id\"},"
@@ -81,6 +89,55 @@ class WorkspaceJspTest {
     @AfterAll
     static void stop() throws Exception {
         if (tomcat != null) { tomcat.stop(); tomcat.destroy(); }
+    }
+
+    @Test
+    void patientSelectsDirectoryNamesInsteadOfTypingIdentifiers() throws Exception {
+        String html = render("patient");
+        assertSelectedOption(html, "tenantId", "tenant-id", "演示医院 &lt;script&gt;unsafe&lt;/script&gt;");
+        assertSelectedOption(html, "departmentId", "department-id", "演示内科");
+        assertSelectedOption(html, "doctorId", "doctor-id", "张医生");
+        Matcher table = Pattern.compile("<section[^>]*id=\"slot-search\"[^>]*>([\\s\\S]*?)</section>").matcher(html);
+        assertTrue(table.find());
+        assertTrue(table.group(1).contains("<td>演示内科</td>"));
+        assertTrue(table.group(1).contains("<td>张医生</td>"));
+        assertFalse(html.contains("<script>unsafe</script>"));
+        assertTrue(html.contains("name=\"refreshDirectory\""), "No-JS users need a way to update the dependent options");
+        assertTrue(html.contains("href=\"/portal/patient#slot-search\""));
+    }
+
+    @Test
+    void onlyCompletedAppointmentsLinkToBillingAndPreserveCurrentFilters() throws Exception {
+        String html = render("patient");
+        Matcher links = Pattern.compile("<a[^>]*href=\"([^\"]+appointmentId[^\"]+)\"[^>]*>查看病历与账单</a>").matcher(html);
+        assertTrue(links.find(), "Completed history rows need a direct entry");
+        assertEquals("/portal/patient?tenantId=tenant-id&amp;departmentId=department-id&amp;doctorId=doctor-id&amp;date=2030-01-01&amp;appointmentId=done-id#record-billing", links.group(1));
+        assertFalse(links.find(), "Booked/in-progress/canceled rows must not offer a missing record");
+        Matcher section = Pattern.compile("<section[^>]*id=\"record-billing\"[^>]*>([\\s\\S]*?)</section>").matcher(html);
+        assertTrue(section.find());
+        for (String[] field : new String[][] {{"tenantId", "tenant-id"}, {"departmentId", "department-id"}, {"doctorId", "doctor-id"}, {"date", "2030-01-01"}})
+            assertTrue(section.group(1).contains("type=\"hidden\" name=\"" + field[0] + "\" value=\"" + field[1] + "\""));
+    }
+
+    private static void assertSelectedOption(String html, String field, String value, String label) {
+        Matcher select = Pattern.compile("<select[^>]*name=\"" + field + "\"[^>]*>([\\s\\S]*?)</select>").matcher(html);
+        assertTrue(select.find(), "Missing directory select " + field);
+        assertTrue(select.group(1).contains("<option value=\"" + value + "\" selected>" + label + "</option>"),
+                "Selected directory identity/name not retained for " + field);
+    }
+
+    @Test
+    void workspacesServeExternalEnhancementScriptAndDateFiltersHaveResetLinks() throws Exception {
+        String html = render("patient");
+        Matcher script = Pattern.compile("<script[^>]*src=\"([^\"]+portal\\.js)\"[^>]*>").matcher(html);
+        assertTrue(script.find(), "Workspace must load navigation/cascade enhancement");
+        HttpURLConnection connection = (HttpURLConnection) new URL("http://127.0.0.1:" + port + script.group(1)).openConnection();
+        try {
+            assertEquals(200, connection.getResponseCode());
+            assertTrue(connection.getContentType().contains("javascript"));
+        } finally { connection.disconnect(); }
+        assertTrue(render("doctor").contains("href=\"/portal/doctor#clinical-history\""));
+        assertTrue(render("hospital").contains("href=\"/portal/hospital#orders\""));
     }
 
     @Test

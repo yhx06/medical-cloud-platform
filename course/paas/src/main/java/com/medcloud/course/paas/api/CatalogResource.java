@@ -2,6 +2,7 @@ package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.SlotView;
+import com.medcloud.course.contract.CatalogOption;
 import com.medcloud.course.paas.schedule.DirectoryService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.schedule.SlotAvailability;
@@ -27,6 +28,25 @@ public class CatalogResource {
 
     public CatalogResource() { }
     public CatalogResource(DirectoryService directory) { this.directory = directory; }
+
+    @GET
+    @Path("hospitals")
+    public ApiResponse<List<CatalogOption>> hospitals() {
+        return ApiResponse.success("hospitals", directory.hospitals());
+    }
+
+    @GET
+    @Path("departments")
+    public ApiResponse<List<CatalogOption>> departments(@QueryParam("tenantId") String tenantId) {
+        return ApiResponse.success("departments", directory.departments(tenantId));
+    }
+
+    @GET
+    @Path("doctors")
+    public ApiResponse<List<CatalogOption>> doctors(@QueryParam("tenantId") String tenantId,
+            @QueryParam("departmentId") String departmentId) {
+        return ApiResponse.success("doctors", directory.doctors(tenantId, departmentId));
+    }
 
     @GET
     @Path("slots")

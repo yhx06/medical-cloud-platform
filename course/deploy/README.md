@@ -4,6 +4,8 @@
 
 P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-labs/2026-10-02-p0-acceptance.md)。本次验证还覆盖角色越权返回 403、已开始号源拒绝预约、医生调科后旧号源拒绝预约，以及 MySQL 旧快照下保护已预约号源。
 
+挂号目录下拉、完成预约快捷入口及筛选/导航增强见 [2026-10-03 交互验收](../../docs/course-labs/2026-10-03-interaction-acceptance.md)。本次新增只读目录接口，无数据库结构变更；更新两个 WAR 即可，不需要重复初始化或迁移数据库。
+
 ## 准备
 
 - JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x；PowerDesigner 16.5 用于编辑 `docs/course-architecture/medical-cloud-course.pdm`。
@@ -61,6 +63,12 @@ $env:MEDICAL_COURSE_JWT_SECRET = '<至少 32 字符的随机密钥>'
 升级前后逐表比较行数，并保存备份。MySQL DDL 可能部分提交；失败后检查实际结构，不应盲目重跑，先将备份恢复到另一个空的隔离实例验证。迁移保留旧业务行，新增时间/主诉/备注列为 NULL，并将患者/号源唯一约束改为普通索引以允许取消后重约。数据库与 JVM 使用课程时区 `Asia/Shanghai`（启动 JVM 可加 `-Duser.timezone=Asia/Shanghai`），不要用机器本地时区推断取消截止或支付日期。
 
 ### 自动验收与报告截图
+
+门户脚本的独立回归使用 Node 内置测试工具（仅开发验证需要 Node，Tomcat/WildFly 运行不需要）：
+
+```powershell
+node --test course/portal/src/test/js/portal.test.cjs
+```
 
 ```powershell
 $env:COURSE_P0_API_BASE = 'http://127.0.0.1:8180/paas/api'

@@ -2,6 +2,8 @@ package com.medcloud.course.paas.schedule;
 
 import com.medcloud.course.paas.tenant.Department;
 import com.medcloud.course.paas.tenant.Tenant;
+import com.medcloud.course.contract.CatalogOption;
+import com.medcloud.course.contract.Role;
 import java.util.ArrayList;
 
 import javax.ejb.Stateless;
@@ -23,6 +25,40 @@ public class DirectoryService {
 
     public DirectoryService(EntityManager manager) {
         this.manager = manager;
+    }
+
+    public List<CatalogOption> hospitals() {
+        return manager.createQuery("select new com.medcloud.course.contract.CatalogOption(t.id, t.name) "
+                + "from Tenant t where t.status = 'ACTIVE' order by t.name, t.id", CatalogOption.class)
+                .getResultList();
+    }
+
+    public List<CatalogOption> departments(String tenantId) {
+        String id = requiredTenant(tenantId);
+        return manager.createQuery("select new com.medcloud.course.contract.CatalogOption(d.id, d.name) "
+                + "from Department d, Tenant t where d.tenantId = t.id and t.id = :tenantId "
+                + "and t.status = 'ACTIVE' and d.status = 'ACTIVE' order by d.name, d.id", CatalogOption.class)
+                .setParameter("tenantId", id).getResultList();
+    }
+
+    public List<CatalogOption> doctors(String tenantId, String departmentId) {
+        String id = requiredTenant(tenantId);
+        return manager.createQuery("select new com.medcloud.course.contract.CatalogOption(p.userId, p.displayName) "
+                + "from DoctorProfile p, Account a, Department d, Tenant t "
+                + "where p.userId = a.id and p.tenantId = t.id and a.tenantId = t.id "
+                + "and p.departmentId = d.id and d.tenantId = t.id and t.id = :tenantId "
+                + "and t.status = 'ACTIVE' and d.status = 'ACTIVE' and a.status = 'ACTIVE' "
+                + "and a.role = :role and (:departmentId is null or d.id = :departmentId) "
+                + "order by p.displayName, p.userId", CatalogOption.class)
+                .setParameter("tenantId", id)
+                .setParameter("departmentId", emptyToNull(departmentId))
+                .setParameter("role", Role.DOCTOR).getResultList();
+    }
+
+    private static String requiredTenant(String value) {
+        String id = emptyToNull(value);
+        if (id == null) throw new IllegalArgumentException("tenantId required");
+        return id;
     }
 
     public void publish(ScheduleSlot slot) {

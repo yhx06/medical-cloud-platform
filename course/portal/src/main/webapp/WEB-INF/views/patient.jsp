@@ -1,16 +1,52 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="com.fasterxml.jackson.databind.JsonNode" %>
+<%@ page import="java.net.URLEncoder" %>
+<%!
+  private String directoryName(JsonNode options, String id, String fallback) {
+    if (options != null && options.isArray())
+      for (JsonNode option : options) if (id.equals(option.path("id").asText()))
+        return WebEscaper.html(option.path("name").asText());
+    return fallback;
+  }
+%>
 <% String workspace = "patient", workspaceLabel = "患者服务", workspaceDescription = "查询号源、管理预约，查看您的诊疗记录与账单。"; %>
 <%@ include file="header.jspf" %>
+<% JsonNode hospitals = (JsonNode) request.getAttribute("hospitals");
+   JsonNode departments = (JsonNode) request.getAttribute("departments");
+   JsonNode doctors = (JsonNode) request.getAttribute("doctors");
+   String selectedTenant = request.getAttribute("tenantId") == null ? "" : String.valueOf(request.getAttribute("tenantId"));
+   String selectedDepartment = request.getAttribute("departmentId") == null ? "" : String.valueOf(request.getAttribute("departmentId"));
+   String selectedDoctor = request.getAttribute("doctorId") == null ? "" : String.valueOf(request.getAttribute("doctorId"));
+   String selectedDate = request.getAttribute("date") == null ? "" : String.valueOf(request.getAttribute("date"));
+   String filterQuery = request.getAttribute("patientFilters") == null ? "" : String.valueOf(request.getAttribute("patientFilters")); %>
 <section class="card" id="slot-search">
   <div class="section-heading"><div><p class="section-kicker">01 / APPOINTMENT</p><h2>预约挂号</h2></div><span class="section-tag">查询可预约号源</span></div>
-  <p class="subtle">输入医院编号，可进一步按科室、医生与日期筛选。</p>
-  <form method="get" action="<%= context %>/patient" class="inline-form">
-    <label>医院编号<input name="tenantId" value="<%= request.getAttribute("tenantId") == null ? "" : request.getAttribute("tenantId") %>" placeholder="例如 tenant-a" required></label>
-    <label>科室编号<input name="departmentId" value="<%= request.getAttribute("departmentId") == null ? "" : request.getAttribute("departmentId") %>"></label>
-    <label>医生编号<input name="doctorId" value="<%= request.getAttribute("doctorId") == null ? "" : request.getAttribute("doctorId") %>"></label>
-    <label>日期<input type="date" name="date" value="<%= request.getAttribute("date") == null ? "" : request.getAttribute("date") %>"></label>
-    <button type="submit">查询</button>
+  <p class="subtle" id="directory-help">先选择医院，再按科室、医生和日期筛选。更换医院或科室后将清空下级选择；未启用脚本时，请点击“更新选项”。</p>
+  <form method="get" action="<%= context %>/patient#slot-search" class="inline-form" data-directory-form aria-describedby="directory-help">
+    <input type="hidden" name="previousTenantId" value="<%= selectedTenant %>">
+    <input type="hidden" name="previousDepartmentId" value="<%= selectedDepartment %>">
+    <label>医院<select name="tenantId" required>
+      <option value="">请选择医院</option>
+      <% if (hospitals != null && hospitals.isArray()) for (JsonNode option : hospitals) { %>
+      <option value="<%= WebEscaper.html(option.path("id").asText()) %>"<%= WebEscaper.html(option.path("id").asText()).equals(selectedTenant) ? " selected" : "" %>><%= WebEscaper.html(option.path("name").asText()) %></option>
+      <% } %>
+    </select></label>
+    <label>科室<select name="departmentId"<%= selectedTenant.isEmpty() ? " disabled" : "" %>>
+      <option value="">全部科室</option>
+      <% if (departments != null && departments.isArray()) for (JsonNode option : departments) { %>
+      <option value="<%= WebEscaper.html(option.path("id").asText()) %>"<%= WebEscaper.html(option.path("id").asText()).equals(selectedDepartment) ? " selected" : "" %>><%= WebEscaper.html(option.path("name").asText()) %></option>
+      <% } %>
+    </select></label>
+    <label>医生<select name="doctorId"<%= selectedTenant.isEmpty() ? " disabled" : "" %>>
+      <option value="">全部医生</option>
+      <% if (doctors != null && doctors.isArray()) for (JsonNode option : doctors) { %>
+      <option value="<%= WebEscaper.html(option.path("id").asText()) %>"<%= WebEscaper.html(option.path("id").asText()).equals(selectedDoctor) ? " selected" : "" %>><%= WebEscaper.html(option.path("name").asText()) %></option>
+      <% } %>
+    </select></label>
+    <label>日期<input type="date" name="date" value="<%= selectedDate %>"></label>
+    <button type="submit">查询号源</button>
+    <button type="submit" class="button--secondary" name="refreshDirectory" value="1" formnovalidate>更新选项</button>
+    <a class="reset-link" href="<%= context %>/patient#slot-search">重置筛选</a>
   </form>
   <% JsonNode slots = (JsonNode) request.getAttribute("slots");
      if (slots != null && slots.isArray()) { %>
@@ -19,8 +55,8 @@
     <tr>
       <td><%= WebEscaper.html(slot.path("date").asText()) %></td>
       <td><%= WebEscaper.html(slot.path("startTime").asText()) %>–<%= WebEscaper.html(slot.path("endTime").asText()) %></td>
-      <td><%= WebEscaper.html(slot.path("departmentId").asText()) %></td>
-      <td><%= WebEscaper.html(slot.path("doctorId").asText()) %></td>
+      <td><%= directoryName(departments, slot.path("departmentId").asText(), "科室暂不可用") %></td>
+      <td><%= directoryName(doctors, slot.path("doctorId").asText(), "医生暂不可用") %></td>
       <td><%= WebEscaper.html(slot.path("remaining").asText()) %>/<%= WebEscaper.html(slot.path("capacity").asText()) %></td>
       <td class="money">¥<%= WebEscaper.html(slot.path("fee").asText()) %></td>
       <td><form method="post" action="<%= context %>/patient/book">
@@ -49,15 +85,23 @@
         <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
         <input type="hidden" name="appointmentId" value="<%= WebEscaper.html(appointment.path("id").asText()) %>">
         <button type="submit" class="button--danger">取消预约</button>
-      </form><% } %></td></tr>
+      </form><% } else if ("COMPLETED".equals(appointment.path("status").asText())) {
+        String recordUrl = context + "/patient?" + (filterQuery.isEmpty() ? "" : filterQuery + "&")
+          + "appointmentId=" + URLEncoder.encode(appointment.path("id").asText(), "UTF-8") + "#record-billing"; %>
+      <a class="record-link" href="<%= WebEscaper.html(recordUrl) %>">查看病历与账单</a>
+      <% } %></td></tr>
   <% } %></tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无预约记录，完成挂号后可在这里查看。</p><% } %>
   <% } %>
 </section>
 <section class="card" id="record-billing">
   <div class="section-heading"><div><p class="section-kicker">03 / RECORDS & BILLING</p><h2>病历与账单</h2></div><span class="section-tag">模拟诊疗服务</span></div>
-  <p class="subtle">使用已完成接诊的预约编号，查看病历与诊疗账单。</p>
-  <form method="get" action="<%= context %>/patient" class="inline-form">
+  <p class="subtle">点击上方已完成预约的“查看病历与账单”即可查询；也可手动输入本人已完成预约的编号。</p>
+  <form method="get" action="<%= context %>/patient#record-billing" class="inline-form">
+    <input type="hidden" name="tenantId" value="<%= selectedTenant %>">
+    <input type="hidden" name="departmentId" value="<%= selectedDepartment %>">
+    <input type="hidden" name="doctorId" value="<%= selectedDoctor %>">
+    <input type="hidden" name="date" value="<%= selectedDate %>">
     <label>预约编号<input name="appointmentId" value="<%= request.getAttribute("appointmentId") == null ? "" : request.getAttribute("appointmentId") %>" required></label>
     <button type="submit">查看</button>
   </form>
