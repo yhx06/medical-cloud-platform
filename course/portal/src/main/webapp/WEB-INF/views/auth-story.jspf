@@ -1,0 +1,11 @@
+<%@ page pageEncoding="UTF-8" %>
+<aside class="auth-story" aria-label="医疗云介绍">
+  <div class="brand"><span class="brand-mark" aria-hidden="true">+</span><span>医疗云<small>MEDICAL CLOUD</small></span></div>
+  <div class="auth-story-content">
+    <p class="eyebrow">云服务工程 · 课程实践</p>
+    <h2>让诊疗流程，<br>在云端连接。</h2>
+    <p class="auth-intro">连接患者、医生与医院，演示从预约挂号到接诊、病历和模拟缴费的完整服务流程。</p>
+    <div class="care-flow"><div><span>01</span><strong>预约挂号</strong><small>查询号源与管理预约</small></div><div><span>02</span><strong>在线接诊</strong><small>记录病历与医生建议</small></div><div><span>03</span><strong>诊疗账单</strong><small>查看账单与模拟缴费</small></div></div>
+  </div>
+  <div class="auth-footnote"><span class="demo-dot" aria-hidden="true"></span>仅限课堂演示 · 不接入真实医疗或支付服务<small>Java 8 / Tomcat 9 / WildFly 10 / MySQL</small></div>
+</aside>

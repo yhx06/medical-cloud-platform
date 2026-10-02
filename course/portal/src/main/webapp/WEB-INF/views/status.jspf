@@ -1,0 +1,19 @@
+<%@ page pageEncoding="UTF-8" %>
+<%!
+  private String stateBadge(String state) {
+    String label = "未知状态";
+    String tone = "muted";
+    if ("BOOKED".equals(state)) { label = "已预约"; tone = "blue"; }
+    else if ("IN_PROGRESS".equals(state)) { label = "接诊中"; tone = "amber"; }
+    else if ("COMPLETED".equals(state)) { label = "已完成"; tone = "green"; }
+    else if ("CANCELED".equals(state)) { label = "已取消"; }
+    else if ("PAID".equals(state)) { label = "已缴费"; tone = "green"; }
+    else if ("UNPAID".equals(state)) { label = "待缴费"; tone = "amber"; }
+    else if ("ACTIVE".equals(state)) { label = "已启用"; tone = "green"; }
+    else if ("DISABLED".equals(state)) { label = "已停用"; }
+    else if ("PUBLISHED".equals(state)) { label = "已发布"; tone = "blue"; }
+    else if ("WITHDRAWN".equals(state)) { label = "已撤回"; }
+    return "<span class=\"badge badge--" + tone + "\" title=\""
+        + WebEscaper.html(state) + "\">" + label + "</span>";
+  }
+%>
