@@ -29,6 +29,7 @@
 | RESTEasy 路由 + API/context focused 回归 | 11 项，0 failure/error/skipped |
 | `configure-wildfly.Tests.ps1` | controller preflight PASS，显式隔离/端口/环境引用检查通过 |
 | 部署 API 脚本 | PASS，FrozenWrites=12，历史读/新登录/重新启用通过 |
+| 2026-10-04 真实 Tomcat 统计服务 500 补验 | 医院/平台分区错误、独立资源保留、无假零指标/趋势、恢复和卸载 PASS |
 
 普通 Maven 的 29 项跳过为新增 28 项和已有 `MySqlSlotSnapshotTest`，因为没有 disposable 环境变量；不能作为实际 MySQL 通过证据。新增 28 项已通过独立 Pester 实际运行。运行方式见 [部署说明](../../course/deploy/README.md)，Pester 3.4 必须用 `-Script -PassThru`。
 
@@ -65,7 +66,9 @@ SQL 使用专用医院范围和聚合投影，订单/病历关联同时匹配 te
 
 非法统计日期 400 时订单仍显示、无伪造零趋势；实际旧门户会话遇到停用账号 401 后只显示登录提示，未留下订单/趋势私有数据。生产部署 slotDate 实际为 ISO 日期字符串，上海今日 00:00 已开诊预约无取消按钮、未来预约有；整数日期兼容另有 JSP 回归。
 
-尚未在部署环境单独注入“仅统计服务 500/超时、其他服务正常”的故障；已有分区失败单元测试及实际非法日期降级，不能等同于该特定场景实测。未验证 MySQL 5.6/其他教师机器；未实现新建医院/医院管理员、附件、持久化审计、真实支付退款或医疗合规。
+2026-10-04 补验了“仅统计服务 500、其他服务正常”的真实 Tomcat 渲染：从最终 portal.war 建唯一 ignored QA 副本，仅配置现有 `paasBaseUrl` seam 到 nonce 保护的 loopback 代理，不修改产品类/JSP、不覆盖或重启 `/portal`。代理只对 `/hospital/statistics`、`/platform/statistics` 返回 500；登录及科室/医生/号源/订单/医院上下文/平台医院列表透传真实 WildFly，均实测 200。两个统计接口各观察到 2 次真实 500。医院页保留专用科室、医生、号源及两笔订单 ID；平台页保留专用医院 ID/名称和状态表单。两个统计区显示“诊疗服务暂时不可用，请稍后重试”，无 metrics-grid/metric-card/统计范围或每日数据行，趋势说明为暂不可用，未用假零替代。
+
+切换代理为健康透传后，两角色同一会话恢复指标和趋势；finally 校验精确本次路径后移除 context descriptor，实际 QA 路径返回 404，代理正常 close/进程退出/监听关闭。再独立登录原 `/portal` 的医院/平台角色，资源、指标与趋势均正常。未注入独立超时故障；非法日期 400 仍仅是输入降级证据，不用于替代这次服务 500 验收。临时源/生成副本保留 ignored 供复核，日志 `task-6-statistics-500.log`。未验证 MySQL 5.6/其他教师机器；未实现新建医院/医院管理员、附件、持久化审计、真实支付退款或医疗合规。
 
 日志/截图与 nonce 保护 QA 源码保留在本地 ignored `.superpowers/sdd/2026-10-03-medical-cloud-course-platform-statistics/`、`.superpowers/platform-statistics-qa/`，review 可定向核查，不随 Git 提交。有效截图包括 `platform-disabled-390.jpg`、`hospital-frozen-390.jpg`、`hospital-reenabled-desktop.jpg`（实际为稳定每日趋势）；`hospital-reenabled-stats-390.jpg` 实际是恢复管理控件。部分锚点切换初始截图仍处平滑滚动中，尤其 `platform-390.jpg`，不作为统计布局完成证据。浏览器已恢复桌面尺寸。
 
