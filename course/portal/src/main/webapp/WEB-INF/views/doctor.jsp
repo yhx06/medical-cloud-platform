@@ -5,6 +5,7 @@
 <section class="card" id="consultations">
   <div class="section-heading"><div><p class="section-kicker">01 / CONSULTATION</p><h2>接诊工作台</h2></div><span class="section-tag">我的接诊预约</span></div>
   <p class="subtle">开始接诊后填写主诉、诊断与建议，完成时自动生成模拟账单。</p>
+  <%= sectionError(request, "appointmentsError") %>
   <% JsonNode appointments = (JsonNode) request.getAttribute("appointments");
      if (appointments != null && appointments.isArray()) { %>
   <div class="table-wrap" tabindex="0" role="region" aria-label="接诊预约表格，左右滚动查看更多"><table><thead><tr><th>预约编号</th><th>患者</th><th>号源</th><th>状态</th><th>操作</th></tr></thead><tbody>
@@ -13,14 +14,15 @@
     <td class="identifier"><%= WebEscaper.html(appointment.path("slotId").asText()) %></td>
     <td><%= stateBadge(appointment.path("status").asText()) %></td>
     <td>
-      <% if ("BOOKED".equals(appointment.path("status").asText())) { %>
+      <% if (!workspaceWritable) { %><span class="read-only-reason"><%= readOnlyReason(hospitalContext == null ? "" : hospitalContext.path("status").asText()) %></span>
+      <% } else if ("BOOKED".equals(appointment.path("status").asText())) { %>
       <form method="post" action="<%= context %>/doctor/start">
-        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="appointmentId" value="<%= id %>"><button type="submit">开始接诊</button>
       </form>
       <% } else if ("IN_PROGRESS".equals(appointment.path("status").asText())) { %>
       <form method="post" action="<%= context %>/doctor/complete" class="clinical-form">
-        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="appointmentId" value="<%= id %>">
         <label>主诉<textarea name="complaint" maxlength="500" required></textarea></label>
         <label>诊断<input name="diagnosis" maxlength="500" required></label>
@@ -39,6 +41,7 @@
 <section class="card" id="clinical-history">
   <div class="section-heading"><div><p class="section-kicker">02 / CLINICAL RECORDS</p><h2>我的病历</h2></div></div>
   <p class="subtle" id="record-filter-help">按接诊完成日期筛选；起止日期可留空，开始日期不得晚于结束日期。</p>
+  <%= sectionError(request, "recordsError") %>
   <form method="get" action="<%= context %>/doctor#clinical-history" class="inline-form" aria-describedby="record-filter-help">
     <label>开始日期<input type="date" name="from" value="<%= request.getAttribute("from") == null ? "" : request.getAttribute("from") %>"></label>
     <label>结束日期<input type="date" name="to" value="<%= request.getAttribute("to") == null ? "" : request.getAttribute("to") %>"></label>

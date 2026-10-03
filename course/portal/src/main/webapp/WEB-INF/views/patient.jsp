@@ -22,6 +22,7 @@
 <section class="card" id="slot-search">
   <div class="section-heading"><div><p class="section-kicker">01 / APPOINTMENT</p><h2>预约挂号</h2></div><span class="section-tag">查询可预约号源</span></div>
   <p class="subtle" id="directory-help">先选择医院，再按科室、医生和日期筛选。更换医院或科室后将清空下级选择；未启用脚本时，请点击“更新选项”。</p>
+  <%= sectionError(request, "slotsError") %>
   <form method="get" action="<%= context %>/patient#slot-search" class="inline-form" data-directory-form aria-describedby="directory-help">
     <input type="hidden" name="previousTenantId" value="<%= selectedTenant %>">
     <input type="hidden" name="previousDepartmentId" value="<%= selectedDepartment %>">
@@ -60,7 +61,7 @@
       <td><%= WebEscaper.html(slot.path("remaining").asText()) %>/<%= WebEscaper.html(slot.path("capacity").asText()) %></td>
       <td class="money">¥<%= WebEscaper.html(slot.path("fee").asText()) %></td>
       <td><form method="post" action="<%= context %>/patient/book">
-        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="slotId" value="<%= WebEscaper.html(slot.path("id").asText()) %>">
         <button type="submit">预约</button>
       </form></td>
@@ -72,24 +73,32 @@
 </section>
 <section class="card" id="appointment-history">
   <div class="section-heading"><div><p class="section-kicker">02 / MY APPOINTMENTS</p><h2>我的预约历史</h2></div></div>
+  <%= sectionError(request, "appointmentsError") %>
   <% JsonNode appointments = (JsonNode) request.getAttribute("appointments");
      if (appointments != null && appointments.isArray()) { %>
   <div class="table-wrap" tabindex="0" role="region" aria-label="预约历史表格，左右滚动查看更多"><table><thead><tr><th>预约编号</th><th>医院 / 科室 / 医生</th><th>就诊时间</th><th>状态</th><th>操作</th></tr></thead><tbody>
   <% for (JsonNode appointment : appointments) { %>
     <tr><td class="identifier"><%= WebEscaper.html(appointment.path("id").asText()) %></td>
     <td><%= WebEscaper.html(appointment.path("hospitalName").asText()) %> / <%= WebEscaper.html(appointment.path("departmentName").asText()) %> / <%= WebEscaper.html(appointment.path("doctorName").asText()) %></td>
-    <td><%= WebEscaper.html(appointment.path("slotDate").asText()) %> <%= WebEscaper.html(appointment.path("startTime").asText()) %>–<%= WebEscaper.html(appointment.path("endTime").asText()) %></td>
+    <td><%= visitDateLabel(appointment) %> <%= WebEscaper.html(appointment.path("startTime").asText()) %>–<%= WebEscaper.html(appointment.path("endTime").asText()) %></td>
     <td><%= stateBadge(appointment.path("status").asText()) %></td>
-    <td><% if ("BOOKED".equals(appointment.path("status").asText())) { %>
+    <td><% if ("BOOKED".equals(appointment.path("status").asText())
+        && "ACTIVE".equals(appointment.path("tenantStatus").asText()) && appointment.path("businessWritable").isBoolean()
+        && appointment.path("businessWritable").asBoolean() && beforeCancellationCutoff(appointment)) { %>
       <form method="post" action="<%= context %>/patient/cancel">
-        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="appointmentId" value="<%= WebEscaper.html(appointment.path("id").asText()) %>">
         <button type="submit" class="button--danger">取消预约</button>
-      </form><% } else if ("COMPLETED".equals(appointment.path("status").asText())) {
+      </form><% } else {
+        if (!"ACTIVE".equals(appointment.path("tenantStatus").asText()) || !appointment.path("businessWritable").isBoolean()
+            || !appointment.path("businessWritable").asBoolean()) { %>
+      <p class="read-only-reason"><%= readOnlyReason(appointment.path("tenantStatus").asText()) %></p>
+      <% } else if ("BOOKED".equals(appointment.path("status").asText())) { %><span class="subtle">已到取消截止时间或就诊时间暂无法确认</span>
+      <% } if ("COMPLETED".equals(appointment.path("status").asText())) {
         String recordUrl = context + "/patient?" + (filterQuery.isEmpty() ? "" : filterQuery + "&")
           + "appointmentId=" + URLEncoder.encode(appointment.path("id").asText(), "UTF-8") + "#record-billing"; %>
       <a class="record-link" href="<%= WebEscaper.html(recordUrl) %>">查看病历与账单</a>
-      <% } %></td></tr>
+      <% } } %></td></tr>
   <% } %></tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无预约记录，完成挂号后可在这里查看。</p><% } %>
   <% } %>
@@ -97,6 +106,8 @@
 <section class="card" id="record-billing">
   <div class="section-heading"><div><p class="section-kicker">03 / RECORDS & BILLING</p><h2>病历与账单</h2></div><span class="section-tag">模拟诊疗服务</span></div>
   <p class="subtle">点击上方已完成预约的“查看病历与账单”即可查询；也可手动输入本人已完成预约的编号。</p>
+  <%= sectionError(request, "recordError") %>
+  <%= sectionError(request, "orderError") %>
   <form method="get" action="<%= context %>/patient#record-billing" class="inline-form">
     <input type="hidden" name="tenantId" value="<%= selectedTenant %>">
     <input type="hidden" name="departmentId" value="<%= selectedDepartment %>">
@@ -115,12 +126,15 @@
     <% if ("PAID".equals(order.path("status").asText())) { %>
       <p>缴费时间：<%= WebEscaper.html(order.path("paidAt").isNull() ? "历史时间未知" : order.path("paidAt").asText("历史时间未知")) %></p>
     <% } %>
-    <% if ("UNPAID".equals(order.path("status").asText())) { %>
+    <% if ("UNPAID".equals(order.path("status").asText()) && order.path("businessWritable").isBoolean()
+        && order.path("businessWritable").asBoolean()) { %>
       <form method="post" action="<%= context %>/patient/pay">
-        <input type="hidden" name="csrfToken" value="<%= request.getAttribute("csrfToken") %>">
+        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="orderId" value="<%= WebEscaper.html(order.path("id").asText()) %>">
         <button type="submit">模拟缴费</button>
       </form>
+    <% } else if (!order.path("businessWritable").isBoolean() || !order.path("businessWritable").asBoolean()) { %>
+      <p class="read-only-reason"><%= readOnlyReason("") %></p>
     <% } %></div>
   <% } %>
 </section>

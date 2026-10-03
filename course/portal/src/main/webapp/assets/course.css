@@ -100,6 +100,24 @@ td.identifier { min-width: 145px; max-width: 210px; }
 .layers div { display: flex; align-items: center; gap: 24px; padding: 23px; background: #f1f7f3; border: 1px solid #e0ece4; border-radius: 10px; }
 .layers strong { flex: 0 0 65px; color: var(--teal); font-size: 22px; }
 .layers span { font-size: 13px; }
+.read-only-reason { display: block; color: #775b35; font-size: 12px; overflow-wrap: anywhere; }
+.read-only-notice { background: #fcf4e4; border-color: #ead8ae; color: #72582c; }
+.tenant-status-form { min-width: 180px; max-width: 300px; }
+.tenant-status-form .note { margin-top: 0; }
+.pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr)); gap: 12px; margin: 20px 0; }
+.metric-card { min-width: 0; padding: 17px; border: 1px solid #e1ebe4; border-radius: 10px; background: #f5f9f6; }
+.metric-card > span { display: block; font-size: 11px; color: var(--muted); }
+.metric-value { display: block; margin-top: 5px; font-size: 25px; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.statistics-definitions { margin: 18px 0; padding: 15px 18px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.statistics-definitions summary { cursor: pointer; font-weight: 600; color: var(--teal); }
+.daily-trend-table { max-height: 520px; overflow: auto; overscroll-behavior: contain; }
+.daily-trend-table table { min-width: 1350px; }
+.daily-trend-table caption { padding: 12px; text-align: left; color: var(--muted); }
+.daily-trend-table thead th { position: sticky; top: 0; z-index: 1; }
+.trend-track { display: block; width: 100px; height: 9px; margin-top: 5px; background: #e8f0eb; border-radius: 8px; overflow: hidden; }
+.trend-bar { display: block; height: 100%; max-width: 100%; background: #398477; border-radius: inherit; }
+.app-shell > *, .card, .container { min-width: 0; }
 footer { padding: 12px 8px 26px; text-align: center; color: #6b8174; font-size: 10px; }
 .skip-link { position: absolute; top: -100px; left: 20px; z-index: 10; padding: 10px 16px; background: white; border-radius: 6px; }
 .skip-link:focus { top: 10px; }

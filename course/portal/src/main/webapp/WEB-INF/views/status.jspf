@@ -1,5 +1,84 @@
 <%@ page pageEncoding="UTF-8" %>
 <%!
+  private String attribute(javax.servlet.http.HttpServletRequest request, String name) {
+    Object value = request.getAttribute(name);
+    return value == null ? "" : String.valueOf(value);
+  }
+
+  private java.time.LocalDate validDate(String value) {
+    try {
+      if (!value.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}")) return null;
+      return java.time.LocalDate.parse(value);
+    } catch (java.time.DateTimeException invalid) { return null; }
+  }
+
+  // Attributes are already escaped by the controller. Only accepted ASCII filters enter URLs/forms.
+  private String statisticsFilters(javax.servlet.http.HttpServletRequest request) {
+    String from = attribute(request, "statsFrom"), to = attribute(request, "statsTo");
+    java.time.LocalDate start = validDate(from), end = validDate(to);
+    if (start == null || end == null || start.getYear() < 1000 || end.equals(java.time.LocalDate.of(9999, 12, 31))
+        || start.isAfter(end) || java.time.temporal.ChronoUnit.DAYS.between(start, end) >= 366) return "";
+    return "statsFrom=" + from + "&statsTo=" + to;
+  }
+
+  private String orderFilters(javax.servlet.http.HttpServletRequest request) {
+    String from = attribute(request, "from"), to = attribute(request, "to"), status = attribute(request, "status");
+    java.time.LocalDate start = validDate(from), end = validDate(to);
+    String query = "";
+    if (start == null || end == null || !start.isAfter(end)) {
+      if (start != null) query = "from=" + from;
+      if (end != null) query += (query.isEmpty() ? "" : "&") + "to=" + to;
+    }
+    if ("PAID".equals(status) || "UNPAID".equals(status)) query += (query.isEmpty() ? "" : "&") + "status=" + status;
+    return query;
+  }
+
+  private String hiddenFilters(String query) {
+    StringBuilder html = new StringBuilder();
+    if (!query.isEmpty()) for (String pair : query.split("&")) {
+      String[] parts = pair.split("=", 2);
+      html.append("<input type=\"hidden\" name=\"").append(WebEscaper.html(parts[0]))
+          .append("\" value=\"").append(WebEscaper.html(parts[1])).append("\">\n");
+    }
+    return html.toString();
+  }
+
+  private String filteredUrl(String path, String query, String anchor) {
+    return WebEscaper.html(path + (query.isEmpty() ? "" : "?" + query) + "#" + anchor);
+  }
+
+  private java.time.LocalDate visitDate(com.fasterxml.jackson.databind.JsonNode appointment) {
+    com.fasterxml.jackson.databind.JsonNode value = appointment.path("slotDate");
+    java.time.LocalDate date = value.isIntegralNumber() && value.canConvertToLong()
+        ? java.time.Instant.ofEpochMilli(value.asLong()).atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate()
+        : validDate(value.asText());
+    return date != null && date.getYear() >= 1000 && date.getYear() <= 9999 ? date : null;
+  }
+
+  private boolean beforeCancellationCutoff(com.fasterxml.jackson.databind.JsonNode appointment) {
+    try {
+      java.time.LocalDate date = visitDate(appointment);
+      if (date == null) return false;
+      java.time.LocalTime time = java.time.LocalTime.parse(appointment.path("startTime").asText());
+      return java.time.Instant.now().isBefore(java.time.LocalDateTime.of(date, time)
+          .atZone(java.time.ZoneId.of("Asia/Shanghai")).toInstant());
+    } catch (java.time.DateTimeException invalid) { return false; }
+  }
+
+  private String visitDateLabel(com.fasterxml.jackson.databind.JsonNode appointment) {
+    java.time.LocalDate date = visitDate(appointment);
+    return date == null ? "就诊日期未知" : date.toString();
+  }
+
+  private String readOnlyReason(String state) {
+    return "DISABLED".equals(state) ? "医院已停用：暂停预约、取消、接诊、缴费和资源维护，历史可查"
+        : "医院状态暂无法确认：暂停预约、取消、接诊、缴费和资源维护，历史可查，请刷新确认";
+  }
+
+  private String sectionError(javax.servlet.http.HttpServletRequest request, String name) {
+    return request.getAttribute(name) == null ? "" : "<p class=\"error\" role=\"alert\">" + attribute(request, name) + "</p>";
+  }
+
   private String stateBadge(String state) {
     String label = "未知状态";
     String tone = "muted";

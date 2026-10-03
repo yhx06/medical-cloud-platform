@@ -1,7 +1,11 @@
 <%@ page pageEncoding="UTF-8" %>
 <%@ page import="com.medcloud.course.portal.web.WebEscaper" %>
 <%@ include file="status.jspf" %>
-<% String context = request.getContextPath(); %>
+<% String context = request.getContextPath();
+   String statsQuery = statisticsFilters(request), ordersQuery = orderFilters(request);
+   com.fasterxml.jackson.databind.JsonNode hospitalContext = (com.fasterxml.jackson.databind.JsonNode) request.getAttribute("hospitalContext");
+   boolean workspaceWritable = Boolean.TRUE.equals(request.getAttribute("businessWritable"))
+       && hospitalContext != null && "ACTIVE".equals(hospitalContext.path("status").asText()); %>
 <!doctype html>
 <html lang="zh-CN">
 <head>
@@ -30,8 +34,13 @@
     <a href="#doctors"><span class="nav-number">02</span>医生管理</a>
     <a href="#schedule"><span class="nav-number">03</span>排班号源</a>
     <a href="#orders"><span class="nav-number">04</span>诊疗账单</a>
+    <a href="#hospital-statistics"><span class="nav-number">05</span>本院统计</a>
+    <a href="#daily-trend"><span class="nav-number">06</span>每日趋势</a>
     <% } else { %>
-    <a href="#architecture"><span class="nav-number">01</span>架构概览</a>
+    <a href="#tenant-management"><span class="nav-number">01</span>医院管理</a>
+    <a href="#platform-statistics"><span class="nav-number">02</span>跨院统计</a>
+    <a href="#daily-trend"><span class="nav-number">03</span>每日趋势</a>
+    <a href="#architecture"><span class="nav-number">04</span>架构概览</a>
     <% } %>
   </nav>
   <div class="sidebar-note"><span class="demo-dot" aria-hidden="true"></span>课堂演示环境<p>仅使用虚构数据<br>不接入真实医疗或支付服务</p><small>Java 8 · Tomcat 9 · WildFly 10</small></div>
@@ -45,3 +54,6 @@
   <div class="page-heading"><div><p class="eyebrow">MEDICAL CLOUD / <%= workspace.toUpperCase(java.util.Locale.ROOT) %></p><h1><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %></h1><p class="page-description"><%= workspaceDescription %></p></div><span class="environment-tag">课程版 · SaaS 门户</span></div>
   <% if (request.getAttribute("notice") != null) { %><p class="notice" role="status"><%= request.getAttribute("notice") %></p><% } %>
   <% if (request.getAttribute("error") != null) { %><p class="error" role="alert"><%= request.getAttribute("error") %></p><% } %>
+  <% if (("doctor".equals(workspace) || "hospital".equals(workspace)) && !workspaceWritable) { %>
+  <p class="notice read-only-notice" role="status"><%= readOnlyReason(hospitalContext == null ? "" : hospitalContext.path("status").asText()) %></p>
+  <% } %>

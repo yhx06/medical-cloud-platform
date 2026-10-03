@@ -1,7 +1,16 @@
 package com.medcloud.course.portal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.medcloud.course.portal.web.PortalServlet;
+import com.medcloud.course.contract.*;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Arrays;
+import java.util.List;
 import org.apache.catalina.Context;
 import org.apache.catalina.startup.Tomcat;
 import org.junit.jupiter.api.AfterAll;
@@ -54,6 +63,12 @@ class WorkspaceJspTest {
                 request.setAttribute("portalTitle", "测试工作台");
                 request.setAttribute("username", "<script>account</script>");
                 request.setAttribute("csrfToken", "fixture-csrf");
+                String state = request.getParameter("state");
+                if (state == null) state = "ACTIVE";
+                if (!"missing".equals(state)) {
+                    request.setAttribute("hospitalContext", JSON.valueToTree(new TenantContextView("tenant-id", "演示医院", state, "ACTIVE".equals(state))));
+                    request.setAttribute("businessWritable", "ACTIVE".equals(state));
+                }
                 if ("patient".equals(page)) {
                     request.setAttribute("tenantId", "tenant-id"); request.setAttribute("departmentId", "department-id");
                     request.setAttribute("doctorId", "doctor-id"); request.setAttribute("date", "2030-01-01");
@@ -78,6 +93,37 @@ class WorkspaceJspTest {
                     request.setAttribute("slots", JSON.readTree("[{\"id\":\"slot-id\",\"departmentId\":\"department-id\",\"doctorId\":\"doctor-id\",\"date\":\"2030-01-01\",\"startTime\":\"09:00\",\"endTime\":\"10:00\",\"capacity\":2,\"fee\":39,\"status\":\"WITHDRAWN\"}]"));
                     request.setAttribute("orders", JSON.readTree("[{\"id\":\"order-id\",\"appointmentId\":\"done-id\",\"amount\":39,\"status\":\"PAID\",\"paidAt\":null}]"));
                 }
+                JsonNode history = (JsonNode) request.getAttribute("appointments");
+                if (history != null) for (JsonNode row : history) {
+                    ObjectNode appointment = (ObjectNode) row;
+                    appointment.put("tenantStatus", state);
+                    appointment.put("businessWritable", "ACTIVE".equals(state));
+                    appointment.put("slotDate", "2099-01-01"); appointment.put("startTime", "09:00:00");
+                    appointment.put("hospitalName", "演示医院 <script>unsafe</script>");
+                }
+                if ("1".equals(request.getParameter("expired")) && history != null)
+                    ((ObjectNode) history.get(0)).put("slotDate", "2000-01-01");
+                if ("1".equals(request.getParameter("serialized")) && history != null) {
+                    // Explicit Shanghai midnight instant: SQL Date's default serialization can be numeric.
+                    java.sql.Date visitDate = new java.sql.Date(java.time.LocalDate.of(2099, 1, 1)
+                            .atStartOfDay(java.time.ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli());
+                    AppointmentHistoryView serialized = new AppointmentHistoryView("booked-id", "BOOKED", null, null,
+                            "tenant-id", "医院", "department-id", "科室", "doctor-id", "医生", "slot-id",
+                            visitDate, java.sql.Time.valueOf("09:00:00"), java.sql.Time.valueOf("10:00:00"), "ACTIVE", true);
+                    ((ObjectNode) history.get(0)).setAll((ObjectNode) JSON.valueToTree(serialized));
+                }
+                if ("1".equals(request.getParameter("badDate")) && history != null)
+                    ((ObjectNode) history.get(0)).put("slotDate", "2099-02-30");
+                JsonNode order = (JsonNode) request.getAttribute("order");
+                if (order != null) ((ObjectNode) order).put("businessWritable", "ACTIVE".equals(state));
+                if (order != null && request.getParameter("orderState") != null)
+                    ((ObjectNode) order).put("status", request.getParameter("orderState"));
+                if ("1".equals(request.getParameter("absent"))) {
+                    if (history != null) for (JsonNode row : history) ((ObjectNode) row).remove("businessWritable");
+                    if (order != null) ((ObjectNode) order).remove("businessWritable");
+                }
+                request.setAttribute("record", JSON.readTree("{\"diagnosis\":\"历史诊断 <script>unsafe</script>\",\"advice\":\"历史建议\"}"));
+                if ("1".equals(request.getParameter("statistics"))) statisticsFixture(request);
                 request.getRequestDispatcher("/WEB-INF/views/" + page + ".jsp").forward(request, response);
             }
         });
@@ -265,7 +311,7 @@ class WorkspaceJspTest {
         for (String label : labels) assertTrue(html.contains(label));
     }
 
-    private static String render(String page) throws Exception {
+    static String render(String page) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL("http://127.0.0.1:" + port
                 + "/portal/ui/" + page).openConnection();
         try {
@@ -277,5 +323,37 @@ class WorkspaceJspTest {
                 return new String(output.toByteArray(), StandardCharsets.UTF_8);
             }
         } finally { connection.disconnect(); }
+    }
+
+    private static void statisticsFixture(HttpServletRequest request) {
+        TenantView tenant = new TenantView("12345678-1234-1234-1234-123456789012", "演示医院 <script>unsafe</script>", "DISABLED");
+        TenantView emptyTenant = new TenantView("22345678-1234-1234-1234-123456789012", "零业务医院ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ", "ACTIVE");
+        StatisticsMetrics metrics = "1".equals(request.getParameter("populated"))
+                ? new StatisticsMetrics(5, 2, 1, 1, 1, 2, 3, 3, 1, new BigDecimal("39.10"), new BigDecimal("19.55"))
+                : StatisticsMetrics.zero();
+        List<DailyStatistics> daily = new ArrayList<>();
+        LocalDate start = LocalDate.of(2024, 1, 1);
+        for (int i = 0; i < 366; i++) daily.add(new DailyStatistics(start.plusDays(i).toString(), i == 0 ? metrics : StatisticsMetrics.zero()));
+        StatisticsReport report = new StatisticsReport("platform", "2024-01-01", "2024-12-31", "Asia/Shanghai", "2026-10-03T08:00:00+08:00", metrics,
+                daily, Arrays.asList(new HospitalStatisticsView(tenant, metrics, new LegacyUnknownTime(4, 3, 2, 1, new BigDecimal("39.10"), new BigDecimal("19.55"))),
+                        new HospitalStatisticsView(emptyTenant, StatisticsMetrics.zero(), LegacyUnknownTime.zero())),
+                new LegacyUnknownTime(4, 3, 2, 1, new BigDecimal("39.10"), new BigDecimal("19.55")), new TenantCounts(2, 1, 1));
+        request.setAttribute("statistics", JSON.valueToTree(report));
+        request.setAttribute("tenants", JSON.valueToTree(new TenantPage(Collections.singletonList(tenant), 41, 2, 20)));
+        request.setAttribute("page", 2); request.setAttribute("size", 20);
+        request.setAttribute("statsFrom", "2024-01-01"); request.setAttribute("statsTo", "2024-12-31");
+        request.setAttribute("from", "2026-09-01"); request.setAttribute("to", "2026-09-30"); request.setAttribute("status", "PAID");
+        if ("1".equals(request.getParameter("error"))) {
+            request.removeAttribute("statistics"); request.setAttribute("statisticsError", "统计服务暂不可用 &lt;unsafe&gt;");
+        }
+        if ("1".equals(request.getParameter("listError"))) {
+            request.removeAttribute("tenants"); request.setAttribute("tenantListError", "医院列表暂不可用");
+        }
+        if ("1".equals(request.getParameter("invalid"))) {
+            request.setAttribute("statsFrom", "&lt;script&gt;bad&lt;/script&gt;"); request.setAttribute("statsTo", "2024-02-30");
+            request.setAttribute("from", "2026-02-30"); request.setAttribute("to", "2026-09-30");
+        }
+        if (request.getParameter("orderFrom") != null) request.setAttribute("from", request.getParameter("orderFrom"));
+        if (request.getParameter("orderTo") != null) request.setAttribute("to", request.getParameter("orderTo"));
     }
 }

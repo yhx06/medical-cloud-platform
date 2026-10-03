@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const script = '../../main/webapp/assets/portal.js';
 
-function fixture(hash = '') {
+function fixture(hash = '', anchors = ['#slot-search', '#appointment-history', '#record-billing']) {
   function element(attrs = {}) {
     return {
       attrs, events: {}, value: '', top: 0,
@@ -13,7 +13,7 @@ function fixture(hash = '') {
       getBoundingClientRect() { return { top: this.top }; }
     };
   }
-  const links = ['#slot-search', '#appointment-history', '#record-billing'].map(href => element({ href }));
+  const links = anchors.map(href => element({ href }));
   const sections = links.map((link, index) => { const section = element(); section.top = 300 + index * 500; return section; });
   const controls = { tenantId: element(), departmentId: element(), doctorId: element(), refreshDirectory: element() };
   controls.tenantId.value = 'hospital-a'; controls.departmentId.value = 'dept-a'; controls.doctorId.value = 'doctor-a';
@@ -64,4 +64,21 @@ test('changing department preserves hospital and resets only the doctor before r
   const f = fixture(); initialize(f); f.controls.departmentId.events.change();
   assert.equal(f.controls.tenantId.value, 'hospital-a'); assert.equal(f.controls.departmentId.value, 'dept-a');
   assert.equal(f.controls.doctorId.value, ''); assert.deepEqual(f.submissions, [f.controls.refreshDirectory]);
+});
+
+test('platform statistics hash and final architecture section keep one current link', () => {
+  const f = fixture('#platform-statistics', ['#tenant-management', '#platform-statistics', '#daily-trend', '#architecture']);
+  initialize(f);
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, 'location', undefined, undefined]);
+  f.doc.documentElement = { scrollHeight: 3000 }; f.win.innerHeight = 900; f.win.scrollY = 2100;
+  f.win.events.scroll();
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, 'location']);
+});
+
+test('hospital trend hash does not remove access to existing management sections', () => {
+  const f = fixture('#daily-trend', ['#departments', '#doctors', '#schedule', '#orders', '#hospital-statistics', '#daily-trend']);
+  initialize(f);
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, undefined, undefined, 'location']);
+  f.links[3].events.click();
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, 'location', undefined, undefined]);
 });
