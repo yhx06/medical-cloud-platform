@@ -67,9 +67,11 @@ public final class PaasClient {
                 }
             }
             int status = connection.getResponseCode();
-            InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+            // HTTP authorization status is authoritative even when a proxy returns HTML or no body.
+            if (status >= 400) throw new PaasRejectedException(status, publicError(status));
+            InputStream stream = connection.getInputStream();
             JsonNode envelope = JSON.readTree(readLimited(stream));
-            if (status >= 400 || envelope == null || !"OK".equals(envelope.path("code").asText())) {
+            if (envelope == null || !"OK".equals(envelope.path("code").asText())) {
                 throw new PaasRejectedException(status, publicError(status));
             }
             return envelope.path("data");

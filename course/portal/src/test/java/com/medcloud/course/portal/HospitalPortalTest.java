@@ -63,13 +63,17 @@ class HospitalPortalTest {
     void hospitalFiltersOrdersWithoutSendingSubmittedTenant() throws Exception {
         AtomicReference<String> orderQuery = new AtomicReference<String>();
         AtomicReference<String> authorization = new AtomicReference<String>();
+        String context = PortalFixture.contextJson();
+        String statistics = PortalFixture.statisticsJson("hospital");
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/", exchange -> {
             if (exchange.getRequestURI().getPath().equals("/api/hospital/orders")) {
                 orderQuery.set(exchange.getRequestURI().getRawQuery());
                 authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             }
-            byte[] response = "{\"code\":\"OK\",\"data\":[]}".getBytes(StandardCharsets.UTF_8);
+            String data = exchange.getRequestURI().getPath().endsWith("/context") ? context
+                    : exchange.getRequestURI().getPath().endsWith("/statistics") ? statistics : "[]";
+            byte[] response = ("{\"code\":\"OK\",\"data\":" + data + "}").getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
@@ -98,6 +102,8 @@ class HospitalPortalTest {
             assertEquals("Bearer signed-token", authorization.get());
             assertFalse(orderQuery.get().contains("tenantId"));
             assertEquals(0, ((JsonNode) request.getAttribute("orders")).size());
+            assertEquals(Boolean.TRUE, request.getAttribute("businessWritable"));
+            assertEquals("HOSPITAL", ((JsonNode) request.getAttribute("statistics")).path("scope").asText());
         } finally {
             server.stop(0);
         }

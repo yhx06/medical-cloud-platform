@@ -26,6 +26,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 class PortalServletTest {
     @Test
+    void protectedPlatformChildPathDeniesPatientBeforePaasAccess() throws Exception {
+        try (PortalFixture fixture = new PortalFixture()) {
+            MockHttpServletRequest request = fixture.request("GET", "/platform/tenant/status", Role.PATIENT);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+            fixture.servlet.service(request, response);
+            assertEquals(403, response.getStatus());
+            assertEquals(0, fixture.calls.size());
+        }
+    }
+    @Test
     void successfulLoginCreatesRoleSessionAndRedirectsToPatientPortal() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/auth/login", exchange -> {

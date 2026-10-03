@@ -18,9 +18,9 @@ public final class CloudServiceFactory {
             case DOCTOR:
                 return facade("/doctor", "医生门户", "view-appointments", "start", "complete");
             case HOSPITAL_ADMIN:
-                return facade("/hospital", "医院门户", "view-slots");
+                return facade("/hospital", "医院门户", "view-slots", "view-statistics");
             case PLATFORM_ADMIN:
-                return facade("/platform", "平台门户", "view-overview");
+                return facade("/platform", "平台门户", "view-overview", "manage-tenants", "view-statistics");
             default:
                 throw new IllegalArgumentException("unsupported role");
         }

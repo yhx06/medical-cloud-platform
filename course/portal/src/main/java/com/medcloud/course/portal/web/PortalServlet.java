@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 @WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/cancel", "/patient/pay",
         "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/hospital/department/create",
         "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit",
-        "/hospital/slot/create", "/hospital/slot/edit", "/platform"})
+        "/hospital/slot/create", "/hospital/slot/edit", "/platform", "/platform/*"})
 public class PortalServlet extends HttpServlet {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final Pattern UUID_ID = Pattern.compile(
@@ -66,7 +66,7 @@ public class PortalServlet extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        String path = request.getServletPath();
+        String path = requestPath(request);
         if ("/register".equals(path)) {
             HttpSession session = request.getSession(true);
             csrfToken(session);
@@ -101,6 +101,10 @@ public class PortalServlet extends HttpServlet {
         }
         HttpSession session = requireRole(request, response, expected);
         if (session == null) return;
+        if (!path.equals(factory.forRole(expected).getHomePath())) {
+            response.sendError(404);
+            return;
+        }
         request.setAttribute("portalTitle", factory.forRole(expected).getTitle());
         request.setAttribute("username", session.getAttribute("username"));
         request.setAttribute("csrfToken", session.getAttribute("csrfToken"));
@@ -114,54 +118,29 @@ public class PortalServlet extends HttpServlet {
             session.removeAttribute("initialPassword");
         }
         try {
+            WorkspaceAccess access = new WorkspaceAccess(paas);
             if ("/patient".equals(path)) {
                 patient(request, session);
             } else if ("/doctor".equals(path)) {
-                request.setAttribute("appointments", paas.get("/doctor/appointments", token(session)));
-                String from = request.getParameter("from");
-                String to = request.getParameter("to");
-                StringBuilder recordsPath = new StringBuilder("/doctor/records");
-                if (from != null && !from.trim().isEmpty()) {
-                    Date.valueOf(from);
-                    recordsPath.append("?from=").append(URLEncoder.encode(from, "UTF-8"));
-                }
-                if (to != null && !to.trim().isEmpty()) {
-                    Date.valueOf(to);
-                    recordsPath.append(recordsPath.indexOf("?") < 0 ? "?" : "&")
-                            .append("to=").append(URLEncoder.encode(to, "UTF-8"));
-                }
-                request.setAttribute("from", WebEscaper.html(from));
-                request.setAttribute("to", WebEscaper.html(to));
-                request.setAttribute("records", paas.get(recordsPath.toString(), token(session)));
+                access.loadSection(request, token(session), "appointments", "/doctor/appointments");
+                loadFilteredSection(request, token(session), access, "records", "/doctor/records", false);
+                access.loadContext(request, token(session), expected);
             } else if ("/hospital".equals(path)) {
-                request.setAttribute("departments", paas.get("/hospital/departments", token(session)));
-                request.setAttribute("doctors", paas.get("/hospital/doctors", token(session)));
-                request.setAttribute("slots", paas.get("/hospital/slots", token(session)));
-                String status = request.getParameter("status");
-                String from = request.getParameter("from");
-                String to = request.getParameter("to");
-                StringBuilder ordersPath = new StringBuilder("/hospital/orders");
-                if (status != null && !status.trim().isEmpty()) {
-                    if (!"PAID".equals(status) && !"UNPAID".equals(status))
-                        throw new IllegalArgumentException("缴费状态无效");
-                    ordersPath.append("?status=").append(URLEncoder.encode(status, "UTF-8"));
-                }
-                if (from != null && !from.trim().isEmpty()) {
-                    Date.valueOf(from);
-                    ordersPath.append(ordersPath.indexOf("?") < 0 ? "?" : "&")
-                            .append("from=").append(URLEncoder.encode(from, "UTF-8"));
-                }
-                if (to != null && !to.trim().isEmpty()) {
-                    Date.valueOf(to);
-                    ordersPath.append(ordersPath.indexOf("?") < 0 ? "?" : "&")
-                            .append("to=").append(URLEncoder.encode(to, "UTF-8"));
-                }
-                request.setAttribute("status", WebEscaper.html(status));
-                request.setAttribute("from", WebEscaper.html(from));
-                request.setAttribute("to", WebEscaper.html(to));
-                request.setAttribute("orders", paas.get(ordersPath.toString(), token(session)));
+                access.loadSection(request, token(session), "departments", "/hospital/departments");
+                access.loadSection(request, token(session), "doctors", "/hospital/doctors");
+                access.loadSection(request, token(session), "slots", "/hospital/slots");
+                loadFilteredSection(request, token(session), access, "orders", "/hospital/orders", true);
+                access.loadContext(request, token(session), expected);
+                new StatisticsWorkspace(paas).load(request, token(session), expected);
+            } else if ("/platform".equals(path)) {
+                new PlatformWorkspace(paas).load(request, token(session));
+                new StatisticsWorkspace(paas).load(request, token(session), expected);
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
+            if (unauthorized(error)) {
+                authorizationExpired(request, response, session);
+                return;
+            }
             request.setAttribute("error", WebEscaper.html(error.getMessage()));
         }
         show(request, response, path.substring(1) + ".jsp");
@@ -169,11 +148,8 @@ public class PortalServlet extends HttpServlet {
 
     private void patient(HttpServletRequest request, HttpSession session) throws IOException {
         // Independent reads: a catalog failure must not hide existing appointments or records.
-        try {
-            request.setAttribute("appointments", paas.get("/patient/appointments", token(session)));
-        } catch (PaasRejectedException | PaasUnavailableException failure) {
-            patientError(request, failure);
-        }
+        WorkspaceAccess access = new WorkspaceAccess(paas);
+        access.loadSection(request, token(session), "appointments", "/patient/appointments");
         String tenant = parameter(request, "tenantId");
         String department = parameter(request, "departmentId");
         String doctor = parameter(request, "doctorId");
@@ -228,8 +204,8 @@ public class PortalServlet extends HttpServlet {
         if (!appointment.isEmpty()) {
             try {
                 String id = requiredId(appointment);
-                request.setAttribute("record", paas.get("/patient/appointments/" + id + "/record", token(session)));
-                request.setAttribute("order", paas.get("/patient/appointments/" + id + "/order", token(session)));
+                access.loadSection(request, token(session), "record", "/patient/appointments/" + id + "/record");
+                access.loadSection(request, token(session), "order", "/patient/appointments/" + id + "/order");
             } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException failure) {
                 patientError(request, failure);
             }
@@ -263,6 +239,7 @@ public class PortalServlet extends HttpServlet {
     }
 
     private static void patientError(HttpServletRequest request, RuntimeException failure) {
+        WorkspaceAccess.rethrowUnauthorized(failure);
         String escaped = WebEscaper.html(failure.getMessage());
         Object previous = request.getAttribute("error");
         request.setAttribute("error", previous == null ? escaped : previous + "；" + escaped);
@@ -272,7 +249,7 @@ public class PortalServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         request.setCharacterEncoding("UTF-8");
-        String path = request.getServletPath();
+        String path = requestPath(request);
         if ("/login".equals(path)) {
             login(request, response);
             return;
@@ -288,14 +265,19 @@ public class PortalServlet extends HttpServlet {
         }
         HttpSession session = requireRole(request, response, expected);
         if (session == null) return;
-        if (!String.valueOf(session.getAttribute("csrfToken")).equals(request.getParameter("csrfToken"))) {
+        if (session.getAttribute("csrfToken") == null
+                || !session.getAttribute("csrfToken").equals(request.getParameter("csrfToken"))) {
             response.sendError(403);
             return;
         }
         String home = factory.forRole(expected).getHomePath();
+        if (expected == Role.PLATFORM_ADMIN) home += new PlatformWorkspace(paas).redirectQuery(request);
         try {
             JsonNode result;
-            if ("/patient/book".equals(path)) {
+            if ("/platform/tenant/status".equals(path)) {
+                new PlatformWorkspace(paas).changeStatus(request, token(session));
+                session.setAttribute("flash", "医院状态已更新");
+            } else if ("/patient/book".equals(path)) {
                 result = paas.post("/patient/appointments", token(session),
                         new BookingRequest(required(request, "slotId")));
                 session.setAttribute("flash", "预约成功，预约编号：" + result.path("id").asText());
@@ -346,6 +328,11 @@ public class PortalServlet extends HttpServlet {
                 return;
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
+            if (unauthorized(error)) {
+                authorizationExpired(request, response, session);
+                return;
+            }
+            session.removeAttribute("initialPassword");
             session.setAttribute("flash", error.getMessage());
         }
         response.sendRedirect(request.getContextPath() + home);
@@ -460,12 +447,54 @@ public class PortalServlet extends HttpServlet {
         if (path.startsWith("/patient")) return Role.PATIENT;
         if (path.startsWith("/doctor")) return Role.DOCTOR;
         if ("/hospital".equals(path) || path.startsWith("/hospital/")) return Role.HOSPITAL_ADMIN;
-        if ("/platform".equals(path)) return Role.PLATFORM_ADMIN;
+        if ("/platform".equals(path) || path.startsWith("/platform/")) return Role.PLATFORM_ADMIN;
         return null;
+    }
+
+    private static String requestPath(HttpServletRequest request) {
+        String pathInfo = request.getPathInfo();
+        return request.getServletPath() + (pathInfo == null ? "" : pathInfo);
     }
 
     private static String token(HttpSession session) {
         return String.valueOf(session.getAttribute("accessToken"));
+    }
+
+    private void loadFilteredSection(HttpServletRequest request, String token, WorkspaceAccess access,
+            String attribute, String path, boolean withStatus) throws IOException {
+        String from = parameter(request, "from"); String to = parameter(request, "to"); String status = parameter(request, "status");
+        request.setAttribute("from", WebEscaper.html(from)); request.setAttribute("to", WebEscaper.html(to));
+        if (withStatus) request.setAttribute("status", WebEscaper.html(status));
+        try {
+            StringBuilder query = new StringBuilder(path);
+            if (withStatus && !status.isEmpty()) {
+                if (!"PAID".equals(status) && !"UNPAID".equals(status)) throw new IllegalArgumentException("缴费状态无效");
+                query.append("?status=").append(status);
+            }
+            for (String key : new String[] {"from", "to"}) {
+                String value = parameter(request, key);
+                if (!value.isEmpty()) {
+                    StatisticsWorkspace.date(value);
+                    query.append(query.indexOf("?") < 0 ? "?" : "&").append(key).append('=').append(encode(value));
+                }
+            }
+            if (!from.isEmpty() && !to.isEmpty() && StatisticsWorkspace.date(from).isAfter(StatisticsWorkspace.date(to))) {
+                throw new IllegalArgumentException("起始日期不得晚于结束日期");
+            }
+            access.loadSection(request, token, attribute, query.toString());
+        } catch (IllegalArgumentException failure) { WorkspaceAccess.sectionError(request, attribute + "Error", failure); }
+    }
+
+    private static boolean unauthorized(RuntimeException failure) {
+        return failure instanceof PaasRejectedException && ((PaasRejectedException) failure).getStatus() == 401;
+    }
+
+    private void authorizationExpired(HttpServletRequest request, HttpServletResponse response, HttpSession session)
+            throws ServletException, IOException {
+        new WorkspaceAccess(paas).clearPrivateAttributes(request);
+        session.removeAttribute("flash"); session.removeAttribute("initialPassword"); session.invalidate();
+        request.setAttribute("error", "登录状态已失效，请重新登录");
+        show(request, response, "login.jsp");
     }
 
     private static void show(HttpServletRequest request, HttpServletResponse response, String view)

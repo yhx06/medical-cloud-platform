@@ -110,7 +110,8 @@ class SlotSearchPortalTest {
         server.createContext("/api/patient/appointments", exchange -> {
             String path = exchange.getRequestURI().getPath();
             reply(exchange, path.endsWith("/record") ? "{\"diagnosis\":\"虚构诊断\"}"
-                    : path.endsWith("/order") ? "{\"status\":\"UNPAID\",\"amount\":39}" : "[{\"id\":\"" + id + "\",\"status\":\"COMPLETED\"}]");
+                    : path.endsWith("/order") ? "{\"status\":\"UNPAID\",\"amount\":39,\"businessWritable\":false}"
+                    : "[{\"id\":\"" + id + "\",\"status\":\"COMPLETED\",\"tenantStatus\":\"DISABLED\",\"businessWritable\":false}]");
         });
         server.start();
         try {
@@ -120,6 +121,8 @@ class SlotSearchPortalTest {
             assertNotNull(request.getAttribute("error"));
             assertNotNull(request.getAttribute("appointments")); assertNotNull(request.getAttribute("record"));
             assertNotNull(request.getAttribute("order"));
+            assertFalse(((JsonNode) request.getAttribute("appointments")).get(0).path("businessWritable").asBoolean());
+            assertFalse(((JsonNode) request.getAttribute("order")).path("businessWritable").asBoolean());
         } finally { server.stop(0); }
     }
 

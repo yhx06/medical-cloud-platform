@@ -95,6 +95,11 @@ class PortalFlowTest {
         assertTrue(factory.forRole(Role.DOCTOR).allows("complete"));
         assertFalse(factory.forRole(Role.HOSPITAL_ADMIN).allows("pay"));
         assertEquals("/platform", factory.forRole(Role.PLATFORM_ADMIN).getHomePath());
+        assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("view-overview"));
+        assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("manage-tenants"));
+        assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("view-statistics"));
+        assertTrue(factory.forRole(Role.HOSPITAL_ADMIN).allows("view-slots"));
+        assertTrue(factory.forRole(Role.HOSPITAL_ADMIN).allows("view-statistics"));
     }
 
     @Test
