@@ -6,6 +6,8 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 
 挂号目录下拉、完成预约快捷入口及筛选/导航增强见 [2026-10-03 交互验收](../../docs/course-labs/2026-10-03-interaction-acceptance.md)。本次新增只读目录接口，无数据库结构变更；更新两个 WAR 即可，不需要重复初始化或迁移数据库。
 
+医院启停、全写入口冻结、本院/跨院脱敏统计与真实 MySQL/JTA 证据见 [2026-10-03 平台统计验收](../../docs/course-labs/2026-10-03-platform-statistics-acceptance.md)。本轮仍无数据库结构变更，保留旧 NULL 时间，JPA 使用 `validate`；更新 WAR，不运行初始化或旧库迁移脚本。
+
 ## 准备
 
 - JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x；PowerDesigner 16.5 用于编辑 `docs/course-architecture/medical-cloud-course.pdm`。
@@ -80,10 +82,29 @@ Invoke-Pester course/deploy/tests
 
 部署测试会启动临时 MySQL 实例，另建随机命名的 `course_slot_test_*` 数据库运行 `MySqlSlotSnapshotTest`，随后关闭并清理临时实例。它按先读取管理员快照、再提交患者预约、最后尝试撤回号源的顺序验证事务保护。无需手工设置 `COURSE_MYSQL_TEST_*`；测试脚本自动配置这些变量并恢复原值。普通 Maven 构建跳过这一条需要实机的测试，Pester 在临时实例上实际执行它。
 
+医院生命周期与统计另有独立 disposable MySQL 测试。将 JDK 8、Maven、`mysql.exe`、`mysqld.exe` 加入当前终端路径，Pester 3.4 使用：
+
+```powershell
+$result = Invoke-Pester -Script course/deploy/tests/platform-statistics.Tests.ps1 -PassThru
+if ($result.FailedCount -ne 0) { throw 'MySQL acceptance failed' }
+```
+
+脚本只创建唯一临时 datadir、loopback 闲置端口和 `course_platform_test_<32位hex>` 库；测试在 create-drop 前严格核对 URL/库名。它真实执行 24 项医院锁/旧快照写测试和 4 项统计测试，要求零失败、零错误、零跳过，最后正常关闭该实例、确认精确 datadir 的进程已退出才清理，并恢复环境变量。普通 `clean verify` 的 29 项跳过为这 28 项加原号源 MySQL 测试，不能将跳过当作实机证据。运行库不得用作该测试库。
+
+已部署接口验收需教师准备自己的虚构专用医院和账号，再提供显式本地磁盘绝对路径的 JSON 文件（拒绝 UNC/相对路径）：
+
+```powershell
+& course/deploy/scripts/verify-platform-statistics.ps1 -PaasBaseUrl 'http://127.0.0.1:8180/paas/api' -FixturePath '<本地盘符:\专用夹具.json>'
+```
+
+夹具字段：`tenantId`、`tenantName`；`accounts.platform/hospital/doctor/patient` 各含 `username/password`；`resources` 含 `slotId/departmentId/doctorUserId/bookedAppointmentId/inProgressAppointmentId/completedAppointmentId/unpaidOrderId/paidOrderId`。所有 ID 为 UUID，医院名须为 `course_stats_acceptance_<32位小写hex>`，不能使用两家种子医院。准备未来未满号源、待诊/接诊中/已完成预约、未付/已付订单，且上述账号拥有这些资源。脚本先从平台分页列表核对医院 ID/名称，再校验资源归属；冻结 12 个写入口，检查历史读/新登录及聚合，然后重新启用并验证科室更新与付款，finally 恢复医院原状态。成功付款会保留，脚本不撤销业务记录；不得用于真实数据。夹具含密码，勿提交、截图或共享，脚本不打印凭据。
+
 ## 数据源与接口
 
 WildFly JNDI 名称为 `java:/jdbc/MedicalCloudCourseDS`，JPA 持久化单元为 `medicalCloudCourse`。`wildfly-datasource.cli` 使用启动进程的环境变量引用密码，不在仓库保存凭据。可用 WildFly CLI 的 `/subsystem=datasources/data-source=MedicalCloudCourseDS:test-connection-in-pool` 检查连接。业务接口与角色见 [课程架构说明](../../docs/course-architecture/README.md)。
 
+首次数据源配置显式设置 `TRANSACTION_REPEATABLE_READ`。已有隔离实例应先用 CLI 只读核对 `home-dir`、连接 URL 和管理端口，备份 `standalone.xml`，再仅修改该数据源的 `transaction-isolation` 并 reload；不要重复 add 或初始化数据库。读取属性确认 `TRANSACTION_REPEATABLE_READ`、连接测试成功，并在实际 JDBC/JTA 会话确认隔离级别 4（MySQL `REPEATABLE-READ`）。两个 JVM 均设置 `-Duser.timezone=Asia/Shanghai`，JDBC URL 包含 `serverTimezone=Asia/Shanghai`；仅有配置文件或 H2 测试不能证明实际 JTA 快照。
+
 ## 已知边界
 
-支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院科室/医生/号源发布和订单页面已实现，监管统计、附件存储和审计中心未实现。2026-10-02 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。原安装目录和运行服务未改动。MySQL 5.6 与其他教师机器的补丁版本、配置尚未实机验证。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；按 ID 恢复与分页尚待补充。
+支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停和本院/跨院脱敏统计已实现；新建医院/医院管理员入口、附件存储和持久化审计中心未实现，也不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。原安装目录和默认服务未改动。MySQL 5.6 与其他教师机器的补丁版本、配置尚未实机验证。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；按 ID 恢复与分页尚待补充。

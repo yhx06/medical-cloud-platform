@@ -1,3 +1,3 @@
 # Run after copying mysql-module.xml and mysql-connector-j.jar to WildFly modules/com/mysql/main.
 # Start WildFly with MEDICAL_COURSE_DB_USER and MEDICAL_COURSE_DB_PASSWORD in its environment.
-data-source add --name=MedicalCloudCourseDS --jndi-name=java:/jdbc/MedicalCloudCourseDS --driver-name=mysql --connection-url=jdbc:mysql://127.0.0.1:__DB_PORT__/medical_cloud_course?useUnicode=true\&characterEncoding=UTF-8\&serverTimezone=Asia/Shanghai --user-name=${env.MEDICAL_COURSE_DB_USER} --password=${env.MEDICAL_COURSE_DB_PASSWORD} --enabled=true
+data-source add --name=MedicalCloudCourseDS --jndi-name=java:/jdbc/MedicalCloudCourseDS --driver-name=mysql --connection-url=jdbc:mysql://127.0.0.1:__DB_PORT__/medical_cloud_course?useUnicode=true\&characterEncoding=UTF-8\&serverTimezone=Asia/Shanghai --user-name=${env.MEDICAL_COURSE_DB_USER} --password=${env.MEDICAL_COURSE_DB_PASSWORD} --transaction-isolation=TRANSACTION_REPEATABLE_READ --enabled=true

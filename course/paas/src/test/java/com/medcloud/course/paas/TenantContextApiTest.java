@@ -30,17 +30,18 @@ class TenantContextApiTest extends TenantFixture {
         String admin = bearer(auth, "admin_a");
         String doctor = bearer(auth, "doctor_a");
         TenantContextResource resource = new TenantContextResource(auth, new PlatformTenantService(manager));
+        HospitalResource hospital = new HospitalResource(auth, new PlatformTenantService(manager), null);
         setTenantStatus("DISABLED");
-        assertEquals("tenant-a", resource.hospital(admin).getData().getId());
+        assertEquals("tenant-a", hospital.context(admin).getData().getId());
         assertFalse(resource.doctor(doctor).getData().isBusinessWritable());
-        PlatformTenantTest.assertStatus(403, () -> resource.hospital(doctor));
+        PlatformTenantTest.assertStatus(403, () -> hospital.context(doctor));
         PlatformTenantTest.assertStatus(403, () -> resource.doctor(admin));
-        PlatformTenantTest.assertStatus(401, () -> resource.hospital(null));
+        PlatformTenantTest.assertStatus(401, () -> hospital.context(null));
         externalUpdate("update Account a set a.status = 'DISABLED' where a.id = 'doctor-a'");
         PlatformTenantTest.assertStatus(401, () -> resource.doctor(doctor));
-        assertEquals("/", TenantContextResource.class.getAnnotation(Path.class).value());
-        assertEquals("hospital/context", TenantContextResource.class.getMethod("hospital", String.class).getAnnotation(Path.class).value());
-        assertEquals("doctor/context", TenantContextResource.class.getMethod("doctor", String.class).getAnnotation(Path.class).value());
+        assertEquals("doctor/context", TenantContextResource.class.getAnnotation(Path.class).value());
+        assertEquals("context", HospitalResource.class.getMethod("context", String.class).getAnnotation(Path.class).value());
+        assertNotNull(TenantContextResource.class.getMethod("doctor", String.class).getAnnotation(GET.class));
     }
 
     @Test

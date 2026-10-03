@@ -7,6 +7,11 @@ import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.contract.DoctorView;
 import com.medcloud.course.contract.PaymentOrderView;
+import com.medcloud.course.contract.Role;
+import com.medcloud.course.contract.TenantContextView;
+import com.medcloud.course.contract.StatisticsReport;
+import com.medcloud.course.paas.tenant.PlatformTenantService;
+import com.medcloud.course.paas.statistics.StatisticsService;
 import com.medcloud.course.paas.order.PaymentOrder;
 import com.medcloud.course.paas.order.PaymentService;
 import com.medcloud.course.paas.auth.AuthService;
@@ -28,6 +33,8 @@ import javax.ws.rs.QueryParam;
 import java.sql.Date;
 import java.time.LocalDate;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.UriInfo;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,12 +46,31 @@ public class HospitalResource {
     @EJB private HospitalDepartmentService departments;
     @EJB private HospitalDoctorService doctors;
     @EJB private PaymentService payments;
+    @EJB private PlatformTenantService tenants;
+    @EJB private StatisticsService statistics;
     public HospitalResource() { }
     public HospitalResource(AuthService auth, PaymentService payments) { this.auth = auth; this.payments = payments; }
     public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors) {
         this.auth = auth; this.departments = departments; this.doctors = doctors;
     }
+    public HospitalResource(AuthService auth, PlatformTenantService tenants, StatisticsService statistics) {
+        this.auth = auth; this.tenants = tenants; this.statistics = statistics;
+    }
     private CurrentActor actor(String authorization) { return auth.authenticate(BearerTokens.require(authorization)); }
+
+    @GET @Path("context")
+    public ApiResponse<TenantContextView> context(@HeaderParam("Authorization") String authorization) {
+        return ApiResponse.success("hospital context", tenants.context(actor(authorization), Role.HOSPITAL_ADMIN));
+    }
+
+    @GET @Path("statistics")
+    public ApiResponse<StatisticsReport> statistics(@HeaderParam("Authorization") String authorization,
+            @QueryParam("from") String from, @QueryParam("to") String to, @Context UriInfo uri) {
+        CurrentActor current = actor(authorization);
+        if (uri.getQueryParameters().containsKey("tenantId"))
+            throw new IllegalArgumentException("hospital statistics does not accept tenantId");
+        return ApiResponse.success("hospital statistics", statistics.hospital(current, from, to));
+    }
 
     @GET @Path("orders")
     public ApiResponse<List<PaymentOrderView>> orders(@HeaderParam("Authorization") String authorization,

@@ -12,18 +12,14 @@ import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.MediaType;
 
-@Path("/")
+@Path("doctor/context")
 @Produces(MediaType.APPLICATION_JSON)
 public class TenantContextResource {
     @EJB private AuthService auth;
     @EJB private PlatformTenantService tenants;
     public TenantContextResource() { }
     public TenantContextResource(AuthService auth, PlatformTenantService tenants) { this.auth = auth; this.tenants = tenants; }
-    @GET @Path("hospital/context")
-    public ApiResponse<TenantContextView> hospital(@HeaderParam("Authorization") String authorization) {
-        return ApiResponse.success("hospital context", tenants.context(auth.authenticate(BearerTokens.require(authorization)), Role.HOSPITAL_ADMIN));
-    }
-    @GET @Path("doctor/context")
+    @GET
     public ApiResponse<TenantContextView> doctor(@HeaderParam("Authorization") String authorization) {
         return ApiResponse.success("doctor context", tenants.context(auth.authenticate(BearerTokens.require(authorization)), Role.DOCTOR));
     }

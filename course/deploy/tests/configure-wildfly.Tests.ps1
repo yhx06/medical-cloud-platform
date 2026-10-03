@@ -4,6 +4,8 @@ $scratch = Join-Path ([IO.Path]::GetTempPath()) ("course-wildfly-preflight-" + [
 $originalTrace = $env:CLI_TRACE
 $originalResponse = $env:CLI_RESPONSE_FILE
 $originalJbossHome = $env:JBOSS_HOME
+$originalDbUser = $env:MEDICAL_COURSE_DB_USER
+$originalDbPassword = $env:MEDICAL_COURSE_DB_PASSWORD
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
     $expected = Join-Path $scratch '课程-wildfly'
@@ -14,7 +16,17 @@ try {
     Set-Content -LiteralPath $fakeCli -Encoding Ascii -Value @'
 @echo off
 echo %*>>"%CLI_TRACE%"
+call :capture "%~3"
+if "%~3"=="--file" type "%~4">>"%CLI_TRACE%"
+if "%~4"=="--file" type "%~5">>"%CLI_TRACE%"
 type "%CLI_RESPONSE_FILE%"
+exit /b 0
+:capture
+set "arg=%~1"
+if not "%arg:~0,7%"=="--file=" exit /b 0
+set "cliFile=%arg:~7%"
+type "%cliFile%">>"%CLI_TRACE%"
+exit /b 0
 '@
     $jar = Join-Path $scratch 'connector.jar'
     Set-Content -LiteralPath $jar -Encoding Ascii -Value 'fake connector'
@@ -82,11 +94,23 @@ type "%CLI_RESPONSE_FILE%"
             }).Count -ne 0) {
         throw 'Controller argument was not passed to every CLI invocation'
     }
+    Clear-Content -LiteralPath $env:CLI_TRACE
+    $env:MEDICAL_COURSE_DB_USER = 'fixture-user'
+    $env:MEDICAL_COURSE_DB_PASSWORD = 'fixture-password'
+    & $script -WildFlyHome $expected -ConnectorJar $jar -Controller $controller -DbPort 63306 | Out-Null
+    $submitted = Get-Content -LiteralPath $env:CLI_TRACE -Raw
+    if ($submitted -notmatch '--transaction-isolation=TRANSACTION_REPEATABLE_READ' -or
+        $submitted -notmatch '127\.0\.0\.1:63306/medical_cloud_course' -or
+        $submitted -match 'fixture-password') {
+        throw 'Datasource CLI did not receive explicit isolation/port with environment-only credentials'
+    }
     Write-Output 'configure-wildfly controller preflight: PASS'
 } finally {
     $env:CLI_TRACE = $originalTrace
     $env:CLI_RESPONSE_FILE = $originalResponse
     $env:JBOSS_HOME = $originalJbossHome
+    $env:MEDICAL_COURSE_DB_USER = $originalDbUser
+    $env:MEDICAL_COURSE_DB_PASSWORD = $originalDbPassword
     $resolvedScratch = [IO.Path]::GetFullPath($scratch)
     if ($resolvedScratch.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()),
             [StringComparison]::OrdinalIgnoreCase) -and
