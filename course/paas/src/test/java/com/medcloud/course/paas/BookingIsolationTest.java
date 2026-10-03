@@ -157,7 +157,7 @@ class BookingIsolationTest {
     }
 
     @Test
-    void disabledTenantRejectsDoctorAndHospitalLoginAndExistingTokensAcrossTransactions() {
+    void disabledTenantAllowsDoctorAndHospitalLoginAndExistingTokensAcrossTransactions() {
         EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
         EntityManager authManager = factory.createEntityManager();
         EntityManager adminManager = factory.createEntityManager();
@@ -182,12 +182,12 @@ class BookingIsolationTest {
                     .executeUpdate();
             adminManager.getTransaction().commit();
 
-            assertThrows(SecurityException.class,
-                    () -> auth.login(new LoginRequest("doctor_a", "Demo@123456")));
-            assertThrows(SecurityException.class,
-                    () -> auth.login(new LoginRequest("hospital_a", "Demo@123456")));
-            assertThrows(SecurityException.class, () -> auth.authenticate(doctorToken));
-            assertThrows(SecurityException.class, () -> auth.authenticate(hospitalToken));
+            assertEquals(Role.DOCTOR, org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                    () -> auth.login(new LoginRequest("doctor_a", "Demo@123456"))).getRole());
+            assertEquals(Role.HOSPITAL_ADMIN, org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                    () -> auth.login(new LoginRequest("hospital_a", "Demo@123456"))).getRole());
+            assertEquals("doctor-a", auth.authenticate(doctorToken).getUserId());
+            assertEquals("hospital-a", auth.authenticate(hospitalToken).getUserId());
         } finally {
             authManager.close();
             adminManager.close();

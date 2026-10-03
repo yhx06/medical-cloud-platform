@@ -2,7 +2,6 @@ package com.medcloud.course.paas.tenant;
 
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.auth.AccessDeniedException;
-import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
@@ -31,6 +30,7 @@ public class HospitalDepartmentService {
 
     public Department create(CurrentActor actor, String name) {
         String tenantId = tenant(actor);
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         String validName = name(name);
         if (duplicate(tenantId, validName, null)) throw new IllegalStateException("department name exists");
         Department department = new Department(UUID.randomUUID().toString(), tenantId, validName);
@@ -40,6 +40,9 @@ public class HospitalDepartmentService {
 
     public Department update(CurrentActor actor, String id, String name, String status) {
         String tenantId = tenant(actor);
+        Department candidate = manager.find(Department.class, id);
+        if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         manager.flush();
         Department department = manager.find(Department.class, id, LockModeType.PESSIMISTIC_WRITE);
         if (department != null) manager.refresh(department, LockModeType.PESSIMISTIC_WRITE);
@@ -79,12 +82,6 @@ public class HospitalDepartmentService {
     }
 
     public String tenant(CurrentActor actor) {
-        if (actor == null || actor.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
-        Account account = manager.find(Account.class, actor.getUserId());
-        if (account == null || account.getRole() != Role.HOSPITAL_ADMIN || !"ACTIVE".equals(account.getStatus())
-                || account.getTenantId() == null) throw new SecurityException("inactive admin");
-        Tenant tenant = manager.find(Tenant.class, account.getTenantId());
-        if (tenant == null || !"ACTIVE".equals(tenant.getStatus())) throw new SecurityException("inactive hospital");
-        return tenant.getId();
+        return new TenantAccessPolicy(manager).readableTenant(actor, Role.HOSPITAL_ADMIN).getId();
     }
 }

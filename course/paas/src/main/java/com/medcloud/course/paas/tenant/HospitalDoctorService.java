@@ -44,6 +44,9 @@ public class HospitalDoctorService {
 
     public DoctorCreateResponse create(CurrentActor actor, String username, String displayName, String departmentId) {
         String tenantId = tenant(actor);
+        department(tenantId, departmentId);
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        lockDepartment(tenantId, departmentId);
         if (username == null || !username.matches("[A-Za-z0-9_]{3,64}"))
             throw new IllegalArgumentException("invalid username");
         String name = HospitalDepartmentService.name(displayName);
@@ -69,9 +72,18 @@ public class HospitalDoctorService {
 
     public DoctorView update(CurrentActor actor, String userId, String displayName, String departmentId, String status) {
         String tenantId = tenant(actor);
+        Account candidate = manager.find(Account.class, userId);
+        DoctorProfile candidateProfile = manager.find(DoctorProfile.class, userId);
+        if (candidate == null || candidateProfile == null || candidate.getRole() != Role.DOCTOR
+                || !tenantId.equals(candidate.getTenantId()) || !tenantId.equals(candidateProfile.getTenantId()))
+            throw new AccessDeniedException();
+        department(tenantId, departmentId);
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        lockDepartment(tenantId, departmentId);
         Account account = manager.find(Account.class, userId, LockModeType.PESSIMISTIC_WRITE);
         if (account != null) manager.refresh(account, LockModeType.PESSIMISTIC_WRITE);
         DoctorProfile profile = manager.find(DoctorProfile.class, userId);
+        if (profile != null) manager.refresh(profile);
         if (account == null || profile == null || account.getRole() != Role.DOCTOR
                 || !tenantId.equals(account.getTenantId()) || !tenantId.equals(profile.getTenantId()))
             throw new AccessDeniedException();
@@ -95,6 +107,14 @@ public class HospitalDoctorService {
         if (department == null || !tenantId.equals(department.getTenantId())) throw new AccessDeniedException();
         if (!"ACTIVE".equals(department.getStatus())) throw new IllegalStateException("department disabled");
         return department;
+    }
+
+    private Department lockDepartment(String tenantId, String departmentId) {
+        // A preceding department create in the same transaction must reach the database before locking.
+        manager.flush();
+        Department department = manager.find(Department.class, departmentId, LockModeType.PESSIMISTIC_READ);
+        if (department != null) manager.refresh(department, LockModeType.PESSIMISTIC_READ);
+        return department(tenantId, departmentId);
     }
 
     private String tenant(CurrentActor actor) { return new HospitalDepartmentService(manager).tenant(actor); }

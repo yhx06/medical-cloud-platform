@@ -4,6 +4,8 @@ import com.medcloud.course.contract.ApiError;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 
 import javax.ejb.EJBException;
+import javax.persistence.LockTimeoutException;
+import javax.persistence.PessimisticLockException;
 import javax.ws.rs.NotSupportedException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
@@ -41,7 +43,8 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
             status = 400;
             code = "BAD_REQUEST";
             message = "Invalid request";
-        } else if (failure instanceof IllegalStateException) {
+        } else if (failure instanceof IllegalStateException || failure instanceof LockTimeoutException
+                || failure instanceof PessimisticLockException) {
             status = 409;
             code = "CONFLICT";
             message = "Operation conflicts with current state";

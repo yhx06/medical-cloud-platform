@@ -9,6 +9,7 @@ import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Department;
 import com.medcloud.course.paas.tenant.DoctorProfile;
 import com.medcloud.course.paas.tenant.HospitalDepartmentService;
+import com.medcloud.course.paas.tenant.TenantAccessPolicy;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
@@ -43,6 +44,8 @@ public class SlotAdminService {
     public ScheduleSlot create(CurrentActor actor, SlotRequest request) {
         String tenantId = tenant(actor);
         validate(request, false);
+        requireDirectoryOwnership(tenantId, request);
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         // Department disable locks the department; publication must acquire it first.
         lockDepartment(tenantId, request.getDepartmentId());
         // Booking locks doctor then slot. Keep that relative order.
@@ -61,6 +64,8 @@ public class SlotAdminService {
         manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
+        requireDirectoryOwnership(tenantId, request);
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         String candidateDepartmentId = candidate.getDepartmentId();
         String candidateDoctorId = candidate.getDoctorId();
         // Lock both departments, then both doctors, then the slot to serialize admin edits.
@@ -117,10 +122,26 @@ public class SlotAdminService {
         if (!"ACTIVE".equals(department.getStatus())) throw new IllegalStateException("department disabled");
         Account doctor = lockDoctor(doctorId);
         DoctorProfile profile = manager.find(DoctorProfile.class, doctorId);
+        if (profile != null) manager.refresh(profile);
         if (doctor == null || profile == null || !tenantId.equals(doctor.getTenantId())
                 || !tenantId.equals(profile.getTenantId()) || doctor.getRole() != Role.DOCTOR
                 || !departmentId.equals(profile.getDepartmentId())) throw new AccessDeniedException();
         if (!"ACTIVE".equals(doctor.getStatus())) throw new IllegalStateException("doctor disabled");
+    }
+
+    private void requireDirectoryOwnership(String tenantId, SlotRequest request) {
+        // Nonlocking projections locate ownership; the locked entity reads below remain the mutation boundary.
+        List<String> departments = manager.createQuery("select d.tenantId from Department d where d.id = :id", String.class)
+                .setParameter("id", request.getDepartmentId()).getResultList();
+        List<Object[]> doctors = manager.createQuery("select a.tenantId, a.role, p.tenantId, p.departmentId "
+                + "from Account a, DoctorProfile p where a.id = p.userId and a.id = :id", Object[].class)
+                .setParameter("id", request.getDoctorId()).getResultList();
+        if (departments.size() != 1 || !tenantId.equals(departments.get(0)) || doctors.size() != 1)
+            throw new AccessDeniedException();
+        Object[] doctor = doctors.get(0);
+        if (!tenantId.equals(doctor[0]) || doctor[1] != Role.DOCTOR || !tenantId.equals(doctor[2])
+                || !request.getDepartmentId().equals(doctor[3]))
+            throw new AccessDeniedException();
     }
 
     private Account lockDoctor(String doctorId) {

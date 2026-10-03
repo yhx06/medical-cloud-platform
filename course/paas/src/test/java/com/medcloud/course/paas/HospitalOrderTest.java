@@ -68,6 +68,17 @@ class HospitalOrderTest {
 
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
             String bearer = "Bearer " + auth.login(new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
+            // An existing bearer and cached tenant must retain the same historical scope after disable.
+            EntityManager disabling = factory.createEntityManager();
+            try {
+                disabling.getTransaction().begin();
+                disabling.createNativeQuery("update tenant set status = 'DISABLED' where id = 'tenant-a'").executeUpdate();
+                disabling.getTransaction().commit();
+            } finally {
+                if (disabling.getTransaction().isActive()) disabling.getTransaction().rollback();
+                disabling.close();
+            }
+            assertEquals(4, service.forHospital(claimedOtherTenant, null, null, null).size());
             HospitalResource api = new HospitalResource(auth, service);
             assertEquals(4, api.orders(bearer, null, null, null).getData().size());
             assertEquals("in-range", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")

@@ -9,6 +9,7 @@ import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.tenant.Tenant;
 import com.medcloud.course.paas.tenant.Department;
 import com.medcloud.course.paas.tenant.DoctorProfile;
+import com.medcloud.course.paas.tenant.TenantAccessPolicy;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
@@ -31,18 +32,15 @@ public class BookingService {
     public BookingService(EntityManager manager) { this.manager = manager; }
 
     public Appointment book(CurrentActor actor, String slotId, Date today) {
-        if (actor == null) throw new SecurityException("authentication required");
-        if (actor.getRole() != Role.PATIENT) throw new AccessDeniedException();
-        Account patient = manager.find(Account.class, actor.getUserId());
-        if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT) {
-            throw new SecurityException("inactive patient");
-        }
+        Account patient = new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
         manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null) throw new IllegalStateException("slot unavailable");
+        String tenantId = candidate.getTenantId();
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         String candidateDepartmentId = candidate.getDepartmentId();
         String candidateDoctorId = candidate.getDoctorId();
-        // Match publication/department-disable order: department -> doctor -> slot -> appointment.
+        // Tenant -> department -> doctor -> slot -> appointment.
         Department department = manager.find(Department.class, candidateDepartmentId, LockModeType.PESSIMISTIC_READ);
         if (department == null) throw new IllegalStateException("slot directory unavailable");
         manager.refresh(department, LockModeType.PESSIMISTIC_READ);
@@ -58,14 +56,13 @@ public class BookingService {
         if (!"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today) || !Instant.now().isBefore(start)) {
             throw new IllegalStateException("slot unavailable");
         }
-        if (!candidateDoctorId.equals(slot.getDoctorId()) || !candidateDepartmentId.equals(slot.getDepartmentId())) {
+        if (!tenantId.equals(slot.getTenantId()) || !candidateDoctorId.equals(slot.getDoctorId())
+                || !candidateDepartmentId.equals(slot.getDepartmentId())) {
             throw new IllegalStateException("slot directory changed");
         }
         DoctorProfile profile = manager.find(DoctorProfile.class, candidateDoctorId);
         if (profile != null) manager.refresh(profile, LockModeType.PESSIMISTIC_READ);
-        Tenant tenant = manager.find(Tenant.class, slot.getTenantId());
-        if (tenant == null || !"ACTIVE".equals(tenant.getStatus())
-                || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR
+        if (!"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR
                 || !slot.getTenantId().equals(doctor.getTenantId())
                 || !"ACTIVE".equals(department.getStatus()) || !slot.getTenantId().equals(department.getTenantId())
                 || profile == null || !slot.getTenantId().equals(profile.getTenantId())
@@ -90,12 +87,9 @@ public class BookingService {
     }
 
     public List<Appointment> forDoctor(CurrentActor actor) {
-        if (actor == null) throw new SecurityException("authentication required");
-        if (actor.getRole() != Role.DOCTOR) throw new AccessDeniedException();
-        Account doctor = manager.find(Account.class, actor.getUserId());
-        if (doctor == null || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR) {
-            throw new SecurityException("inactive doctor");
-        }
+        TenantAccessPolicy policy = new TenantAccessPolicy(manager);
+        Account doctor = policy.requireAccount(actor, Role.DOCTOR);
+        policy.readableTenant(doctor.getTenantId());
         return manager.createQuery("select a from Appointment a where a.doctorId = :doctorId "
                 + "and a.tenantId = :tenantId order by a.bookedOn, a.id", Appointment.class)
                 .setParameter("doctorId", doctor.getId()).setParameter("tenantId", doctor.getTenantId())
@@ -107,13 +101,17 @@ public class BookingService {
         if (appointmentId == null || now == null) throw new IllegalArgumentException("appointment and time required");
         Appointment candidate = manager.find(Appointment.class, appointmentId);
         if (candidate == null || !actor.getUserId().equals(candidate.getPatientId())) throw new AccessDeniedException();
+        String tenantId = candidate.getTenantId();
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         ScheduleSlot slot = manager.find(ScheduleSlot.class, candidate.getSlotId(), LockModeType.PESSIMISTIC_WRITE);
         if (slot == null) throw new IllegalStateException("slot unavailable");
         manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
         Appointment appointment = manager.find(Appointment.class, appointmentId, LockModeType.PESSIMISTIC_WRITE);
         if (appointment == null) throw new AccessDeniedException();
         manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
-        if (!actor.getUserId().equals(appointment.getPatientId()) || !slot.getId().equals(appointment.getSlotId()))
+        if (!actor.getUserId().equals(appointment.getPatientId()) || !slot.getId().equals(appointment.getSlotId())
+                || !tenantId.equals(appointment.getTenantId()) || !tenantId.equals(slot.getTenantId())
+                || !appointment.getDoctorId().equals(slot.getDoctorId()))
             throw new AccessDeniedException();
         LocalDateTime start = LocalDateTime.of(slot.getDate().toLocalDate(), slot.getStartTime().toLocalTime());
         if (!now.isBefore(start.atZone(ZoneId.of("Asia/Shanghai")).toInstant()))
@@ -130,7 +128,7 @@ public class BookingService {
         java.util.ArrayList<AppointmentHistoryView> views = new java.util.ArrayList<AppointmentHistoryView>();
         for (Appointment appointment : rows) {
             ScheduleSlot slot = manager.find(ScheduleSlot.class, appointment.getSlotId());
-            Tenant tenant = manager.find(Tenant.class, appointment.getTenantId());
+            Tenant tenant = new TenantAccessPolicy(manager).readableTenant(appointment.getTenantId());
             Department department = slot == null ? null : manager.find(Department.class, slot.getDepartmentId());
             DoctorProfile doctor = manager.find(DoctorProfile.class, appointment.getDoctorId());
             views.add(new AppointmentHistoryView(appointment.getId(), appointment.getStatus(),
@@ -144,9 +142,6 @@ public class BookingService {
     }
 
     private void requirePatient(CurrentActor actor) {
-        if (actor == null || actor.getRole() != Role.PATIENT) throw new AccessDeniedException();
-        Account patient = manager.find(Account.class, actor.getUserId());
-        if (patient == null || patient.getRole() != Role.PATIENT || !"ACTIVE".equals(patient.getStatus()))
-            throw new AccessDeniedException();
+        new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
     }
 }

@@ -83,9 +83,11 @@ public class AuthService {
         List<Account> accounts = manager.createQuery("select a from Account a where a.username = :username", Account.class)
                 .setParameter("username", request.getUsername()).setMaxResults(1).getResultList();
         Account account = accounts.isEmpty() ? null : accounts.get(0);
+        if (account != null) manager.refresh(account);
         if (account == null || !"ACTIVE".equals(account.getStatus())
+                || account.getRole() == null
                 || !BCrypt.checkpw(request.getPassword(), account.getPasswordHash())
-                || !tenantActive(account)) {
+                || !tenantReadable(account)) {
             throw new SecurityException("invalid credentials");
         }
         return new LoginResponse(sign(account.getId()), account.getUsername(), account.getRole());
@@ -105,7 +107,8 @@ public class AuthService {
                 throw new SecurityException("expired or unsupported token");
             }
             Account account = manager.find(Account.class, payload.path("sub").asText());
-            if (account == null || !"ACTIVE".equals(account.getStatus()) || !tenantActive(account)) {
+            if (account != null) manager.refresh(account);
+            if (account == null || !"ACTIVE".equals(account.getStatus()) || account.getRole() == null || !tenantReadable(account)) {
                 throw new SecurityException("inactive account");
             }
             return new CurrentActor(account.getId(), account.getRole(), account.getTenantId());
@@ -116,7 +119,7 @@ public class AuthService {
         }
     }
 
-    private boolean tenantActive(Account account) {
+    private boolean tenantReadable(Account account) {
         if (account.getRole() != Role.DOCTOR && account.getRole() != Role.HOSPITAL_ADMIN) {
             return true;
         }
@@ -126,7 +129,7 @@ public class AuthService {
         List<String> statuses = manager.createQuery(
                 "select t.status from Tenant t where t.id = :tenantId", String.class)
                 .setParameter("tenantId", account.getTenantId()).getResultList();
-        return statuses.size() == 1 && "ACTIVE".equals(statuses.get(0));
+        return statuses.size() == 1 && ("ACTIVE".equals(statuses.get(0)) || "DISABLED".equals(statuses.get(0)));
     }
 
     private String sign(String userId) {

@@ -7,6 +7,7 @@ import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.order.PaymentOrder;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
+import com.medcloud.course.paas.tenant.TenantAccessPolicy;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
@@ -62,6 +63,8 @@ public class ClinicalService {
     private Appointment lockedDoctorAppointment(CurrentActor actor, String appointmentId) {
         Appointment candidate = manager.find(Appointment.class, appointmentId);
         requireDoctor(actor, candidate);
+        String tenantId = candidate.getTenantId();
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
         manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
         if (!"ACTIVE".equals(doctor.getStatus())) throw new AccessDeniedException();
@@ -69,17 +72,19 @@ public class ClinicalService {
         if (slot == null) throw new AccessDeniedException();
         manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
         Appointment appointment = manager.find(Appointment.class, appointmentId, LockModeType.PESSIMISTIC_WRITE);
+        if (appointment == null) throw new AccessDeniedException();
         manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
         requireDoctor(actor, appointment);
-        if (!slot.getId().equals(appointment.getSlotId())) throw new AccessDeniedException();
+        if (!slot.getId().equals(appointment.getSlotId()) || !tenantId.equals(appointment.getTenantId())
+                || !tenantId.equals(slot.getTenantId()) || !appointment.getDoctorId().equals(slot.getDoctorId()))
+            throw new AccessDeniedException();
         return appointment;
     }
 
     public List<ClinicalRecord> forDoctor(CurrentActor actor, Date from, Date to) {
-        if (actor == null || actor.getRole() != Role.DOCTOR) throw new AccessDeniedException();
-        Account doctor = manager.find(Account.class, actor.getUserId());
-        if (doctor == null || doctor.getRole() != Role.DOCTOR || !"ACTIVE".equals(doctor.getStatus())
-                || doctor.getTenantId() == null) throw new AccessDeniedException();
+        TenantAccessPolicy policy = new TenantAccessPolicy(manager);
+        Account doctor = policy.requireAccount(actor, Role.DOCTOR);
+        policy.readableTenant(doctor.getTenantId());
         if (from != null && to != null && from.toString().compareTo(to.toString()) > 0)
             throw new IllegalArgumentException("invalid date range");
         StringBuilder query = new StringBuilder("select r from ClinicalRecord r where r.doctorId = :doctorId "
@@ -98,9 +103,12 @@ public class ClinicalService {
     public ClinicalRecord forPatient(CurrentActor actor, String appointmentId) {
         Appointment appointment = manager.find(Appointment.class, appointmentId);
         requirePatient(actor, appointment);
+        new TenantAccessPolicy(manager).readableTenant(appointment.getTenantId());
         List<ClinicalRecord> records = manager.createQuery(
-                "select r from ClinicalRecord r where r.appointmentId = :appointmentId", ClinicalRecord.class)
-                .setParameter("appointmentId", appointmentId).setMaxResults(1).getResultList();
+                "select r from ClinicalRecord r where r.appointmentId = :appointmentId and r.tenantId = :tenantId "
+                        + "and r.patientId = :patientId", ClinicalRecord.class)
+                .setParameter("appointmentId", appointmentId).setParameter("tenantId", appointment.getTenantId())
+                .setParameter("patientId", actor.getUserId()).setMaxResults(1).getResultList();
         if (records.isEmpty()) {
             throw new IllegalStateException("record not ready");
         }
@@ -108,24 +116,18 @@ public class ClinicalService {
     }
 
     private void requireDoctor(CurrentActor actor, Appointment appointment) {
-        if (appointment == null || actor == null || actor.getRole() != Role.DOCTOR) {
-            throw new AccessDeniedException();
-        }
-        Account doctor = manager.find(Account.class, actor.getUserId());
-        if (doctor == null || !"ACTIVE".equals(doctor.getStatus()) || doctor.getRole() != Role.DOCTOR
-                || !appointment.getDoctorId().equals(doctor.getId())
+        TenantAccessPolicy policy = new TenantAccessPolicy(manager);
+        Account doctor = policy.requireAccount(actor, Role.DOCTOR);
+        if (appointment == null || !appointment.getDoctorId().equals(doctor.getId())
                 || !appointment.getTenantId().equals(doctor.getTenantId())) {
             throw new AccessDeniedException();
         }
+        policy.readableTenant(doctor.getTenantId());
     }
 
     private void requirePatient(CurrentActor actor, Appointment appointment) {
-        if (appointment == null || actor == null || actor.getRole() != Role.PATIENT) {
-            throw new AccessDeniedException();
-        }
-        Account patient = manager.find(Account.class, actor.getUserId());
-        if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT
-                || !appointment.getPatientId().equals(patient.getId())) {
+        Account patient = new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
+        if (appointment == null || !appointment.getPatientId().equals(patient.getId())) {
             throw new AccessDeniedException();
         }
     }

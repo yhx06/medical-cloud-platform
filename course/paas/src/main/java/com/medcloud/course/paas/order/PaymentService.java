@@ -1,10 +1,10 @@
 package com.medcloud.course.paas.order;
 
 import com.medcloud.course.contract.Role;
-import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Tenant;
+import com.medcloud.course.paas.tenant.TenantAccessPolicy;
 
 import javax.ejb.Stateless;
 import javax.persistence.EntityManager;
@@ -33,31 +33,27 @@ public class PaymentService {
                 .setParameter("appointmentId", appointmentId).setMaxResults(1).getResultList();
         PaymentOrder order = orders.isEmpty() ? null : orders.get(0);
         requireOwner(actor, order);
+        new TenantAccessPolicy(manager).readableTenant(order.getTenantId());
         return order;
     }
 
     public PaymentOrder pay(CurrentActor actor, String orderId) {
         requirePatient(actor);
         manager.flush();
+        PaymentOrder candidate = manager.find(PaymentOrder.class, orderId);
+        requireOwner(actor, candidate);
+        String tenantId = candidate.getTenantId();
+        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         PaymentOrder order = manager.find(PaymentOrder.class, orderId, LockModeType.PESSIMISTIC_WRITE);
         if (order != null) manager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
         requireOwner(actor, order);
+        if (!tenantId.equals(order.getTenantId())) throw new AccessDeniedException();
         order.pay(Instant.now());
         return order;
     }
 
     public List<PaymentOrder> forHospital(CurrentActor actor, String status, Date from, Date to) {
-        if (actor == null) throw new SecurityException("authentication required");
-        if (actor.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
-        Account admin = manager.find(Account.class, actor.getUserId());
-        if (admin == null || admin.getRole() != Role.HOSPITAL_ADMIN || !"ACTIVE".equals(admin.getStatus())
-                || admin.getTenantId() == null) {
-            throw new SecurityException("inactive hospital administrator");
-        }
-        Tenant tenant = manager.find(Tenant.class, admin.getTenantId());
-        if (tenant == null || !"ACTIVE".equals(tenant.getStatus())) {
-            throw new SecurityException("inactive hospital");
-        }
+        Tenant tenant = new TenantAccessPolicy(manager).readableTenant(actor, Role.HOSPITAL_ADMIN);
         if (status != null && !status.isEmpty() && !"PAID".equals(status) && !"UNPAID".equals(status)) {
             throw new IllegalArgumentException("invalid payment status");
         }
@@ -70,7 +66,7 @@ public class PaymentService {
         if (to != null) jpql.append(" and o.paidAt < :to");
         jpql.append(" order by case when o.paidAt is null then 1 else 0 end, o.paidAt desc, o.id desc");
         TypedQuery<PaymentOrder> rows = manager.createQuery(jpql.toString(), PaymentOrder.class)
-                .setParameter("tenantId", admin.getTenantId());
+                .setParameter("tenantId", tenant.getId());
         if (status != null && !status.isEmpty()) rows.setParameter("status", status);
         ZoneId shanghai = ZoneId.of("Asia/Shanghai");
         if (from != null) rows.setParameter("from", Timestamp.from(
@@ -81,12 +77,7 @@ public class PaymentService {
     }
 
     private void requirePatient(CurrentActor actor) {
-        if (actor == null) throw new SecurityException("authentication required");
-        if (actor.getRole() != Role.PATIENT) throw new AccessDeniedException();
-        Account patient = manager.find(Account.class, actor.getUserId());
-        if (patient == null || !"ACTIVE".equals(patient.getStatus()) || patient.getRole() != Role.PATIENT) {
-            throw new SecurityException("inactive patient");
-        }
+        new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
     }
 
     private void requireOwner(CurrentActor actor, PaymentOrder order) {
