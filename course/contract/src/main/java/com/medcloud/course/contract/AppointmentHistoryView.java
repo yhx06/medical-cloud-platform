@@ -19,14 +19,25 @@ public final class AppointmentHistoryView {
     private final Date slotDate;
     private final Time startTime;
     private final Time endTime;
+    private final String tenantStatus;
+    private final boolean businessWritable;
 
     public AppointmentHistoryView(String id, String status, Date bookedOn, Timestamp bookedAt, String tenantId,
             String hospitalName, String departmentId, String departmentName, String doctorId,
             String doctorName, String slotId, Date slotDate, Time startTime, Time endTime) {
+        this(id, status, bookedOn, bookedAt, tenantId, hospitalName, departmentId, departmentName, doctorId,
+                doctorName, slotId, slotDate, startTime, endTime, null, false);
+    }
+
+    public AppointmentHistoryView(String id, String status, Date bookedOn, Timestamp bookedAt, String tenantId,
+            String hospitalName, String departmentId, String departmentName, String doctorId,
+            String doctorName, String slotId, Date slotDate, Time startTime, Time endTime,
+            String tenantStatus, boolean businessWritable) {
         this.id = id; this.status = status; this.bookedOn = bookedOn; this.bookedAt = bookedAt; this.tenantId = tenantId;
         this.hospitalName = hospitalName; this.departmentId = departmentId;
         this.departmentName = departmentName; this.doctorId = doctorId; this.doctorName = doctorName;
         this.slotId = slotId; this.slotDate = slotDate; this.startTime = startTime; this.endTime = endTime;
+        this.tenantStatus = tenantStatus; this.businessWritable = businessWritable;
     }
     public String getId() { return id; }
     public String getStatus() { return status; }
@@ -42,4 +53,6 @@ public final class AppointmentHistoryView {
     public Date getSlotDate() { return slotDate; }
     public Time getStartTime() { return startTime; }
     public Time getEndTime() { return endTime; }
+    public String getTenantStatus() { return tenantStatus; }
+    public boolean isBusinessWritable() { return businessWritable; }
 }

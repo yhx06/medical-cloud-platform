@@ -26,6 +26,13 @@ public class PaymentService {
     public PaymentService() { }
     public PaymentService(EntityManager manager) { this.manager = manager; }
 
+    public boolean businessWritable(CurrentActor actor, String orderId) {
+        requirePatient(actor);
+        PaymentOrder order = orderId == null ? null : manager.find(PaymentOrder.class, orderId);
+        requireOwner(actor, order);
+        return "ACTIVE".equals(new TenantAccessPolicy(manager).readableTenant(order.getTenantId()).getStatus());
+    }
+
     public PaymentOrder forPatient(CurrentActor actor, String appointmentId) {
         requirePatient(actor);
         List<PaymentOrder> orders = manager.createQuery(

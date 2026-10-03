@@ -136,7 +136,8 @@ public class BookingService {
                     slot == null ? "" : slot.getDepartmentId(), department == null ? "" : department.getName(),
                     appointment.getDoctorId(), doctor == null ? "" : doctor.getDisplayName(),
                     appointment.getSlotId(), slot == null ? null : slot.getDate(),
-                    slot == null ? null : slot.getStartTime(), slot == null ? null : slot.getEndTime()));
+                    slot == null ? null : slot.getStartTime(), slot == null ? null : slot.getEndTime(),
+                    tenant.getStatus(), "ACTIVE".equals(tenant.getStatus())));
         }
         return views;
     }

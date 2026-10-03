@@ -3,6 +3,7 @@ package com.medcloud.course.paas.api;
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.PaymentOrderView;
 import com.medcloud.course.paas.auth.AuthService;
+import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.order.PaymentOrder;
 import com.medcloud.course.paas.order.PaymentService;
 
@@ -33,20 +34,22 @@ public class PaymentResource {
     @Path("patient/appointments/{id}/order")
     public ApiResponse<PaymentOrderView> order(@HeaderParam("Authorization") String authorization,
                                                @PathParam("id") String appointmentId) {
-        return ApiResponse.success("order", view(payments.forPatient(
-                auth.authenticate(BearerTokens.require(authorization)), appointmentId)));
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
+        PaymentOrder order = payments.forPatient(actor, appointmentId);
+        return ApiResponse.success("order", view(order, payments.businessWritable(actor, order.getId())));
     }
 
     @POST
     @Path("patient/orders/{id}/pay")
     public ApiResponse<PaymentOrderView> pay(@HeaderParam("Authorization") String authorization,
                                              @PathParam("id") String orderId) {
-        return ApiResponse.success("paid", view(payments.pay(
-                auth.authenticate(BearerTokens.require(authorization)), orderId)));
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
+        PaymentOrder order = payments.pay(actor, orderId);
+        return ApiResponse.success("paid", view(order, payments.businessWritable(actor, order.getId())));
     }
 
-    private static PaymentOrderView view(PaymentOrder order) {
+    private static PaymentOrderView view(PaymentOrder order, boolean businessWritable) {
         return new PaymentOrderView(order.getId(), order.getAppointmentId(), order.getAmount(), order.getStatus(),
-                order.getPaidAt());
+                order.getPaidAt(), businessWritable);
     }
 }

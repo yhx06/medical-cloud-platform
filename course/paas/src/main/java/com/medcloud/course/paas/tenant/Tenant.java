@@ -38,4 +38,9 @@ public class Tenant {
     public String getStatus() {
         return status;
     }
+    public void setStatus(String status) {
+        if (!"ACTIVE".equals(status) && !"DISABLED".equals(status))
+            throw new IllegalArgumentException("invalid hospital status");
+        this.status = status;
+    }
 }
