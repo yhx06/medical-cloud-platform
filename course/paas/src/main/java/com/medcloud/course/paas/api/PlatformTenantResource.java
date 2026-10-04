@@ -1,10 +1,13 @@
 package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiResponse;
+import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.TenantPage;
 import com.medcloud.course.contract.TenantStatusRequest;
 import com.medcloud.course.contract.TenantView;
 import com.medcloud.course.paas.auth.AuthService;
+import com.medcloud.course.paas.auth.AccessDeniedException;
+import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.PlatformTenantService;
 import javax.ejb.EJB;
 import javax.ws.rs.Consumes;
@@ -28,8 +31,15 @@ public class PlatformTenantResource {
     public PlatformTenantResource(AuthService auth, PlatformTenantService tenants) { this.auth = auth; this.tenants = tenants; }
     @GET
     public ApiResponse<TenantPage> list(@HeaderParam("Authorization") String authorization,
-            @QueryParam("page") @DefaultValue("1") int page, @QueryParam("size") @DefaultValue("20") int size) {
-        return ApiResponse.success("hospitals", tenants.list(auth.authenticate(BearerTokens.require(authorization)), page, size));
+            @QueryParam("page") @DefaultValue("1") String rawPage, @QueryParam("size") @DefaultValue("20") String rawSize) {
+        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
+        if (actor.getRole() != Role.PLATFORM_ADMIN) throw new AccessDeniedException();
+        // Parse only after authentication/role checks, never during RESTEasy parameter injection.
+        int page = Integer.parseInt(rawPage == null ? "1" : rawPage);
+        int size = Integer.parseInt(rawSize == null ? "20" : rawSize);
+        if (page < 1 || size < 1 || size > 100 || ((long) page - 1) * size > Integer.MAX_VALUE)
+            throw new IllegalArgumentException("invalid pagination");
+        return ApiResponse.success("hospitals", tenants.list(actor, page, size));
     }
     @PUT @Path("{id}/status")
     public ApiResponse<TenantView> changeStatus(@HeaderParam("Authorization") String authorization,

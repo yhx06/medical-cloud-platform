@@ -73,3 +73,11 @@ SQL 使用专用医院范围和聚合投影，订单/病历关联同时匹配 te
 日志/截图与 nonce 保护 QA 源码保留在本地 ignored `.superpowers/sdd/2026-10-03-medical-cloud-course-platform-statistics/`、`.superpowers/platform-statistics-qa/`，review 可定向核查，不随 Git 提交。有效截图包括 `platform-disabled-390.jpg`、`hospital-frozen-390.jpg`、`hospital-reenabled-desktop.jpg`（实际为稳定每日趋势）；`hospital-reenabled-stats-390.jpg` 实际是恢复管理控件。部分锚点切换初始截图仍处平滑滚动中，尤其 `platform-390.jpg`，不作为统计布局完成证据。浏览器已恢复桌面尺寸。
 
 前两次 disposable harness 的 Java 测试均通过，但 Windows launcher/child 退出导致清理失败；两处已关闭的临时 datadir 残留保留，未重试被安全策略拒绝的删除。最终 harness 正常 SQL SHUTDOWN、确认精确进程退出后清理通过。残留精确路径与过程见本地 Task 6 报告；它们不是运行库，也不能据此删除其他 MySQL 数据。
+
+## 2026-10-04 最终分页修正
+
+最终评审发现 RESTEasy 在进入平台医院列表方法前转换 `int` 查询参数，非数字或整数溢出会绕过认证并返回 500。现接收原始字符串，先认证并检查平台角色，再解析和验证分页；默认 1/20、size 1–100 和 long 偏移上限保持，服务层数据库角色检查仍保留。坏参数不调用医院列表服务，公共错误体复用现有 400；匿名/无效令牌/停用账号仍为 401，非平台角色仍为 403。
+
+真实 RESTEasy dispatch 回归先 RED：34 项、26 assertion failure、0 error/skipped，其中匿名坏参数实际 500 而预期 401；修正后 34 项全部通过。连同现有角色、偏移、路由和错误映射测试，focused 共 57 项零失败/错误/跳过。最终 `mvn -f course/pom.xml clean verify` 于 2026-10-04 14:16:05 +08 完成：242 项（contract 2 / PaaS 175 / portal 65），0 failure/error、29 skipped；跳过原因及之前实际 MySQL 验收仍如上，未重复数据库业务验收。Node 回归 6/6。
+
+仅备份并更新现有隔离 WildFly 的 PaaS WAR；原包保留为 `paas.war.backup-final-pagination-20261004141851`。实际 GET 覆盖 page/size 非数字、有符号整数溢出及偏移溢出：匿名 401、平台 400、无效 Bearer 401、医院/患者角色 403。正常缺省分页、医院列表/上下文/统计均为 200，专用医院事件与金额、平台医院存量保持预期；原 `/portal` 医院/平台页面均有真实指标/趋势且无分区错误。未初始化/迁移数据库、修改账号/业务状态或教师环境，未替换门户 WAR/数据源配置。部署标记沿用 WAR 时间戳导致首次 checker 误报 timeout，随后仅校验哈希与实际响应确认成功，没有二次部署；日志为 ignored `final-fix-runtime.log`、`final-fix-runtime-verified.log`，完整 RED/GREEN/构建证据见同目录 `final-fix-report.md`。小屏交互证据另见最终控制器 `task-6-ui-controller.log` 与 `controller-hospital-trend-390.jpg`；本次未重跑浏览器、禁用 JS 或注入超时。

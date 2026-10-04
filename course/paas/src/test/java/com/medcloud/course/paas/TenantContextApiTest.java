@@ -49,13 +49,13 @@ class TenantContextApiTest extends TenantFixture {
         AuthService auth = new AuthService(manager, SECRET);
         PlatformTenantResource resource = new PlatformTenantResource(auth, new PlatformTenantService(manager));
         String platform = bearer(auth, "platform");
-        assertEquals(2, resource.list(platform, 1, 20).getData().getItems().size());
-        PlatformTenantTest.assertStatus(403, () -> resource.list(bearer(auth, "admin_a"), 1, 20));
+        assertEquals(2, resource.list(platform, "1", "20").getData().getItems().size());
+        PlatformTenantTest.assertStatus(403, () -> resource.list(bearer(auth, "admin_a"), "1", "20"));
         manager.getTransaction().begin();
         assertEquals("DISABLED", resource.changeStatus(platform, "tenant-a", new TenantStatusRequest("DISABLED", "ACTIVE")).getData().getStatus());
         manager.getTransaction().commit();
         assertEquals("platform/tenants", PlatformTenantResource.class.getAnnotation(Path.class).value());
-        java.lang.reflect.Method list = PlatformTenantResource.class.getMethod("list", String.class, int.class, int.class);
+        java.lang.reflect.Method list = PlatformTenantResource.class.getMethod("list", String.class, String.class, String.class);
         assertNotNull(list.getAnnotation(GET.class));
         java.lang.annotation.Annotation[][] parameters = list.getParameterAnnotations();
         assertEquals("1", defaultValue(parameters[1]));
