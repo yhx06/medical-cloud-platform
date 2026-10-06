@@ -95,18 +95,7 @@ public class AuthService {
 
     public CurrentActor authenticate(String token) {
         try {
-            String[] parts = token.split("\\.", -1);
-            if (parts.length != 3 || !MessageDigest.isEqual(signature(parts[0] + "." + parts[1]),
-                    Base64.getUrlDecoder().decode(parts[2]))) {
-                throw new SecurityException("invalid token");
-            }
-            JsonNode header = JSON.readTree(Base64.getUrlDecoder().decode(parts[0]));
-            JsonNode payload = JSON.readTree(Base64.getUrlDecoder().decode(parts[1]));
-            if (!"HS256".equals(header.path("alg").asText())
-                    || payload.path("exp").asLong(0) <= System.currentTimeMillis() / 1000) {
-                throw new SecurityException("expired or unsupported token");
-            }
-            Account account = manager.find(Account.class, payload.path("sub").asText());
+            Account account = manager.find(Account.class, verifiedSubject(token));
             if (account != null) manager.refresh(account);
             if (account == null || !"ACTIVE".equals(account.getStatus()) || account.getRole() == null || !tenantReadable(account)) {
                 throw new SecurityException("inactive account");
@@ -119,16 +108,53 @@ public class AuthService {
         }
     }
 
+    /** Audit reads validate identity without fetching names, password hashes or account entities. */
+    public CurrentActor authenticateAuditReader(String token) {
+        try {
+            String id = verifiedSubject(token);
+            List<Object[]> rows = manager.createQuery("select a.role,a.status,a.tenantId from Account a where a.id=:id", Object[].class)
+                    .setParameter("id", id).getResultList();
+            if (rows.size() != 1 || !"ACTIVE".equals(rows.get(0)[1]) || rows.get(0)[0] == null)
+                throw new SecurityException("inactive account");
+            Role role = (Role) rows.get(0)[0];
+            String tenant = (String) rows.get(0)[2];
+            if (!tenantReadable(role, tenant)) throw new SecurityException("inactive account");
+            return new CurrentActor(id, role, tenant);
+        } catch (SecurityException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new SecurityException("invalid token", e);
+        }
+    }
+
+    private String verifiedSubject(String token) throws Exception {
+        String[] parts = token.split("\\.", -1);
+        if (parts.length != 3 || !MessageDigest.isEqual(signature(parts[0] + "." + parts[1]),
+                Base64.getUrlDecoder().decode(parts[2]))) {
+            throw new SecurityException("invalid token");
+        }
+        JsonNode header = JSON.readTree(Base64.getUrlDecoder().decode(parts[0]));
+        JsonNode payload = JSON.readTree(Base64.getUrlDecoder().decode(parts[1]));
+        if (!"HS256".equals(header.path("alg").asText())
+                || payload.path("exp").asLong(0) <= System.currentTimeMillis() / 1000) {
+            throw new SecurityException("expired or unsupported token");
+        }
+        return payload.path("sub").asText();
+    }
+
     private boolean tenantReadable(Account account) {
-        if (account.getRole() != Role.DOCTOR && account.getRole() != Role.HOSPITAL_ADMIN) {
+        return tenantReadable(account.getRole(), account.getTenantId());
+    }
+    private boolean tenantReadable(Role role, String tenantId) {
+        if (role != Role.DOCTOR && role != Role.HOSPITAL_ADMIN) {
             return true;
         }
-        if (account.getTenantId() == null) {
+        if (tenantId == null) {
             return false;
         }
         List<String> statuses = manager.createQuery(
                 "select t.status from Tenant t where t.id = :tenantId", String.class)
-                .setParameter("tenantId", account.getTenantId()).getResultList();
+                .setParameter("tenantId", tenantId).getResultList();
         return statuses.size() == 1 && ("ACTIVE".equals(statuses.get(0)) || "DISABLED".equals(statuses.get(0)));
     }
 

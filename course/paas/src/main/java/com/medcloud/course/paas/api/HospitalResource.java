@@ -1,6 +1,10 @@
 package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiResponse;
+import com.medcloud.course.contract.AuditPage;
+import com.medcloud.course.paas.audit.AuditQuery;
+import com.medcloud.course.paas.audit.AuditQueryService;
+import org.jboss.resteasy.spi.HttpRequest;
 import com.medcloud.course.contract.DepartmentRequest;
 import com.medcloud.course.contract.DepartmentView;
 import com.medcloud.course.contract.DoctorCreateResponse;
@@ -48,6 +52,7 @@ public class HospitalResource {
     @EJB private PaymentService payments;
     @EJB private PlatformTenantService tenants;
     @EJB private StatisticsService statistics;
+    @EJB private AuditQueryService audit;
     public HospitalResource() { }
     public HospitalResource(AuthService auth, PaymentService payments) { this.auth = auth; this.payments = payments; }
     public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors) {
@@ -56,7 +61,20 @@ public class HospitalResource {
     public HospitalResource(AuthService auth, PlatformTenantService tenants, StatisticsService statistics) {
         this.auth = auth; this.tenants = tenants; this.statistics = statistics;
     }
+    public HospitalResource(AuthService auth, PaymentService payments, PlatformTenantService tenants,
+            StatisticsService statistics, AuditQueryService audit) {
+        this.auth = auth; this.payments = payments; this.tenants = tenants; this.statistics = statistics; this.audit = audit;
+    }
     private CurrentActor actor(String authorization) { return auth.authenticate(BearerTokens.require(authorization)); }
+
+    @GET @Path("audit-events") @AuditTracked
+    public ApiResponse<AuditPage> auditEvents(@HeaderParam("Authorization") String authorization,
+            @Context UriInfo uri, @Context HttpRequest request) {
+        AuditRequestIds.ensure(request);
+        CurrentActor current = auth.authenticateAuditReader(BearerTokens.require(authorization));
+        audit.requireReader(current, false);
+        return ApiResponse.success("audit events", audit.hospital(current, AuditQuery.parse(uri.getQueryParameters(), false)));
+    }
 
     @GET @Path("context")
     public ApiResponse<TenantContextView> context(@HeaderParam("Authorization") String authorization) {

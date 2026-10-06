@@ -39,6 +39,8 @@ Tomcat 保留登录会话并提供患者、医生和医院操作页面，不直�
 | `GET /hospital/context`、`GET /doctor/context` | 本机构状态与 `businessWritable` 提示，不替代写服务校验 | 对应医院管理员/医生 |
 | `GET /hospital/statistics?from=YYYY-MM-DD&to=YYYY-MM-DD` | 仅本机构汇总；任何 `tenantId` 参数返回 400 | 医院管理员 |
 | `GET /platform/statistics?from=YYYY-MM-DD&to=YYYY-MM-DD` | 跨医院总计、分院、每日趋势和医院存量计数 | 平台管理员 |
+| `GET /hospital/audit-events?from=YYYY-MM-DD&to=YYYY-MM-DD&eventType=LOGIN&result=SUCCESS&page=1&size=20` | 本院脱敏操作审计分页；拒绝 `tenantId` | 医院管理员 |
+| `GET /platform/audit-events?from=YYYY-MM-DD&to=YYYY-MM-DD&tenantId=UUID&page=1&size=20` | 跨院及全局操作审计；可按现存医院筛选 | 平台管理员 |
 
 空体 POST 仍需携带 `Content-Type: application/json`，可发送 `{}`。停用账号登录返回 401；越权接诊返回 403；重复预约或重复完成接诊返回 409。模拟缴费的幂等性不等于真实支付网关的安全性。
 
@@ -57,6 +59,16 @@ Tomcat 保留登录会话并提供患者、医生和医院操作页面，不直�
 预约 cohort 按下单日期 `booked_on` 分组，不按号源就诊日期 `slotDate`；四个状态计数表示该 cohort 查询时当前状态，不是状态转换当日数量。接诊开始、病历完成、模拟实付分别按真实 `started_at/completed_at/paid_at` 的上海日期归属；订单只在接诊完成时生成，其数量/应收金额按同租户同预约关联病历的 `completed_at` 归属。跨日事件可属于不同日期。旧 NULL 时间不回填、不归入事件趋势，在全量 `legacyUnknownTime` 单列数量/金额，不受所选日期区间筛选。平台 `tenantCounts` 是快照中的全体医院存量状态，不是日期区间新增数。
 
 每份报告在同一 REQUIRED EJB/JTA 事务、经确认的 MySQL REPEATABLE READ 一致读快照内完成全部聚合。每日、分院和总计来自同一快照；报告仅含白名单汇总、医院 ID/名称/状态与元数据，无患者身份、诊断/主诉/建议/备注或明细 ID。门户统计筛选 `statsFrom/statsTo` 与订单筛选分离；分区读取失败显示错误，不伪造零趋势，401 清除会话。实际证据及未注入场景见 [平台统计验收](../course-labs/2026-10-03-platform-statistics-acceptance.md)。
+
+## 审计查询契约与隐私
+
+审计 GET 先验证令牌与数据库当前启用账号，再检查角色和医院归属，最后解析原始筛选参数；未认证优先 401，角色不符优先 403，合法管理员的非法参数为 400。医院范围由数据库账号归属确定，停用医院仍可历史只读；停用账号与失效归属拒绝访问。平台省略 `tenantId` 包含全部医院及全局事件，非现存医院 UUID 返回 400。共有参数仅 `from/to/eventType/result/page/size`，平台另允许 `tenantId`；未知、重复参数与医院范围覆盖均拒绝。
+
+日期遵循上海当天及前 29 天默认范围、1–366 个自然日和严格真实日期，SQL 使用上海半开时间边界。枚举空白视为缺省；分页默认 `page=1/size=20`，size 为 1–100，组合 offset 以 long 计算并限制在 Integer.MAX_VALUE 内。COUNT 与列表共用参数化筛选，在同一 REQUIRED EJB 事务内读取，按 `recorded_at DESC,id DESC` 排序；实际 MySQL REPEATABLE_READ/JTA 并发快照与 WildFly 部署验证仍属审计专项验收。
+
+`data` 仅含 `items/total/page/size/from/to/timezone`（Asia/Shanghai）；每行仅含 `id/requestId/tenantId/tenantName/actorRole/actorLabel/eventType/objectType/result/reasonCode/recordedAt`，时间明确带 `+08:00`。操作者只展示角色标签，不返回 actorId/objectId、个人身份或临床明细入口。认证及查询只选择必要安全字段、审计白名单和医院名称，不加载完整账号或病历实体。全局事件展示“全局/归属未验证”。查询不生成操作审计，查询响应头与错误体共享服务端 UUID，不信任客户端 `X-Request-ID`。
+
+只展示审计功能启用后的操作，不补造既有历史。`NO_CHANGE` 是访问结果，不能当作新增业务数量。审计表由版本化 SQL 与 JPA 标量实体定义，现有 PowerDesigner 8 表模型与图未扩充，不能将其视为包含 audit_event 的新版模型。
 
 ## 数据模型与分层对应
 
