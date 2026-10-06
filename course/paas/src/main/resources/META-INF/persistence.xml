@@ -12,6 +12,7 @@
     <class>com.medcloud.course.paas.appointment.Appointment</class>
     <class>com.medcloud.course.paas.consultation.ClinicalRecord</class>
     <class>com.medcloud.course.paas.order.PaymentOrder</class>
+    <class>com.medcloud.course.paas.audit.AuditEvent</class>
     <properties>
       <property name="hibernate.hbm2ddl.auto" value="validate"/>
     </properties>

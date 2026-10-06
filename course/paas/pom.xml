@@ -53,7 +53,7 @@
       <groupId>org.jboss.resteasy</groupId>
       <artifactId>resteasy-jaxrs</artifactId>
       <version>3.0.19.Final</version>
-      <scope>test</scope>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
   <profiles>
