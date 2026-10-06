@@ -64,6 +64,27 @@ $env:MEDICAL_COURSE_JWT_SECRET = '<至少 32 字符的随机密钥>'
 
 升级前后逐表比较行数，并保存备份。MySQL DDL 可能部分提交；失败后检查实际结构，不应盲目重跑，先将备份恢复到另一个空的隔离实例验证。迁移保留旧业务行，新增时间/主诉/备注列为 NULL，并将患者/号源唯一约束改为普通索引以允许取消后重约。数据库与 JVM 使用课程时区 `Asia/Shanghai`（启动 JVM 可加 `-Duser.timezone=Asia/Shanghai`），不要用机器本地时区推断取消截止或支付日期。
 
+### 审计表保护性升级
+
+新建空库使用 `schema.sql`，其中包含 `audit_event`。已有 P0 完成版课程库只运行独立 `002_audit_events.sql` 的保护性升级器，不重复初始化或执行种子脚本。升级器核对显式主机、端口、库名及服务器 UUID，并只读检查原八表的完整列、默认值、排序规则、索引和 14 条外键；仅接受规范库名 `medical_cloud_course`。完整正确的审计表已存在时报告 `Already upgraded` 并停止写入，残缺或同名异构表拒绝修复。
+
+先安排维护窗口并停止应用写入，读取并人工核对 `SELECT @@server_uuid, @@port, DATABASE()`，再使用已有的 `MEDICAL_COURSE_DB_USER` / `MEDICAL_COURSE_DB_PASSWORD` 凭据机制。备份必须是不存在的本地磁盘绝对文件路径，父目录必须存在。以下占位命令不代表授权升级当前运行库：
+
+```powershell
+& course/deploy/scripts/upgrade-audit-database.ps1 -MySqlCli '<mysql.exe>' -MySqlDumpCli '<mysqldump.exe>' -HostName '<已核对主机>' -Port <已核对隔离端口> -Database medical_cloud_course -ExpectedServerUuid '<已核对 UUID>' -BackupPath '<本地盘符:\不存在的备份.sql>'
+```
+
+全库备份成功后才添加审计表，不改写旧业务行、不补造历史事件。审计表为 InnoDB/utf8mb4、11 个标量字段、微秒时间、三个查询索引和请求/事件唯一约束，无业务外键，不保存身份明细、临床内容、凭据或自由文本。应用审计功能由后续实现接入；本迁移不自动部署 WAR，也不升级现有运行库。
+
+MySQL DDL 不保证事务回滚。失败时保留备份并报告实际审计结构；若连接中断使结构无法读取，先恢复只读检查。不要盲目重跑、DROP 审计表或将备份覆盖恢复到运行库。原八表 PowerDesigner 模型仍保留，不代表新增审计表后的完整数据库；新增结构以版本化 SQL 和结构测试为准。SQL 以 MySQL 5.6 为兼容目标，当前 disposable 实测版本为 8.0.45，不能据此声称已在 5.6 验证。
+
+```powershell
+$result = Invoke-Pester -Script course/deploy/tests/upgrade-audit-database.Tests.ps1 -PassThru
+if ($result.FailedCount -ne 0 -or $result.SkippedCount -ne 0) { throw 'Audit migration acceptance failed' }
+```
+
+测试自行启动独立 loopback MySQL，避开 3318/8180/8188；使用专用实例内的规范库名检查迁移、业务摘要、备份先于 DDL、只读重复执行及结构拒绝。Windows MySQL 启动需要短 ASCII 临时 datadir；测试关闭并核对精确二进制/datadir 的进程退出，备份和日志复制到本轮被 Git 忽略的 `.superpowers/sdd/2026-10-04-medical-cloud-course-audit/fixtures`，临时 datadir 保留用于对账。备份、日志与夹具不得提交或截图。
+
 ### 自动验收与报告截图
 
 门户脚本的独立回归使用 Node 内置测试工具（仅开发验证需要 Node，Tomcat/WildFly 运行不需要）：

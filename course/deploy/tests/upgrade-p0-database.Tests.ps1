@@ -63,7 +63,9 @@ try {
     $env:MEDICAL_COURSE_DB_PASSWORD = ''
     $env:MYSQL_PWD = ''
     $freshSchema = Get-Content -LiteralPath (Join-Path $deploy 'schema.sql') -Raw -Encoding UTF8
-    $legacy = $freshSchema -replace '(?m)^    (?:booked_at DATETIME\(6\)|started_at DATETIME|complaint VARCHAR\(500\)|notes VARCHAR\(2000\)|completed_at DATETIME|paid_at DATETIME) NULL,\r?\n', ''
+    # The P0 upgrader accepts the eight-table legacy baseline, before audit exists.
+    $legacy = $freshSchema -replace '(?s)\r?\nCREATE TABLE IF NOT EXISTS audit_event\s*\(.*?;\s*$', ''
+    $legacy = $legacy -replace '(?m)^    (?:booked_at DATETIME\(6\)|started_at DATETIME|complaint VARCHAR\(500\)|notes VARCHAR\(2000\)|completed_at DATETIME|paid_at DATETIME) NULL,\r?\n', ''
     $legacy = $legacy.Replace('INDEX idx_course_patient_slot (patient_id, slot_id)', 'CONSTRAINT uk_course_patient_slot UNIQUE (patient_id, slot_id)')
     if ($legacy -eq $freshSchema -or $legacy -match '(?:booked_at DATETIME\(6\)|started_at DATETIME|completed_at DATETIME|paid_at DATETIME) NULL') { throw 'Legacy fixture could not be derived from current schema' }
     $legacy | & $mysql --no-defaults --protocol=TCP --host=127.0.0.1 "--port=$port" --user=root
