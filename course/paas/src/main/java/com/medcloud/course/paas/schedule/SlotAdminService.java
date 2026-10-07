@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.schedule;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.time.Instant;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.SlotRequest;
 import com.medcloud.course.paas.appointment.Appointment;
@@ -25,7 +31,8 @@ import java.util.UUID;
 public class SlotAdminService {
     @PersistenceContext(unitName = "medicalCloudCourse") private EntityManager manager;
     public SlotAdminService() { }
-    public SlotAdminService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public SlotAdminService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public List<ScheduleSlot> list(CurrentActor actor) {
         String tenantId = tenant(actor);
@@ -42,7 +49,12 @@ public class SlotAdminService {
     }
 
     public ScheduleSlot create(CurrentActor actor, SlotRequest request) {
+        return create(actor, request, AuditContext.create(AuditEventType.SLOT_CREATE, UUID.randomUUID().toString()));
+    }
+
+    public ScheduleSlot create(CurrentActor actor, SlotRequest request, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         validate(request, false);
         requireDirectoryOwnership(tenantId, request);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
@@ -55,11 +67,17 @@ public class SlotAdminService {
                 request.getDoctorId(), request.getDate(), request.getStartTime(), request.getEndTime(),
                 request.getCapacity(), request.getFee());
         manager.persist(slot);
+        journal.append(context, slot.getId(), AuditResult.SUCCESS, Instant.now());
         return slot;
     }
 
     public ScheduleSlot update(CurrentActor actor, String slotId, SlotRequest request) {
+        return update(actor, slotId, request, AuditContext.create(AuditEventType.SLOT_UPDATE, UUID.randomUUID().toString()));
+    }
+
+    public ScheduleSlot update(CurrentActor actor, String slotId, SlotRequest request, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         validate(request, true);
         manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
@@ -100,6 +118,7 @@ public class SlotAdminService {
         unique(tenantId, request, slotId);
         slot.update(request.getDepartmentId(), request.getDoctorId(), request.getDate(), request.getStartTime(),
                 request.getEndTime(), request.getCapacity(), request.getFee(), request.getStatus());
+        journal.append(context, slot.getId(), AuditResult.SUCCESS, Instant.now());
         return slot;
     }
 

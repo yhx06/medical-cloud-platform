@@ -43,10 +43,12 @@ class CourseApiTest {
                     1, new BigDecimal("39.00")));
             manager.getTransaction().commit();
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
-            AuthResource authResource = new AuthResource(auth);
+            AuthResource authResource = new AuthResource(auth, AuditLocalTransactions.runner(manager));
             AppointmentResource resource = new AppointmentResource(auth, new BookingService(manager));
+            manager.getTransaction().begin();
             String bearer = "Bearer " + authResource.login(new LoginRequest("patient_a", "Demo@123456"))
                     .getData().getAccessToken();
+            manager.getTransaction().commit();
 
             manager.getTransaction().begin();
             String patientId = resource.book(bearer, new BookingRequest("slot-a")).getData().getPatientId();

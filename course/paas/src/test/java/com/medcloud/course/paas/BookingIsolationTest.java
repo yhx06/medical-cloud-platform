@@ -139,7 +139,7 @@ class BookingIsolationTest {
             manager.getTransaction().commit();
             AuthService auth = new AuthService(manager, SECRET);
 
-            LoginResponse login = auth.login(new LoginRequest("patient_demo", "Demo@123456"));
+            LoginResponse login = AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_demo", "Demo@123456"));
             assertTrue(login.getAccessToken().length() > 30);
             assertEquals("patient-a", auth.authenticate(login.getAccessToken()).getUserId());
             assertThrows(SecurityException.class, () -> auth.authenticate(login.getAccessToken() + "x"));
@@ -171,8 +171,8 @@ class BookingIsolationTest {
             adminManager.getTransaction().commit();
 
             AuthService auth = new AuthService(authManager, SECRET);
-            String doctorToken = auth.login(new LoginRequest("doctor_a", "Demo@123456")).getAccessToken();
-            String hospitalToken = auth.login(new LoginRequest("hospital_a", "Demo@123456")).getAccessToken();
+            String doctorToken = AuditLocalTransactions.login(authManager, auth, new LoginRequest("doctor_a", "Demo@123456")).getAccessToken();
+            String hospitalToken = AuditLocalTransactions.login(authManager, auth, new LoginRequest("hospital_a", "Demo@123456")).getAccessToken();
             assertEquals("doctor-a", auth.authenticate(doctorToken).getUserId());
             assertEquals("hospital-a", auth.authenticate(hospitalToken).getUserId());
             assertEquals("ACTIVE", authManager.find(Tenant.class, "tenant-a").getStatus());
@@ -183,9 +183,9 @@ class BookingIsolationTest {
             adminManager.getTransaction().commit();
 
             assertEquals(Role.DOCTOR, org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-                    () -> auth.login(new LoginRequest("doctor_a", "Demo@123456"))).getRole());
+                    () -> AuditLocalTransactions.login(authManager, auth, new LoginRequest("doctor_a", "Demo@123456"))).getRole());
             assertEquals(Role.HOSPITAL_ADMIN, org.junit.jupiter.api.Assertions.assertDoesNotThrow(
-                    () -> auth.login(new LoginRequest("hospital_a", "Demo@123456"))).getRole());
+                    () -> AuditLocalTransactions.login(authManager, auth, new LoginRequest("hospital_a", "Demo@123456"))).getRole());
             assertEquals("doctor-a", auth.authenticate(doctorToken).getUserId());
             assertEquals("hospital-a", auth.authenticate(hospitalToken).getUserId());
         } finally {

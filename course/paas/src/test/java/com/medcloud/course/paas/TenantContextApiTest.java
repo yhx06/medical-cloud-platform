@@ -47,7 +47,7 @@ class TenantContextApiTest extends TenantFixture {
     @Test
     void platformRoutesUseAuthenticationAndExposeStablePaginationDefaults() throws Exception {
         AuthService auth = new AuthService(manager, SECRET);
-        PlatformTenantResource resource = new PlatformTenantResource(auth, new PlatformTenantService(manager));
+        PlatformTenantResource resource = new PlatformTenantResource(auth, new PlatformTenantService(manager), AuditLocalTransactions.runner(manager));
         String platform = bearer(auth, "platform");
         assertEquals(2, resource.list(platform, "1", "20").getData().getItems().size());
         PlatformTenantTest.assertStatus(403, () -> resource.list(bearer(auth, "admin_a"), "1", "20"));
@@ -75,7 +75,7 @@ class TenantContextApiTest extends TenantFixture {
     }
 
     private String bearer(AuthService auth, String username) {
-        return "Bearer " + auth.login(new LoginRequest(username, PASSWORD)).getAccessToken();
+        return "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest(username, PASSWORD)).getAccessToken();
     }
 
     private String defaultValue(java.lang.annotation.Annotation[] annotations) {

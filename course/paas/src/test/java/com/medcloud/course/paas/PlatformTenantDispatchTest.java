@@ -123,7 +123,7 @@ class PlatformTenantDispatchTest extends TenantFixture {
     }
 
     private String bearer(String username) {
-        return "Bearer " + auth.login(new LoginRequest(username, PASSWORD)).getAccessToken();
+        return "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest(username, PASSWORD)).getAccessToken();
     }
 
     // The container supplies Jackson; this test writer serializes the actual returned DTOs.

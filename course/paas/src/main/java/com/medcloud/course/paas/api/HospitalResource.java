@@ -4,6 +4,9 @@ import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.AuditPage;
 import com.medcloud.course.paas.audit.AuditQuery;
 import com.medcloud.course.paas.audit.AuditQueryService;
+import com.medcloud.course.paas.audit.AuditContext;
+import com.medcloud.course.paas.audit.AuditOperationRunner;
+import com.medcloud.course.contract.AuditEventType;
 import org.jboss.resteasy.spi.HttpRequest;
 import com.medcloud.course.contract.DepartmentRequest;
 import com.medcloud.course.contract.DepartmentView;
@@ -53,10 +56,15 @@ public class HospitalResource {
     @EJB private PlatformTenantService tenants;
     @EJB private StatisticsService statistics;
     @EJB private AuditQueryService audit;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
     public HospitalResource() { }
     public HospitalResource(AuthService auth, PaymentService payments) { this.auth = auth; this.payments = payments; }
     public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors) {
         this.auth = auth; this.departments = departments; this.doctors = doctors;
+    }
+    public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors, AuditOperationRunner runner) {
+        this(auth, departments, doctors); this.runner = java.util.Objects.requireNonNull(runner);
     }
     public HospitalResource(AuthService auth, PlatformTenantService tenants, StatisticsService statistics) {
         this.auth = auth; this.tenants = tenants; this.statistics = statistics;
@@ -112,34 +120,49 @@ public class HospitalResource {
         for (Department department : departments.list(actor(authorization))) result.add(view(department));
         return ApiResponse.success("departments", result);
     }
-    @POST @Path("departments")
+    @POST @Path("departments") @AuditTracked
     public ApiResponse<DepartmentView> createDepartment(@HeaderParam("Authorization") String authorization, DepartmentRequest request) {
-        if (request == null) throw new IllegalArgumentException("request required");
-        return ApiResponse.success("department created", view(departments.create(actor(authorization), request.getName())));
+        AuditContext context = AuditContext.create(AuditEventType.DEPARTMENT_CREATE, AuditRequestIds.ensure(requestContext));
+        Department result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return departments.create(current, request == null ? null : request.getName(), c);
+        });
+        return ApiResponse.success("department created", view(result));
     }
-    @PUT @Path("departments/{id}")
+    @PUT @Path("departments/{id}") @AuditTracked
     public ApiResponse<DepartmentView> updateDepartment(@HeaderParam("Authorization") String authorization,
             @PathParam("id") String id, DepartmentRequest request) {
-        if (request == null) throw new IllegalArgumentException("request required");
-        return ApiResponse.success("department updated", view(departments.update(actor(authorization), id,
-                request.getName(), request.getStatus())));
+        AuditContext context = AuditContext.create(AuditEventType.DEPARTMENT_UPDATE, AuditRequestIds.ensure(requestContext));
+        Department result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return departments.update(current, id, request == null ? null : request.getName(), request == null ? null : request.getStatus(), c);
+        });
+        return ApiResponse.success("department updated", view(result));
     }
     @GET @Path("doctors")
     public ApiResponse<List<DoctorView>> doctors(@HeaderParam("Authorization") String authorization) {
         return ApiResponse.success("doctors", doctors.list(actor(authorization)));
     }
-    @POST @Path("doctors")
+    @POST @Path("doctors") @AuditTracked
     public ApiResponse<DoctorCreateResponse> createDoctor(@HeaderParam("Authorization") String authorization, DoctorRequest request) {
-        if (request == null) throw new IllegalArgumentException("request required");
-        return ApiResponse.success("doctor created", doctors.create(actor(authorization), request.getUsername(),
-                request.getDisplayName(), request.getDepartmentId()));
+        AuditContext context = AuditContext.create(AuditEventType.DOCTOR_CREATE, AuditRequestIds.ensure(requestContext));
+        DoctorCreateResponse result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return doctors.create(current, request == null ? null : request.getUsername(),
+                    request == null ? null : request.getDisplayName(), request == null ? null : request.getDepartmentId(), c);
+        });
+        return ApiResponse.success("doctor created", result);
     }
-    @PUT @Path("doctors/{id}")
+    @PUT @Path("doctors/{id}") @AuditTracked
     public ApiResponse<DoctorView> updateDoctor(@HeaderParam("Authorization") String authorization,
             @PathParam("id") String id, DoctorRequest request) {
-        if (request == null) throw new IllegalArgumentException("request required");
-        return ApiResponse.success("doctor updated", doctors.update(actor(authorization), id,
-                request.getDisplayName(), request.getDepartmentId(), request.getStatus()));
+        AuditContext context = AuditContext.create(AuditEventType.DOCTOR_UPDATE, AuditRequestIds.ensure(requestContext));
+        DoctorView result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return doctors.update(current, id, request == null ? null : request.getDisplayName(),
+                    request == null ? null : request.getDepartmentId(), request == null ? null : request.getStatus(), c);
+        });
+        return ApiResponse.success("doctor updated", result);
     }
     private static DepartmentView view(Department department) {
         return new DepartmentView(department.getId(), department.getName(), department.getStatus());

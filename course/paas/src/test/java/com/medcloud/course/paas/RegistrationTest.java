@@ -35,10 +35,12 @@ class RegistrationTest {
         EntityManager manager = factory.createEntityManager();
         try {
             AuthService service = new AuthService(manager, SECRET);
-            AuthResource api = new AuthResource(service);
+            AuthResource api = new AuthResource(service, AuditLocalTransactions.runner(manager));
             manager.getTransaction().begin();
             RegisterResponse registered = api.register(new RegisterRequest("new_patient", "Sëcret123")).getData();
             manager.getTransaction().commit();
+
+            assertEquals(0L, manager.createQuery("select count(e) from AuditEvent e", Long.class).getSingleResult());
 
             Account account = manager.find(Account.class, registered.getId());
             assertEquals("new_patient", account.getUsername());
@@ -47,7 +49,9 @@ class RegistrationTest {
             assertNull(account.getTenantId());
             assertTrue(BCrypt.checkpw("Sëcret123", account.getPasswordHash()));
             assertNotEquals("Sëcret123", account.getPasswordHash());
+            manager.getTransaction().begin();
             assertEquals(Role.PATIENT, api.login(new LoginRequest("new_patient", "Sëcret123")).getData().getRole());
+            manager.getTransaction().commit();
             String json = new ObjectMapper().writeValueAsString(registered);
             assertFalse(json.toLowerCase().contains("password"));
             assertFalse(json.contains("Sëcret123"));

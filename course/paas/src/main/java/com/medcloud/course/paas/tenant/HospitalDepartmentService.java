@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.tenant;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.time.Instant;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -20,7 +26,8 @@ public class HospitalDepartmentService {
     @PersistenceContext(unitName = "medicalCloudCourse")
     private EntityManager manager;
     public HospitalDepartmentService() { }
-    public HospitalDepartmentService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public HospitalDepartmentService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public List<Department> list(CurrentActor actor) {
         String tenantId = tenant(actor);
@@ -29,17 +36,28 @@ public class HospitalDepartmentService {
     }
 
     public Department create(CurrentActor actor, String name) {
+        return create(actor, name, AuditContext.create(AuditEventType.DEPARTMENT_CREATE, UUID.randomUUID().toString()));
+    }
+
+    public Department create(CurrentActor actor, String name, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         String validName = name(name);
         if (duplicate(tenantId, validName, null)) throw new IllegalStateException("department name exists");
         Department department = new Department(UUID.randomUUID().toString(), tenantId, validName);
         manager.persist(department);
+        journal.append(context, department.getId(), AuditResult.SUCCESS, Instant.now());
         return department;
     }
 
     public Department update(CurrentActor actor, String id, String name, String status) {
+        return update(actor, id, name, status, AuditContext.create(AuditEventType.DEPARTMENT_UPDATE, UUID.randomUUID().toString()));
+    }
+
+    public Department update(CurrentActor actor, String id, String name, String status, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         Department candidate = manager.find(Department.class, id);
         if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
@@ -65,6 +83,7 @@ public class HospitalDepartmentService {
                 throw new IllegalStateException("department has active resources");
         }
         department.update(validName, status);
+        journal.append(context, department.getId(), AuditResult.SUCCESS, Instant.now());
         return department;
     }
 

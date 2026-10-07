@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.auth;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.time.Instant;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medcloud.course.contract.LoginRequest;
@@ -32,12 +38,14 @@ public class AuthService {
     @PersistenceContext(unitName = "medicalCloudCourse")
     private EntityManager manager;
     private String signingSecret;
+    @EJB private AuditWritePort journal;
 
     public AuthService() { }
 
     public AuthService(EntityManager manager, String signingSecret) {
         this.manager = manager;
         this.signingSecret = signingSecret;
+        this.journal = new AuditJournal(manager);
     }
 
     public RegisterResponse register(RegisterRequest request) {
@@ -77,6 +85,10 @@ public class AuthService {
     }
 
     public LoginResponse login(LoginRequest request) {
+        return login(request, AuditContext.create(AuditEventType.LOGIN, UUID.randomUUID().toString()));
+    }
+
+    public LoginResponse login(LoginRequest request, AuditContext context) {
         if (request == null || request.getUsername() == null || request.getPassword() == null) {
             throw new SecurityException("invalid credentials");
         }
@@ -90,6 +102,8 @@ public class AuthService {
                 || !tenantReadable(account)) {
             throw new SecurityException("invalid credentials");
         }
+        context.attachActor(new CurrentActor(account.getId(), account.getRole(), account.getTenantId()));
+        journal.append(context, account.getId(), AuditResult.SUCCESS, Instant.now());
         return new LoginResponse(sign(account.getId()), account.getUsername(), account.getRole());
     }
 

@@ -22,7 +22,7 @@ class AuditPrivacyTest extends AuditFixture {
     }
     @Test void queryDoesNotLoadPrivateEntitiesIncludingAuthentication() {
         AuthService auth=new AuthService(manager,SECRET);
-        String token=auth.login(new LoginRequest("admin",PASSWORD)).getAccessToken(); manager.clear();
+        String token=AuditLocalTransactions.login(manager, auth, new LoginRequest("admin",PASSWORD)).getAccessToken(); manager.clear();
         Statistics stats=manager.unwrap(org.hibernate.Session.class).getSessionFactory().getStatistics(); stats.setStatisticsEnabled(true); stats.clear();
         com.medcloud.course.paas.auth.CurrentActor actor=auth.authenticateAuditReader(token);
         service.requireReader(actor,false); service.hospital(actor,query()); service.platform(PLATFORM,query());
@@ -30,7 +30,7 @@ class AuditPrivacyTest extends AuditFixture {
         assertEquals(0,stats.getEntityUpdateCount()); assertEquals(0,stats.getEntityInsertCount());
     }
     @Test void authenticationSeesCurrentEnabledAccountAndReadableHospital() {
-        AuthService auth=new AuthService(manager,SECRET); String token=auth.login(new LoginRequest("admin",PASSWORD)).getAccessToken();
+        AuthService auth=new AuthService(manager,SECRET); String token=AuditLocalTransactions.login(manager, auth, new LoginRequest("admin",PASSWORD)).getAccessToken();
         update("update tenant set status='DISABLED' where id=?1",A);
         assertEquals(A,auth.authenticateAuditReader(token).getTenantId());
         update("update user_account set status='DISABLED' where id='admin'");
@@ -45,7 +45,7 @@ class AuditPrivacyTest extends AuditFixture {
     }
     @Test void sharedTokenValidationRejectsExpiredTamperedUnsupportedAndMissingSubjects() throws Exception {
         AuthService auth=new AuthService(manager,SECRET);
-        String valid=auth.login(new LoginRequest("admin",PASSWORD)).getAccessToken();
+        String valid=AuditLocalTransactions.login(manager, auth, new LoginRequest("admin",PASSWORD)).getAccessToken();
         String[] tokens={valid.substring(0,valid.lastIndexOf('.')+1)+"AAAA",
                 signed("admin",System.currentTimeMillis()/1000-60,"HS256"),
                 signed("admin",System.currentTimeMillis()/1000+60,"none"),

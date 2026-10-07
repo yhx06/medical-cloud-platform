@@ -9,6 +9,10 @@ import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.PlatformTenantService;
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
 import javax.ejb.EJB;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
@@ -27,8 +31,13 @@ import javax.ws.rs.core.MediaType;
 public class PlatformTenantResource {
     @EJB private AuthService auth;
     @EJB private PlatformTenantService tenants;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
     public PlatformTenantResource() { }
     public PlatformTenantResource(AuthService auth, PlatformTenantService tenants) { this.auth = auth; this.tenants = tenants; }
+    public PlatformTenantResource(AuthService auth, PlatformTenantService tenants, AuditOperationRunner runner) {
+        this(auth, tenants); this.runner = java.util.Objects.requireNonNull(runner);
+    }
     @GET
     public ApiResponse<TenantPage> list(@HeaderParam("Authorization") String authorization,
             @QueryParam("page") @DefaultValue("1") String rawPage, @QueryParam("size") @DefaultValue("20") String rawSize) {
@@ -41,9 +50,14 @@ public class PlatformTenantResource {
             throw new IllegalArgumentException("invalid pagination");
         return ApiResponse.success("hospitals", tenants.list(actor, page, size));
     }
-    @PUT @Path("{id}/status")
+    @PUT @Path("{id}/status") @AuditTracked
     public ApiResponse<TenantView> changeStatus(@HeaderParam("Authorization") String authorization,
             @PathParam("id") String id, TenantStatusRequest request) {
-        return ApiResponse.success("hospital status", tenants.changeStatus(auth.authenticate(BearerTokens.require(authorization)), id, request));
+        AuditContext context = AuditContext.create(AuditEventType.TENANT_STATUS_CHANGE, AuditRequestIds.ensure(requestContext));
+        TenantView result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = auth.authenticate(BearerTokens.require(authorization)); c.attachActor(current);
+            return tenants.changeStatus(current, id, request, c);
+        });
+        return ApiResponse.success("hospital status", result);
     }
 }

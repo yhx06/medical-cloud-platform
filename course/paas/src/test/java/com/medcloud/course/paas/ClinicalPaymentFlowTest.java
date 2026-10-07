@@ -64,9 +64,9 @@ class ClinicalPaymentFlowTest {
             ClinicalService clinical = new ClinicalService(manager);
             PaymentService payments = new PaymentService(manager);
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
-            String doctorBearer = "Bearer " + auth.login(new LoginRequest("doctor_a", "Doctor@123456"))
+            String doctorBearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", "Doctor@123456"))
                     .getAccessToken();
-            String patientBearer = "Bearer " + auth.login(new LoginRequest("patient_a", "Demo@123456"))
+            String patientBearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_a", "Demo@123456"))
                     .getAccessToken();
             ClinicalResource clinicalApi = new ClinicalResource(auth, clinical);
             PaymentResource paymentApi = new PaymentResource(auth, payments);

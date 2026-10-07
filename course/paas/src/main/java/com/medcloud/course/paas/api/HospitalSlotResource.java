@@ -7,6 +7,10 @@ import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.schedule.SlotAdminService;
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
 
 import javax.ejb.EJB;
 import javax.ws.rs.Consumes;
@@ -27,8 +31,13 @@ import java.util.List;
 public class HospitalSlotResource {
     @EJB private AuthService auth;
     @EJB private SlotAdminService slots;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
     public HospitalSlotResource() { }
     public HospitalSlotResource(AuthService auth, SlotAdminService slots) { this.auth = auth; this.slots = slots; }
+    public HospitalSlotResource(AuthService auth, SlotAdminService slots, AuditOperationRunner runner) {
+        this(auth, slots); this.runner = java.util.Objects.requireNonNull(runner);
+    }
     private CurrentActor actor(String authorization) { return auth.authenticate(BearerTokens.require(authorization)); }
 
     @GET
@@ -37,14 +46,24 @@ public class HospitalSlotResource {
         for (ScheduleSlot slot : slots.list(actor(authorization))) views.add(view(slot));
         return ApiResponse.success("slots", views);
     }
-    @POST
+    @POST @AuditTracked
     public ApiResponse<SlotView> create(@HeaderParam("Authorization") String authorization, SlotRequest request) {
-        return ApiResponse.success("slot created", view(slots.create(actor(authorization), request)));
+        AuditContext context = AuditContext.create(AuditEventType.SLOT_CREATE, AuditRequestIds.ensure(requestContext));
+        ScheduleSlot result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return slots.create(current, request, c);
+        });
+        return ApiResponse.success("slot created", view(result));
     }
-    @PUT @Path("{id}")
+    @PUT @Path("{id}") @AuditTracked
     public ApiResponse<SlotView> update(@HeaderParam("Authorization") String authorization,
             @PathParam("id") String id, SlotRequest request) {
-        return ApiResponse.success("slot updated", view(slots.update(actor(authorization), id, request)));
+        AuditContext context = AuditContext.create(AuditEventType.SLOT_UPDATE, AuditRequestIds.ensure(requestContext));
+        ScheduleSlot result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return slots.update(current, id, request, c);
+        });
+        return ApiResponse.success("slot updated", view(result));
     }
     private SlotView view(ScheduleSlot slot) {
         return new SlotView(slot.getId(), slot.getTenantId(), slot.getDepartmentId(), slot.getDoctorId(),

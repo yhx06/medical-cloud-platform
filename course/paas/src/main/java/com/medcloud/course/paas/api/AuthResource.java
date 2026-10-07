@@ -6,6 +6,10 @@ import com.medcloud.course.contract.LoginResponse;
 import com.medcloud.course.contract.RegisterRequest;
 import com.medcloud.course.contract.RegisterResponse;
 import com.medcloud.course.paas.auth.AuthService;
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
 
 import javax.ejb.EJB;
 import javax.ws.rs.Consumes;
@@ -20,14 +24,20 @@ import javax.ws.rs.core.MediaType;
 public class AuthResource {
     @EJB
     private AuthService auth;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
 
     public AuthResource() { }
     public AuthResource(AuthService auth) { this.auth = auth; }
+    public AuthResource(AuthService auth, AuditOperationRunner runner) { this.auth = auth; this.runner = java.util.Objects.requireNonNull(runner); }
 
     @POST
     @Path("login")
+    @AuditTracked
     public ApiResponse<LoginResponse> login(LoginRequest request) {
-        return ApiResponse.success("logged in", auth.login(request));
+        AuditContext context = AuditContext.create(AuditEventType.LOGIN, AuditRequestIds.ensure(requestContext));
+        LoginResponse result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> auth.login(request, c));
+        return ApiResponse.success("logged in", result);
     }
 
     @POST

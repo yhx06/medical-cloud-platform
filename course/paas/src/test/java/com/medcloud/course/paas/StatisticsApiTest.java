@@ -49,7 +49,7 @@ class StatisticsApiTest extends StatisticsFixture {
         PlatformTenantTest.assertStatus(400, () -> resource.platform(bearer(auth,"platform"),"2026-02-29","2026-03-01"));
     }
 
-    private String bearer(AuthService auth,String username) { return "Bearer " + auth.login(new LoginRequest(username,PASSWORD)).getAccessToken(); }
+    private String bearer(AuthService auth,String username) { return "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest(username,PASSWORD)).getAccessToken(); }
 
     private UriInfo uri(String... tenantValues) {
         MultivaluedMap<String,String> params = new MultivaluedHashMap<String,String>();

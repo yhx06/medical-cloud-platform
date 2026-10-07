@@ -67,7 +67,7 @@ class HospitalOrderTest {
             assertEquals("unpaid", service.forHospital(claimedOtherTenant, "UNPAID", null, null).get(0).getId());
 
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
-            String bearer = "Bearer " + auth.login(new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
+            String bearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
             // An existing bearer and cached tenant must retain the same historical scope after disable.
             EntityManager disabling = factory.createEntityManager();
             try {
@@ -112,9 +112,9 @@ class HospitalOrderTest {
                     new CurrentActor("admin-a", Role.PATIENT, "tenant-a"), null, null, null));
             HospitalResource api = new HospitalResource(new AuthService(manager,
                     "course-test-signing-secret-at-least-32-characters"), service);
-            String bearer = "Bearer " + new AuthService(manager,
-                    "course-test-signing-secret-at-least-32-characters")
-                    .login(new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
+            String bearer = "Bearer " + AuditLocalTransactions.login(manager, new AuthService(manager,
+                    "course-test-signing-secret-at-least-32-characters"),
+                    new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
             assertThrows(IllegalArgumentException.class, () -> api.orders(bearer, null, "not-a-date", null));
             manager.getTransaction().begin();
             admin.disable();

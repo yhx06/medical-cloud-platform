@@ -21,14 +21,14 @@ class TenantReadOnlyTest extends TenantFixture {
     @Test
     void disabledHospitalRetainsAuthenticationAndAllAuthorizedHistoryWithOldTokens() {
         AuthService auth = new AuthService(manager, SECRET);
-        String doctorToken = auth.login(new LoginRequest("doctor_a", PASSWORD)).getAccessToken();
-        String adminToken = auth.login(new LoginRequest("admin_a", PASSWORD)).getAccessToken();
+        String doctorToken = AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)).getAccessToken();
+        String adminToken = AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", PASSWORD)).getAccessToken();
         assertEquals("ACTIVE", manager.find(Tenant.class, "tenant-a").getStatus());
         setTenantStatus("DISABLED");
         assertEquals(Role.DOCTOR, assertDoesNotThrow(() -> auth.authenticate(doctorToken)).getRole());
         assertEquals(Role.HOSPITAL_ADMIN, assertDoesNotThrow(() -> auth.authenticate(adminToken)).getRole());
-        assertDoesNotThrow(() -> auth.login(new LoginRequest("doctor_a", PASSWORD)));
-        assertDoesNotThrow(() -> auth.login(new LoginRequest("admin_a", PASSWORD)));
+        assertDoesNotThrow(() -> AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)));
+        assertDoesNotThrow(() -> AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", PASSWORD)));
         assertEquals(1, new HospitalDepartmentService(manager).list(ADMIN).size());
         assertEquals(1, new HospitalDoctorService(manager).list(ADMIN).size());
         assertEquals(1, new SlotAdminService(manager).list(ADMIN).size());
@@ -55,12 +55,12 @@ class TenantReadOnlyTest extends TenantFixture {
     @Test
     void accountDisableInSeparateTransactionInvalidatesCachedIdentityAndOldToken() {
         AuthService auth = new AuthService(manager, SECRET);
-        String token = auth.login(new LoginRequest("doctor_a", PASSWORD)).getAccessToken();
+        String token = AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)).getAccessToken();
         assertEquals("doctor-a", auth.authenticate(token).getUserId());
         setTenantStatus("DISABLED");
         externalUpdate("update Account a set a.status = 'DISABLED' where a.id = 'doctor-a'");
         assertThrows(SecurityException.class, () -> auth.authenticate(token));
-        assertThrows(SecurityException.class, () -> auth.login(new LoginRequest("doctor_a", PASSWORD)));
+        assertThrows(SecurityException.class, () -> AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)));
         assertThrows(SecurityException.class, () -> new BookingService(manager).forDoctor(DOCTOR));
         setTenantStatus("ACTIVE");
         assertThrows(SecurityException.class, () -> auth.authenticate(token));

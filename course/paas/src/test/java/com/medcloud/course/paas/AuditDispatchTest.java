@@ -90,7 +90,7 @@ class AuditDispatchTest extends AuditFixture {
         assertEquals(before,((Number)manager.createNativeQuery("select count(*) from audit_event").getSingleResult()).longValue(),"GET must not append operation audit events");
         return response;
     }
-    String bearer(String user){return "Bearer "+auth.login(new LoginRequest(user,PASSWORD)).getAccessToken();}
+    String bearer(String user){return "Bearer "+AuditLocalTransactions.login(manager, auth, new LoginRequest(user,PASSWORD)).getAccessToken();}
     void assertErrorId(MockHttpResponse r,String code)throws Exception {
         JsonNode error=new ObjectMapper().readTree(r.getContentAsString()); assertEquals(code,error.path("code").asText());
         String id=error.path("requestId").asText(); UUID.fromString(id); assertEquals(id,r.getOutputHeaders().getFirst("X-Request-ID"));

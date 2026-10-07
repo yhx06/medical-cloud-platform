@@ -1,5 +1,12 @@
 package com.medcloud.course.paas.tenant;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.time.Instant;
+import java.util.UUID;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.TenantContextView;
 import com.medcloud.course.contract.TenantPage;
@@ -21,7 +28,8 @@ public class PlatformTenantService {
     private EntityManager manager;
 
     public PlatformTenantService() { }
-    public PlatformTenantService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public PlatformTenantService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public TenantPage list(CurrentActor actor, int page, int size) {
         new TenantAccessPolicy(manager).requireAccount(actor, Role.PLATFORM_ADMIN);
@@ -37,7 +45,12 @@ public class PlatformTenantService {
     }
 
     public TenantView changeStatus(CurrentActor actor, String id, TenantStatusRequest request) {
-        new TenantAccessPolicy(manager).requireAccount(actor, Role.PLATFORM_ADMIN);
+        return changeStatus(actor, id, request, AuditContext.create(AuditEventType.TENANT_STATUS_CHANGE, UUID.randomUUID().toString()));
+    }
+
+    public TenantView changeStatus(CurrentActor actor, String id, TenantStatusRequest request, AuditContext context) {
+        com.medcloud.course.paas.auth.Account verified = new TenantAccessPolicy(manager).requireAccount(actor, Role.PLATFORM_ADMIN);
+        context.attachActor(new CurrentActor(verified.getId(), verified.getRole(), verified.getTenantId()));
         if (request == null) throw new IllegalArgumentException("request required");
         requireStatus(request.getStatus());
         requireStatus(request.getExpectedStatus());
@@ -47,13 +60,16 @@ public class PlatformTenantService {
         try { manager.refresh(tenant, LockModeType.PESSIMISTIC_WRITE); }
         catch (EntityNotFoundException missing) { throw new AccessDeniedException(); }
         // A repeated desired state succeeds even if the original page snapshot is stale.
-        if (!request.getStatus().equals(tenant.getStatus())) {
+        boolean unchanged = request.getStatus().equals(tenant.getStatus());
+        if (!unchanged) {
             if (!request.getExpectedStatus().equals(tenant.getStatus()))
                 throw new IllegalStateException("hospital status changed");
             tenant.setStatus(request.getStatus());
             // Keep a subsequent status call in this transaction from refreshing away this update.
             manager.flush();
         }
+        context.attachVerifiedTenant(tenant.getId());
+        journal.append(context, tenant.getId(), unchanged ? AuditResult.NO_CHANGE : AuditResult.SUCCESS, Instant.now());
         return new TenantView(tenant.getId(), tenant.getName(), tenant.getStatus());
     }
 

@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.tenant;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.time.Instant;
+
 import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorView;
 import com.medcloud.course.contract.Role;
@@ -28,7 +34,8 @@ public class HospitalDoctorService {
     @PersistenceContext(unitName = "medicalCloudCourse")
     private EntityManager manager;
     public HospitalDoctorService() { }
-    public HospitalDoctorService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public HospitalDoctorService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public List<DoctorView> list(CurrentActor actor) {
         String tenantId = tenant(actor);
@@ -43,7 +50,12 @@ public class HospitalDoctorService {
     }
 
     public DoctorCreateResponse create(CurrentActor actor, String username, String displayName, String departmentId) {
+        return create(actor, username, displayName, departmentId, AuditContext.create(AuditEventType.DOCTOR_CREATE, UUID.randomUUID().toString()));
+    }
+
+    public DoctorCreateResponse create(CurrentActor actor, String username, String displayName, String departmentId, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         department(tenantId, departmentId);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         lockDepartment(tenantId, departmentId);
@@ -67,11 +79,17 @@ public class HospitalDoctorService {
             if (uniqueConflict(failure)) throw new IllegalStateException("username already exists", failure);
             throw failure;
         }
+        journal.append(context, account.getId(), AuditResult.SUCCESS, Instant.now());
         return new DoctorCreateResponse(account.getId(), username, name, departmentId, account.getStatus(), password);
     }
 
     public DoctorView update(CurrentActor actor, String userId, String displayName, String departmentId, String status) {
+        return update(actor, userId, displayName, departmentId, status, AuditContext.create(AuditEventType.DOCTOR_UPDATE, UUID.randomUUID().toString()));
+    }
+
+    public DoctorView update(CurrentActor actor, String userId, String displayName, String departmentId, String status, AuditContext context) {
         String tenantId = tenant(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         Account candidate = manager.find(Account.class, userId);
         DoctorProfile candidateProfile = manager.find(DoctorProfile.class, userId);
         if (candidate == null || candidateProfile == null || candidate.getRole() != Role.DOCTOR
@@ -99,6 +117,7 @@ public class HospitalDoctorService {
         }
         account.setStatus(status);
         profile.update(name, departmentId);
+        journal.append(context, account.getId(), AuditResult.SUCCESS, Instant.now());
         return view(account, profile);
     }
 

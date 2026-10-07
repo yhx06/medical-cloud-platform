@@ -63,7 +63,7 @@ class TenantViewPrivacyTest extends TenantFixture {
         BookingService bookings = new BookingService(manager);
         PaymentService payments = new PaymentService(manager);
         AuthService auth = new AuthService(manager, SECRET);
-        String bearer = "Bearer " + auth.login(new LoginRequest("patient_a", PASSWORD)).getAccessToken();
+        String bearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_a", PASSWORD)).getAccessToken();
         PaymentResource resource = new PaymentResource(auth, payments);
         assertTrue(bookings.forPatient(PATIENT).get(0).isBusinessWritable());
         assertEquals("ACTIVE", bookings.forPatient(PATIENT).get(0).getTenantStatus());
@@ -99,7 +99,7 @@ class TenantViewPrivacyTest extends TenantFixture {
         assertTrue(paid.isBusinessWritable());
         assertEquals("PAID", paid.getStatus());
         assertNotNull(paid.getPaidAt());
-        String adminBearer = "Bearer " + auth.login(new LoginRequest("admin_a", PASSWORD)).getAccessToken();
+        String adminBearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", PASSWORD)).getAccessToken();
         for (PaymentOrderView order : new HospitalResource(auth, payments).orders(adminBearer, null, null, null).getData()) {
             assertFalse(order.isBusinessWritable(), "hospital views must not grant patient payment capability");
         }
