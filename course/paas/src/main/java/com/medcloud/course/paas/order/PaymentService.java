@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.order;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+import java.util.UUID;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -24,7 +30,8 @@ public class PaymentService {
     private EntityManager manager;
 
     public PaymentService() { }
-    public PaymentService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public PaymentService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public boolean businessWritable(CurrentActor actor, String orderId) {
         requirePatient(actor);
@@ -45,17 +52,25 @@ public class PaymentService {
     }
 
     public PaymentOrder pay(CurrentActor actor, String orderId) {
+        return pay(actor,orderId,AuditContext.create(AuditEventType.PAYMENT_PAY,UUID.randomUUID().toString()));
+    }
+
+    public PaymentOrder pay(CurrentActor actor, String orderId, AuditContext context) {
         requirePatient(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(),Role.PATIENT,null));
         manager.flush();
         PaymentOrder candidate = manager.find(PaymentOrder.class, orderId);
         requireOwner(actor, candidate);
         String tenantId = candidate.getTenantId();
+        context.attachVerifiedTenant(tenantId);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         PaymentOrder order = manager.find(PaymentOrder.class, orderId, LockModeType.PESSIMISTIC_WRITE);
         if (order != null) manager.refresh(order, LockModeType.PESSIMISTIC_WRITE);
         requireOwner(actor, order);
         if (!tenantId.equals(order.getTenantId())) throw new AccessDeniedException();
+        boolean unchanged = "PAID".equals(order.getStatus());
         order.pay(Instant.now());
+        journal.append(context,order.getId(),unchanged ? AuditResult.NO_CHANGE : AuditResult.SUCCESS,Instant.now());
         return order;
     }
 

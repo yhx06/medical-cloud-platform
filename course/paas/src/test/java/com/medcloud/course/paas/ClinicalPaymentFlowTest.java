@@ -68,8 +68,8 @@ class ClinicalPaymentFlowTest {
                     .getAccessToken();
             String patientBearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_a", "Demo@123456"))
                     .getAccessToken();
-            ClinicalResource clinicalApi = new ClinicalResource(auth, clinical);
-            PaymentResource paymentApi = new PaymentResource(auth, payments);
+            ClinicalResource clinicalApi = new ClinicalResource(auth, clinical, AuditClinicalFixture.legacyRunner(manager));
+            PaymentResource paymentApi = new PaymentResource(auth, payments, AuditClinicalFixture.legacyRunner(manager));
 
             manager.getTransaction().begin();
             assertThrows(SecurityException.class, () -> clinical.start(doctorB, appointment.getId()));

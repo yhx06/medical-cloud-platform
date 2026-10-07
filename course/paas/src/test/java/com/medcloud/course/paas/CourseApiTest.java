@@ -44,7 +44,7 @@ class CourseApiTest {
             manager.getTransaction().commit();
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
             AuthResource authResource = new AuthResource(auth, AuditLocalTransactions.runner(manager));
-            AppointmentResource resource = new AppointmentResource(auth, new BookingService(manager));
+            AppointmentResource resource = new AppointmentResource(auth, new BookingService(manager), AuditClinicalFixture.legacyRunner(manager));
             manager.getTransaction().begin();
             String bearer = "Bearer " + authResource.login(new LoginRequest("patient_a", "Demo@123456"))
                     .getData().getAccessToken();

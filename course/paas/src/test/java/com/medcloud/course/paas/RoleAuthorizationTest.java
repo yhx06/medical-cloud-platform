@@ -12,9 +12,13 @@ import java.sql.Date;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class RoleAuthorizationTest {
-    private final BookingService bookings = new BookingService(null);
-    private final PaymentService payments = new PaymentService(null);
+class RoleAuthorizationTest extends TenantFixture {
+    private BookingService bookings;
+    private PaymentService payments;
+    @org.junit.jupiter.api.BeforeEach void services() {
+        bookings = new BookingService(manager);
+        payments = new PaymentService(manager);
+    }
     private final CurrentActor patient = new CurrentActor("patient", Role.PATIENT, null);
     private final CurrentActor hospital = new CurrentActor("admin", Role.HOSPITAL_ADMIN, "tenant");
 

@@ -1,5 +1,11 @@
 package com.medcloud.course.paas.api;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.paas.auth.CurrentActor;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
+
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.ClinicalRecordView;
 import com.medcloud.course.contract.CompleteConsultationRequest;
@@ -31,32 +37,42 @@ public class ClinicalResource {
     private AuthService auth;
     @EJB
     private ClinicalService clinical;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
 
     public ClinicalResource() { }
+    public ClinicalResource(AuthService auth, ClinicalService clinical, AuditOperationRunner runner) {
+        this(auth,clinical); this.runner=java.util.Objects.requireNonNull(runner);
+    }
     public ClinicalResource(AuthService auth, ClinicalService clinical) {
         this.auth = auth;
         this.clinical = clinical;
     }
 
-    @POST
+    @POST @AuditTracked
     @Path("doctor/appointments/{id}/start")
     public ApiResponse<String> start(@HeaderParam("Authorization") String authorization,
                                      @PathParam("id") String appointmentId) {
-        clinical.start(auth.authenticate(BearerTokens.require(authorization)), appointmentId, Instant.now());
+        AuditContext context=AuditContext.create(AuditEventType.CONSULTATION_START,AuditRequestIds.ensure(requestContext));
+        java.util.Objects.requireNonNull(runner,"Audit runner required").execute(context,c -> {
+            CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
+            return clinical.start(actor,appointmentId,Instant.now(),c);
+        });
         return ApiResponse.success("consultation started", appointmentId);
     }
 
-    @POST
+    @POST @AuditTracked
     @Path("doctor/appointments/{id}/complete")
     public ApiResponse<ClinicalRecordView> complete(@HeaderParam("Authorization") String authorization,
                                                      @PathParam("id") String appointmentId,
                                                      CompleteConsultationRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("record required");
-        }
-        ClinicalRecord record = clinical.complete(auth.authenticate(BearerTokens.require(authorization)),
-                appointmentId, request.getComplaint(), request.getDiagnosis(), request.getAdvice(),
-                request.getNotes(), Instant.now());
+        AuditContext context=AuditContext.create(AuditEventType.CONSULTATION_COMPLETE,AuditRequestIds.ensure(requestContext));
+        ClinicalRecord record=java.util.Objects.requireNonNull(runner,"Audit runner required").execute(context,c -> {
+            CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
+            return clinical.complete(actor,appointmentId,request==null ? null : request.getComplaint(),
+                    request==null ? null : request.getDiagnosis(),request==null ? null : request.getAdvice(),
+                    request==null ? null : request.getNotes(),Instant.now(),c);
+        });
         return ApiResponse.success("consultation completed", view(record));
     }
 

@@ -1,5 +1,10 @@
 package com.medcloud.course.paas.api;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
+
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.AppointmentView;
 import com.medcloud.course.contract.AppointmentHistoryView;
@@ -33,23 +38,29 @@ public class AppointmentResource {
     private AuthService auth;
     @EJB
     private BookingService booking;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
 
     public AppointmentResource() { }
+    public AppointmentResource(AuthService auth, BookingService booking, AuditOperationRunner runner) {
+        this(auth,booking); this.runner=java.util.Objects.requireNonNull(runner);
+    }
     public AppointmentResource(AuthService auth, BookingService booking) {
         this.auth = auth;
         this.booking = booking;
     }
 
-    @POST
+    @POST @AuditTracked
     @Path("patient/appointments")
     public ApiResponse<AppointmentView> book(@HeaderParam("Authorization") String authorization,
                                               BookingRequest request) {
-        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
-        if (request == null || request.getSlotId() == null || request.getSlotId().trim().isEmpty()) {
-            throw new IllegalArgumentException("slotId required");
-        }
-        return ApiResponse.success("booked", view(booking.book(actor, request.getSlotId(),
-                Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai"))))));
+        AuditContext context=AuditContext.create(AuditEventType.APPOINTMENT_BOOK,AuditRequestIds.ensure(requestContext));
+        Appointment result=java.util.Objects.requireNonNull(runner,"Audit runner required").execute(context,c -> {
+            CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
+            return booking.book(actor,request==null ? null : request.getSlotId(),
+                    Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai"))),c);
+        });
+        return ApiResponse.success("booked",view(result));
     }
 
     @GET
@@ -59,12 +70,16 @@ public class AppointmentResource {
         return ApiResponse.success("appointments", booking.forPatient(actor));
     }
 
-    @POST
+    @POST @AuditTracked
     @Path("patient/appointments/{id}/cancel")
     public ApiResponse<AppointmentView> cancel(@HeaderParam("Authorization") String authorization,
             @PathParam("id") String appointmentId) {
-        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
-        return ApiResponse.success("canceled", view(booking.cancel(actor, appointmentId, Instant.now())));
+        AuditContext context=AuditContext.create(AuditEventType.APPOINTMENT_CANCEL,AuditRequestIds.ensure(requestContext));
+        Appointment result=java.util.Objects.requireNonNull(runner,"Audit runner required").execute(context,c -> {
+            CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
+            return booking.cancel(actor,appointmentId,Instant.now(),c);
+        });
+        return ApiResponse.success("canceled",view(result));
     }
 
     @GET

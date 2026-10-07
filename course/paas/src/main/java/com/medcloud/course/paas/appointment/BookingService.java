@@ -1,5 +1,10 @@
 package com.medcloud.course.paas.appointment;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.AppointmentHistoryView;
 import com.medcloud.course.paas.auth.Account;
@@ -29,10 +34,17 @@ public class BookingService {
 
     public BookingService() { }
 
-    public BookingService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public BookingService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public Appointment book(CurrentActor actor, String slotId, Date today) {
+        return book(actor,slotId,today,AuditContext.create(AuditEventType.APPOINTMENT_BOOK,UUID.randomUUID().toString()));
+    }
+
+    public Appointment book(CurrentActor actor, String slotId, Date today, AuditContext context) {
         Account patient = new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
+        context.attachActor(new CurrentActor(patient.getId(),Role.PATIENT,null));
+        if (slotId == null || slotId.trim().isEmpty() || today == null) throw new IllegalArgumentException("slotId and date required");
         manager.flush();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null) throw new IllegalStateException("slot unavailable");
@@ -83,6 +95,8 @@ public class BookingService {
         Appointment appointment = new Appointment(UUID.randomUUID().toString(), patient.getId(),
                 slot.getId(), slot.getTenantId(), slot.getDoctorId(), slot.getFee(), today);
         manager.persist(appointment);
+        context.attachVerifiedTenant(appointment.getTenantId());
+        journal.append(context,appointment.getId(),AuditResult.SUCCESS,Instant.now());
         return appointment;
     }
 
@@ -97,11 +111,18 @@ public class BookingService {
     }
 
     public Appointment cancel(CurrentActor actor, String appointmentId, Instant now) {
+        return cancel(actor,appointmentId,now,AuditContext.create(AuditEventType.APPOINTMENT_CANCEL,UUID.randomUUID().toString()));
+    }
+
+    public Appointment cancel(CurrentActor actor, String appointmentId, Instant now, AuditContext context) {
         requirePatient(actor);
+        context.attachActor(new CurrentActor(actor.getUserId(),Role.PATIENT,null));
         if (appointmentId == null || now == null) throw new IllegalArgumentException("appointment and time required");
         Appointment candidate = manager.find(Appointment.class, appointmentId);
         if (candidate == null || !actor.getUserId().equals(candidate.getPatientId())) throw new AccessDeniedException();
         String tenantId = candidate.getTenantId();
+        // Existing owned-object verification survives a later hospital freeze failure.
+        context.attachVerifiedTenant(tenantId);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         ScheduleSlot slot = manager.find(ScheduleSlot.class, candidate.getSlotId(), LockModeType.PESSIMISTIC_WRITE);
         if (slot == null) throw new IllegalStateException("slot unavailable");
@@ -117,6 +138,7 @@ public class BookingService {
         if (!now.isBefore(start.atZone(ZoneId.of("Asia/Shanghai")).toInstant()))
             throw new IllegalStateException("appointment already started");
         appointment.cancel();
+        journal.append(context,appointment.getId(),AuditResult.SUCCESS,Instant.now());
         return appointment;
     }
 

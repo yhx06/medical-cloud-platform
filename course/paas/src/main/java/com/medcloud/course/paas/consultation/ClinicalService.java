@@ -1,5 +1,10 @@
 package com.medcloud.course.paas.consultation;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import com.medcloud.course.contract.AuditResult;
+import javax.ejb.EJB;
+
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.auth.Account;
@@ -27,16 +32,26 @@ public class ClinicalService {
     private EntityManager manager;
 
     public ClinicalService() { }
-    public ClinicalService(EntityManager manager) { this.manager = manager; }
+    @EJB private AuditWritePort journal;
+    public ClinicalService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
     public Appointment start(CurrentActor actor, String appointmentId) {
         return start(actor, appointmentId, Instant.now());
     }
 
+    public Appointment start(CurrentActor actor, String appointmentId, AuditContext context) {
+        return start(actor,appointmentId,Instant.now(),context);
+    }
+
     public Appointment start(CurrentActor actor, String appointmentId, Instant now) {
+        return start(actor,appointmentId,now,AuditContext.create(AuditEventType.CONSULTATION_START,UUID.randomUUID().toString()));
+    }
+
+    public Appointment start(CurrentActor actor, String appointmentId, Instant now, AuditContext context) {
         if (now == null) throw new IllegalArgumentException("start time required");
-        Appointment appointment = lockedDoctorAppointment(actor, appointmentId);
+        Appointment appointment = lockedDoctorAppointment(actor, appointmentId, context);
         appointment.start(now);
+        journal.append(context,appointment.getId(),AuditResult.SUCCESS,Instant.now());
         return appointment;
     }
 
@@ -44,11 +59,21 @@ public class ClinicalService {
         return complete(actor, appointmentId, null, diagnosis, advice, null, Instant.now());
     }
 
+    public ClinicalRecord complete(CurrentActor actor, String appointmentId, String diagnosis, String advice, AuditContext context) {
+        return complete(actor,appointmentId,null,diagnosis,advice,null,Instant.now(),context);
+    }
+
     public ClinicalRecord complete(CurrentActor actor, String appointmentId, String complaint,
                                    String diagnosis, String advice, String notes, Instant now) {
+        return complete(actor,appointmentId,complaint,diagnosis,advice,notes,now,
+                AuditContext.create(AuditEventType.CONSULTATION_COMPLETE,UUID.randomUUID().toString()));
+    }
+
+    public ClinicalRecord complete(CurrentActor actor, String appointmentId, String complaint,
+                                   String diagnosis, String advice, String notes, Instant now, AuditContext context) {
         if (diagnosis == null || diagnosis.trim().isEmpty() || advice == null || advice.trim().isEmpty()
                 || now == null) throw new IllegalArgumentException("diagnosis, advice and time required");
-        Appointment appointment = lockedDoctorAppointment(actor, appointmentId);
+        Appointment appointment = lockedDoctorAppointment(actor, appointmentId, context);
         appointment.complete();
         ClinicalRecord record = new ClinicalRecord(UUID.randomUUID().toString(), appointmentId,
                 appointment.getTenantId(), appointment.getDoctorId(), appointment.getPatientId(),
@@ -57,12 +82,14 @@ public class ClinicalService {
                 appointment.getPatientId(), appointment.getTenantId(), appointment.getFee());
         manager.persist(record);
         manager.persist(order);
+        journal.append(context,record.getId(),AuditResult.SUCCESS,Instant.now());
         return record;
     }
 
-    private Appointment lockedDoctorAppointment(CurrentActor actor, String appointmentId) {
+    private Appointment lockedDoctorAppointment(CurrentActor actor, String appointmentId, AuditContext context) {
         Appointment candidate = manager.find(Appointment.class, appointmentId);
-        requireDoctor(actor, candidate);
+        Account verified = requireDoctor(actor, candidate);
+        context.attachActor(new CurrentActor(verified.getId(),Role.DOCTOR,verified.getTenantId()));
         String tenantId = candidate.getTenantId();
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
         Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
@@ -78,6 +105,7 @@ public class ClinicalService {
         if (!slot.getId().equals(appointment.getSlotId()) || !tenantId.equals(appointment.getTenantId())
                 || !tenantId.equals(slot.getTenantId()) || !appointment.getDoctorId().equals(slot.getDoctorId()))
             throw new AccessDeniedException();
+        context.attachVerifiedTenant(appointment.getTenantId());
         return appointment;
     }
 
@@ -115,7 +143,7 @@ public class ClinicalService {
         return records.get(0);
     }
 
-    private void requireDoctor(CurrentActor actor, Appointment appointment) {
+    private Account requireDoctor(CurrentActor actor, Appointment appointment) {
         TenantAccessPolicy policy = new TenantAccessPolicy(manager);
         Account doctor = policy.requireAccount(actor, Role.DOCTOR);
         if (appointment == null || !appointment.getDoctorId().equals(doctor.getId())
@@ -123,6 +151,7 @@ public class ClinicalService {
             throw new AccessDeniedException();
         }
         policy.readableTenant(doctor.getTenantId());
+        return doctor;
     }
 
     private void requirePatient(CurrentActor actor, Appointment appointment) {

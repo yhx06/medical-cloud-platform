@@ -85,7 +85,7 @@ class HospitalOrderTest {
                     .getData().get(0).getId());
             assertEquals("2030-05-21 00:00:00", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")
                     .getData().get(0).getPaidAt());
-            assertThrows(SecurityException.class, () -> new PaymentResource(auth, service).pay(bearer, "in-range"));
+            assertThrows(SecurityException.class, () -> new PaymentResource(auth, service, AuditClinicalFixture.legacyRunner(manager)).pay(bearer, "in-range"));
         } finally {
             manager.close();
             factory.close();

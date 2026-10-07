@@ -64,7 +64,7 @@ class TenantViewPrivacyTest extends TenantFixture {
         PaymentService payments = new PaymentService(manager);
         AuthService auth = new AuthService(manager, SECRET);
         String bearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_a", PASSWORD)).getAccessToken();
-        PaymentResource resource = new PaymentResource(auth, payments);
+        PaymentResource resource = new PaymentResource(auth, payments, AuditClinicalFixture.legacyRunner(manager));
         assertTrue(bookings.forPatient(PATIENT).get(0).isBusinessWritable());
         assertEquals("ACTIVE", bookings.forPatient(PATIENT).get(0).getTenantStatus());
         assertTrue(resource.order(bearer, "unpaid").getData().isBusinessWritable());

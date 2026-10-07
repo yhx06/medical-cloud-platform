@@ -1,5 +1,10 @@
 package com.medcloud.course.paas.api;
 
+import com.medcloud.course.paas.audit.*;
+import com.medcloud.course.contract.AuditEventType;
+import org.jboss.resteasy.spi.HttpRequest;
+import javax.ws.rs.core.Context;
+
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.PaymentOrderView;
 import com.medcloud.course.paas.auth.AuthService;
@@ -23,8 +28,13 @@ public class PaymentResource {
     private AuthService auth;
     @EJB
     private PaymentService payments;
+    @EJB private AuditOperationRunner runner;
+    @Context private HttpRequest requestContext;
 
     public PaymentResource() { }
+    public PaymentResource(AuthService auth, PaymentService payments, AuditOperationRunner runner) {
+        this(auth,payments); this.runner=java.util.Objects.requireNonNull(runner);
+    }
     public PaymentResource(AuthService auth, PaymentService payments) {
         this.auth = auth;
         this.payments = payments;
@@ -39,12 +49,16 @@ public class PaymentResource {
         return ApiResponse.success("order", view(order, payments.businessWritable(actor, order.getId())));
     }
 
-    @POST
+    @POST @AuditTracked
     @Path("patient/orders/{id}/pay")
     public ApiResponse<PaymentOrderView> pay(@HeaderParam("Authorization") String authorization,
                                              @PathParam("id") String orderId) {
-        CurrentActor actor = auth.authenticate(BearerTokens.require(authorization));
-        PaymentOrder order = payments.pay(actor, orderId);
+        AuditContext context=AuditContext.create(AuditEventType.PAYMENT_PAY,AuditRequestIds.ensure(requestContext));
+        PaymentOrder order=java.util.Objects.requireNonNull(runner,"Audit runner required").execute(context,c -> {
+            CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
+            return payments.pay(actor,orderId,c);
+        });
+        CurrentActor actor=new CurrentActor(context.getActorId(),context.getActorRole(),null);
         return ApiResponse.success("paid", view(order, payments.businessWritable(actor, order.getId())));
     }
 
