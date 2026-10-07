@@ -138,6 +138,10 @@ final class PortalFixture implements AutoCloseable {
     final Map<String, Integer> status = new HashMap<String, Integer>();
     final Map<String, String> data = new HashMap<String, String>();
     final List<String> calls = new ArrayList<String>();
+    // Unfiltered ledger preserves every actual HTTP request, including independent audit directory reads.
+    final List<String> rawReads = new ArrayList<String>();
+    final List<String> auditDirectoryReads = new ArrayList<String>();
+    private volatile boolean auditDirectoryPhase;
     final Map<String, String> queries = new HashMap<String, String>();
     final Map<String, String> bodies = new HashMap<String, String>();
     final Map<String, String> contentTypes = new HashMap<String, String>();
@@ -172,10 +176,19 @@ final class PortalFixture implements AutoCloseable {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/", exchange -> {
             String path = exchange.getRequestURI().getPath().substring(4);
-            calls.add(exchange.getRequestMethod() + " " + path);
-            queries.put(path, exchange.getRequestURI().getRawQuery());
-            bodies.put(path, new String(read(exchange.getRequestBody()), StandardCharsets.UTF_8));
-            contentTypes.put(path, exchange.getRequestHeaders().getFirst("Content-Type"));
+            String rawQuery = exchange.getRequestURI().getRawQuery();
+            rawReads.add(exchange.getRequestMethod() + " " + path + (rawQuery == null ? "" : "?" + rawQuery));
+            String body = new String(read(exchange.getRequestBody()), StandardCharsets.UTF_8);
+            // The controller loads management before audit, then walks the directory. Query size alone cannot distinguish them.
+            if (auditDirectoryPhase && "/platform/tenants".equals(path)) {
+                auditDirectoryReads.add(exchange.getRequestMethod() + " " + path + (rawQuery == null ? "" : "?" + rawQuery));
+            } else {
+                calls.add(exchange.getRequestMethod() + " " + path);
+                queries.put(path, rawQuery);
+                bodies.put(path, body);
+                contentTypes.put(path, exchange.getRequestHeaders().getFirst("Content-Type"));
+            }
+            if ("/platform/audit-events".equals(path)) auditDirectoryPhase = true;
             int code = status.containsKey(path) ? status.get(path) : 200;
             String reply = code >= 400 ? (rawError == null ? "{\"code\":\"ERROR\",\"message\":\"SQL private detail\"}" : rawError)
                     : "{\"code\":\"OK\",\"data\":" + data.getOrDefault(path, "[]") + "}";
@@ -190,6 +203,8 @@ final class PortalFixture implements AutoCloseable {
         while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n); return output.toByteArray();
     }
     MockHttpServletRequest request(String method, String path, Role role) {
+        // Explicit workflow boundary, including repeated management size=100 requests after prior directory reads.
+        auditDirectoryPhase = false;
         MockHttpServletRequest request = new MockHttpServletRequest(method, "/portal" + path);
         request.setServletPath(path); request.setContextPath("/portal");
         MockHttpSession session = new MockHttpSession(); session.setAttribute("role", role);

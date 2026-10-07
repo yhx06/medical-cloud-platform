@@ -1,8 +1,35 @@
 <%@ page pageEncoding="UTF-8" %>
 <%@ page import="com.medcloud.course.portal.web.WebEscaper" %>
 <%@ include file="status.jspf" %>
+<%!
+  private String auditFilters(javax.servlet.http.HttpServletRequest request, String workspace) {
+    if (request.getAttribute("auditPage") == null && request.getAttribute("auditError") == null) return "";
+    final java.util.Map<String,String[]> values = new java.util.LinkedHashMap<String,String[]>();
+    for (String field : new String[]{"auditFrom", "auditTo", "auditEventType", "auditResult", "auditPage", "auditSize", "auditTenantId"}) {
+      String value = attribute(request, "auditPage".equals(field) ? "auditPageNumber" : field);
+      if (!value.isEmpty()) values.put(field, new String[]{value});
+    }
+    javax.servlet.http.HttpServletRequest view = new javax.servlet.http.HttpServletRequestWrapper(request) {
+      public java.util.Map<String,String[]> getParameterMap() { return values; }
+      public String[] getParameterValues(String name) { return values.get(name); }
+      public String getParameter(String name) { return values.containsKey(name) ? values.get(name)[0] : null; }
+    };
+    try {
+      String query = com.medcloud.course.portal.web.AuditWorkspace.query(view, "platform".equals(workspace)
+          ? com.medcloud.course.contract.Role.PLATFORM_ADMIN : com.medcloud.course.contract.Role.HOSPITAL_ADMIN).substring(1);
+      StringBuilder prefixed = new StringBuilder();
+      for (String pair : query.split("&")) {
+        String[] p = pair.split("=", 2); if (prefixed.length() > 0) prefixed.append('&');
+        prefixed.append("audit").append(Character.toUpperCase(p[0].charAt(0))).append(p[0].substring(1)).append('=').append(p[1]);
+      }
+      return prefixed.toString();
+    } catch (IllegalArgumentException invalid) { return ""; }
+  }
+  private String joinFilters(String a, String b) { return a.isEmpty() ? b : b.isEmpty() ? a : a + "&" + b; }
+%>
 <% String context = request.getContextPath();
    String statsQuery = statisticsFilters(request), ordersQuery = orderFilters(request);
+   String auditQuery = auditFilters(request, workspace);
    com.fasterxml.jackson.databind.JsonNode hospitalContext = (com.fasterxml.jackson.databind.JsonNode) request.getAttribute("hospitalContext");
    boolean workspaceWritable = Boolean.TRUE.equals(request.getAttribute("businessWritable"))
        && hospitalContext != null && "ACTIVE".equals(hospitalContext.path("status").asText()); %>
@@ -36,11 +63,13 @@
     <a href="#orders"><span class="nav-number">04</span>诊疗账单</a>
     <a href="#hospital-statistics"><span class="nav-number">05</span>本院统计</a>
     <a href="#daily-trend"><span class="nav-number">06</span>每日趋势</a>
+    <a href="#audit-events"><span class="nav-number">07</span>本院审计</a>
     <% } else { %>
     <a href="#tenant-management"><span class="nav-number">01</span>医院管理</a>
     <a href="#platform-statistics"><span class="nav-number">02</span>跨院统计</a>
     <a href="#daily-trend"><span class="nav-number">03</span>每日趋势</a>
-    <a href="#architecture"><span class="nav-number">04</span>架构概览</a>
+    <a href="#audit-events"><span class="nav-number">04</span>平台审计</a>
+    <a href="#architecture"><span class="nav-number">05</span>架构概览</a>
     <% } %>
   </nav>
   <div class="sidebar-note"><span class="demo-dot" aria-hidden="true"></span>课堂演示环境<p>仅使用虚构数据<br>不接入真实医疗或支付服务</p><small>Java 8 · Tomcat 9 · WildFly 10</small></div>

@@ -82,3 +82,16 @@ test('hospital trend hash does not remove access to existing management sections
   f.links[3].events.click();
   assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, 'location', undefined, undefined]);
 });
+
+test('audit hash, click and final-region scrolling preserve exactly one current link', () => {
+  const f = fixture('#audit-events', ['#tenant-management', '#platform-statistics', '#daily-trend', '#audit-events', '#architecture']);
+  initialize(f);
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, 'location', undefined]);
+  f.links[0].events.click();
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), ['location', undefined, undefined, undefined, undefined]);
+  f.win.location.hash = '#audit-events'; f.win.events.hashchange();
+  assert.equal(f.links[3].attrs['aria-current'], 'location');
+  f.doc.documentElement = { scrollHeight: 3500 }; f.win.innerHeight = 900; f.win.scrollY = 2600;
+  f.win.events.scroll();
+  assert.deepEqual(f.links.map(link => link.attrs['aria-current']), [undefined, undefined, undefined, undefined, 'location']);
+});

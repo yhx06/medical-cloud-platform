@@ -132,9 +132,11 @@ public class PortalServlet extends HttpServlet {
                 loadFilteredSection(request, token(session), access, "orders", "/hospital/orders", true);
                 access.loadContext(request, token(session), expected);
                 new StatisticsWorkspace(paas).load(request, token(session), expected);
+                new AuditWorkspace(paas).load(request, token(session), expected);
             } else if ("/platform".equals(path)) {
                 new PlatformWorkspace(paas).load(request, token(session));
                 new StatisticsWorkspace(paas).load(request, token(session), expected);
+                new AuditWorkspace(paas).load(request, token(session), expected);
             }
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException error) {
             if (unauthorized(error)) {

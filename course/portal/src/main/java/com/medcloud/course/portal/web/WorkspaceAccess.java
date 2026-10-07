@@ -43,7 +43,9 @@ public final class WorkspaceAccess {
                 "hospitalContext", "businessWritable", "notice", "initialPassword", "username", "csrfToken", "portalTitle",
                 "appointmentId", "from", "to", "status", "statsFrom", "statsTo", "page", "size", "error",
                 "appointmentsError", "recordsError", "recordError", "ordersError", "orderError", "tenantListError", "statisticsError",
-                "contextError", "departmentsError", "doctorsError", "slotsError"}) request.removeAttribute(name);
+                "contextError", "departmentsError", "doctorsError", "slotsError", "auditPage", "auditError", "auditFrom", "auditTo",
+                "auditEventType", "auditResult", "auditPageNumber", "auditSize", "auditTenantId", "auditHospitals", "auditDirectoryError",
+                "auditTenantName"}) request.removeAttribute(name);
         // Patient directory attributes are public; hospital resources use the same names privately.
         if (!"/patient".equals(request.getServletPath())) {
             for (String name : new String[] {"departments", "doctors", "slots"}) request.removeAttribute(name);

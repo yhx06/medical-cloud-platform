@@ -1,0 +1,82 @@
+<%@ page pageEncoding="UTF-8" %>
+<%@ page import="com.medcloud.course.contract.AuditEventType,com.medcloud.course.contract.AuditResult" %>
+<%!
+  private String auditEventLabel(String event) {
+    String[] keys = {"LOGIN", "TENANT_STATUS_CHANGE", "DEPARTMENT_CREATE", "DEPARTMENT_UPDATE", "DOCTOR_CREATE", "DOCTOR_UPDATE", "SLOT_CREATE", "SLOT_UPDATE", "APPOINTMENT_BOOK", "APPOINTMENT_CANCEL", "CONSULTATION_START", "CONSULTATION_COMPLETE", "PAYMENT_PAY"};
+    String[] labels = {"登录", "医院状态变更", "新增科室", "更新科室", "新增医生", "更新医生", "新增号源", "更新号源", "预约挂号", "取消预约", "开始接诊", "完成诊疗", "模拟缴费"};
+    for (int i=0;i<keys.length;i++) if(keys[i].equals(event)) return labels[i];
+    return "未知事件";
+  }
+  private String auditResultLabel(String result) { return "SUCCESS".equals(result) ? "成功" : "NO_CHANGE".equals(result) ? "未变更" : "FAILED".equals(result) ? "失败" : "未知结果"; }
+  private String auditReasonLabel(String reason) {
+    String[] keys={"OK","UNCHANGED","UNAUTHORIZED","FORBIDDEN","BAD_REQUEST","CONFLICT","INTERNAL_ERROR"};
+    String[] labels={"正常完成","状态未变更","未认证","无权限","参数无效","状态冲突","服务内部错误"};
+    for(int i=0;i<keys.length;i++)if(keys[i].equals(reason))return labels[i];return "未知原因";
+  }
+  private String auditObjectLabel(String object) {
+    String[] keys={"ACCOUNT","TENANT","DEPARTMENT","DOCTOR_ACCOUNT","SLOT","APPOINTMENT","CLINICAL_RECORD","PAYMENT_ORDER"};
+    String[] labels={"账号","医院","科室","医生账号","号源","预约","诊疗记录","模拟账单"};
+    for(int i=0;i<keys.length;i++)if(keys[i].equals(object))return labels[i];return "未知对象";
+  }
+%>
+<% JsonNode auditPage = (JsonNode) request.getAttribute("auditPage");
+   boolean auditPlatform = "platform".equals(workspace);
+   String auditOther = joinFilters(statsQuery, auditPlatform ? "" : ordersQuery);
+   if (auditPlatform) {
+     try { int p=Integer.parseInt(attribute(request,"page")), s=Integer.parseInt(attribute(request,"size"));
+       if(p>0 && s>0 && s<=100 && ((long)p-1)*s<=Integer.MAX_VALUE) auditOther=joinFilters(auditOther,"page="+p+"&size="+s);
+     } catch(NumberFormatException invalid) { }
+   }
+   String auditEvent=attribute(request,"auditEventType"), auditResult=attribute(request,"auditResult"), auditTenant=attribute(request,"auditTenantId");
+   JsonNode auditHospitals = (JsonNode)request.getAttribute("auditHospitals");
+%>
+<section class="card" id="audit-events">
+  <div class="section-heading"><div><p class="section-kicker"><%= auditPlatform ? "04 / AUDIT" : "07 / AUDIT" %></p><h2><%= auditPlatform ? "平台审计" : "本院审计" %></h2></div><span class="section-tag">脱敏事件</span></div>
+  <p class="subtle">仅展示操作事件、脱敏角色、结果和请求编号，不提供患者身份、临床正文或明细入口。审计读取不产生新事件。</p>
+  <form method="get" action="<%= context %>/<%= workspace %>#audit-events" class="inline-form" aria-describedby="audit-filter-help">
+    <%= hiddenFilters(auditOther) %>
+    <label>审计开始日期<input type="date" name="auditFrom" value="<%= attribute(request,"auditFrom") %>"></label>
+    <label>审计结束日期<input type="date" name="auditTo" value="<%= attribute(request,"auditTo") %>"></label>
+    <label>事件类型<select name="auditEventType"><option value="">全部事件</option>
+      <% boolean knownAuditEvent=auditEvent.isEmpty();for(AuditEventType value:AuditEventType.values()){if(value.name().equals(auditEvent))knownAuditEvent=true; %>
+      <option value="<%= value.name() %>" <%= value.name().equals(auditEvent) ? "selected" : "" %>><%= auditEventLabel(value.name()) %></option>
+      <% } if(!knownAuditEvent){ %><option value="<%= auditEvent %>" selected>无效输入：<%= auditEvent %></option><% } %>
+    </select></label>
+    <label>操作结果<select name="auditResult"><option value="">全部结果</option>
+      <% boolean knownAuditResult=auditResult.isEmpty();for(AuditResult value:AuditResult.values()){if(value.name().equals(auditResult))knownAuditResult=true; %>
+      <option value="<%= value.name() %>" <%= value.name().equals(auditResult) ? "selected" : "" %>><%= auditResultLabel(value.name()) %></option>
+      <% } if(!knownAuditResult){ %><option value="<%= auditResult %>" selected>无效输入：<%= auditResult %></option><% } %>
+    </select></label>
+    <% if(auditPlatform){boolean selectedKnown=auditTenant.isEmpty(); %>
+    <label>审计医院<select name="auditTenantId"><option value="">全部授权医院</option>
+      <% if(auditHospitals!=null)for(JsonNode hospital:auditHospitals){boolean selected=hospital.path("id").asText().equalsIgnoreCase(auditTenant);if(selected)selectedKnown=true; %>
+      <option value="<%= WebEscaper.html(hospital.path("id").asText()) %>"<%= selected ? " selected" : "" %>><%= WebEscaper.html(hospital.path("name").asText()) %></option>
+      <% } if(!selectedKnown){ %><option value="<%= auditTenant %>" selected>已选择医院（<%= request.getAttribute("auditDirectoryError")!=null ? "目录暂不可用" : "不在当前目录" %>）</option><% } %>
+    </select></label><% } %>
+    <label>每页条数<input type="number" name="auditSize" min="1" max="100" value="<%= attribute(request,"auditSize").isEmpty() ? "20" : attribute(request,"auditSize") %>" required></label>
+    <button type="submit">查询审计</button>
+    <a class="reset-link" href="<%= filteredUrl(context+"/"+workspace,auditOther,"audit-events") %>">重置审计</a>
+  </form>
+  <p class="subtle" id="audit-filter-help">默认北京时间近 30 天；起止日期均包含，请同时填写或同时留空，最多 366 个自然日。查询筛选从第 1 页开始。</p>
+  <%= sectionError(request,"auditDirectoryError") %>
+  <%= sectionError(request,"auditError") %>
+  <% if(auditPage!=null && request.getAttribute("auditError")==null){
+       long auditNumber=auditPage.path("page").asLong(), auditSize=auditPage.path("size").asLong(), auditTotal=auditPage.path("total").asLong();
+       long auditPages=auditTotal/auditSize+(auditTotal%auditSize==0?0:1);
+       String auditPagingFilters=auditQuery.replaceAll("(^|&)auditPage=[0-9]+", "").replaceAll("^&", "");
+  %>
+  <p class="statistics-range">审计范围：<%= WebEscaper.html(auditPage.path("from").asText()) %> — <%= WebEscaper.html(auditPage.path("to").asText()) %> · 时区 <%= WebEscaper.html(auditPage.path("timezone").asText()) %></p>
+  <% if(!auditTenant.isEmpty() && auditPlatform){ %><p class="note">所选医院：<%= request.getAttribute("auditTenantName")==null ? "已保留筛选医院；安全名称暂不可用" : request.getAttribute("auditTenantName") %></p><% } %>
+  <% if(auditPage.path("items").size()>0){ %>
+  <div class="table-wrap audit-table" tabindex="0" role="region" aria-label="审计事件，横向和纵向滚动查看更多"><table><caption>脱敏操作审计（时间按北京时间展示）</caption><thead><tr><th scope="col">记录时间</th><th scope="col">医院</th><th scope="col">脱敏操作者</th><th scope="col">事件</th><th scope="col">对象类别</th><th scope="col">结果</th><th scope="col">原因</th><th scope="col">请求编号</th></tr></thead><tbody>
+    <% for(JsonNode event:auditPage.path("items")){ %>
+    <tr><td><%= WebEscaper.html(event.path("recordedAt").asText()) %></td><td><%= WebEscaper.html(event.path("tenantName").asText("全局/归属未验证")) %></td><td><%= WebEscaper.html(event.path("actorLabel").asText()) %></td><td><%= auditEventLabel(event.path("eventType").asText()) %></td><td><%= auditObjectLabel(event.path("objectType").asText()) %></td><td><%= auditResultLabel(event.path("result").asText()) %></td><td><%= auditReasonLabel(event.path("reasonCode").asText()) %></td><td class="identifier"><%= WebEscaper.html(event.path("requestId").asText()) %></td></tr>
+    <% } %>
+  </tbody></table></div>
+  <% } else { %><p class="empty-state">当前筛选范围内暂无审计事件。</p><% } %>
+  <nav class="pagination" aria-label="审计事件分页"><span>共 <%= auditTotal %> 条 · 第 <%= auditNumber %> 页</span>
+    <% if(auditNumber>1){ %><a href="<%= filteredUrl(context+"/"+workspace,joinFilters(auditOther,joinFilters(auditPagingFilters,"auditPage="+(auditNumber-1))),"audit-events") %>">上一页</a><% } %>
+    <% if(auditNumber<auditPages && auditNumber<Integer.MAX_VALUE && auditNumber*auditSize<=Integer.MAX_VALUE){ %><a href="<%= filteredUrl(context+"/"+workspace,joinFilters(auditOther,joinFilters(auditPagingFilters,"auditPage="+(auditNumber+1))),"audit-events") %>">下一页</a><% } %>
+  </nav>
+  <% } else if(request.getAttribute("auditError")==null){ %><p class="empty-state">审计尚未加载，请刷新后重试。</p><% } %>
+</section>

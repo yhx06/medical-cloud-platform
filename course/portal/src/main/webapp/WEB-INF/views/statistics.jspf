@@ -37,11 +37,11 @@
 <section class="card" id="<%= statisticsAnchor %>">
   <div class="section-heading"><div><p class="section-kicker"><%= platformStatistics ? "02 / PLATFORM STATISTICS" : "05 / HOSPITAL STATISTICS" %></p><h2><%= platformStatistics ? "跨院统计" : "本院统计" %></h2></div><span class="section-tag">脱敏汇总</span></div>
   <form method="get" action="<%= context %>/<%= workspace %>#<%= statisticsAnchor %>" class="inline-form" aria-describedby="statistics-filter-help">
-    <%= hiddenFilters(statisticsOtherFilters) %>
+    <%= hiddenFilters(joinFilters(statisticsOtherFilters, auditQuery)) %>
     <label>统计开始日期<input type="date" name="statsFrom" value="<%= attribute(request, "statsFrom") %>" required></label>
     <label>统计结束日期<input type="date" name="statsTo" value="<%= attribute(request, "statsTo") %>" required></label>
     <button type="submit">查询统计</button>
-    <a class="reset-link" href="<%= filteredUrl(context + "/" + workspace, statisticsOtherFilters, statisticsAnchor) %>">重置统计</a>
+    <a class="reset-link" href="<%= filteredUrl(context + "/" + workspace, joinFilters(statisticsOtherFilters, auditQuery), statisticsAnchor) %>">重置统计</a>
   </form>
   <p class="subtle" id="statistics-filter-help">默认近 30 天；起止日期均包含，请同时填写有效日期，最多 366 个自然日。</p>
   <%= sectionError(request, "statisticsError") %>

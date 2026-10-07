@@ -26,7 +26,7 @@
           <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
           <input type="hidden" name="page" value="<%= tenantPage %>">
           <input type="hidden" name="size" value="<%= tenantSize %>">
-          <%= hiddenFilters(statsQuery) %>
+          <%= hiddenFilters(joinFilters(statsQuery, auditQuery)) %>
           <p class="note">目标：<%= tenantName %> · <%= "DISABLED".equals(targetStatus) ? "停用" : "启用" %>。<%= "DISABLED".equals(targetStatus) ? "暂停预约、取消、接诊、缴费和资源维护，历史可查" : "启用后仍按原状态与截止规则办理，不自动恢复已停用的资源" %>。</p>
           <button type="submit" class="<%= "DISABLED".equals(targetStatus) ? "button--danger" : "button--secondary" %>"><%= "DISABLED".equals(targetStatus) ? "停用医院" : "启用医院" %></button>
         </form>
@@ -36,14 +36,15 @@
   </tbody></table></div>
   <% if (tenants.path("items").size() == 0) { %><p class="empty-state">当前页暂无医院。</p><% } %>
   <nav class="pagination" aria-label="医院列表分页"><span>共 <%= tenantTotal %> 家医院 · 第 <%= tenantPage %> 页</span>
-    <% if (tenantPage > 1) { %><a href="<%= filteredUrl(context + "/platform", "page=" + (tenantPage - 1) + "&size=" + tenantSize + (statsQuery.isEmpty() ? "" : "&" + statsQuery), "tenant-management") %>">上一页</a><% } %>
-    <% if (tenantPage < tenantPages && tenantPage < Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/platform", "page=" + (tenantPage + 1) + "&size=" + tenantSize + (statsQuery.isEmpty() ? "" : "&" + statsQuery), "tenant-management") %>">下一页</a><% } %>
+    <% if (tenantPage > 1) { %><a href="<%= filteredUrl(context + "/platform", joinFilters("page=" + (tenantPage - 1) + "&size=" + tenantSize, joinFilters(statsQuery, auditQuery)), "tenant-management") %>">上一页</a><% } %>
+    <% if (tenantPage < tenantPages && tenantPage < Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/platform", joinFilters("page=" + (tenantPage + 1) + "&size=" + tenantSize, joinFilters(statsQuery, auditQuery)), "tenant-management") %>">下一页</a><% } %>
   </nav>
   <% } %>
 </section>
 <%@ include file="statistics.jspf" %>
+<%@ include file="audit.jspf" %>
 <section class="card" id="architecture">
-  <div class="section-heading"><div><p class="section-kicker">04 / ARCHITECTURE</p><h2>平台架构视图</h2></div></div>
+  <div class="section-heading"><div><p class="section-kicker">05 / ARCHITECTURE</p><h2>平台架构视图</h2></div></div>
   <div class="layers">
     <div><strong>SaaS</strong><span>Tomcat 9 · 医院、医生、患者、平台门户</span></div>
     <div><strong>PaaS</strong><span>WildFly 10 · JAX-RS 接口与 EJB 业务组件；MySQL 数据服务 · JNDI/JPA</span></div>

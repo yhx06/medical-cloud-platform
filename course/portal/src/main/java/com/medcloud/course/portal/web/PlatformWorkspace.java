@@ -53,6 +53,13 @@ public final class PlatformWorkspace {
                 append(query, "statsTo", StatisticsWorkspace.parameter(request, "statsTo"));
             }
         } catch (IllegalArgumentException ignored) { /* Keep only a complete valid range. */ }
+        try {
+            AuditWorkspace.query(request, com.medcloud.course.contract.Role.PLATFORM_ADMIN);
+            for (String key : new String[]{"auditFrom", "auditTo", "auditEventType", "auditResult", "auditPage", "auditSize", "auditTenantId"}) {
+                String value = StatisticsWorkspace.parameter(request, key);
+                if (!value.isEmpty()) append(query, key, value);
+            }
+        } catch (IllegalArgumentException ignored) { /* Invalid audit input must not survive a redirect. */ }
         return query.length() == 0 ? "" : "?" + query;
     }
 
