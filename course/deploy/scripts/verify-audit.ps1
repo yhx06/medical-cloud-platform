@@ -16,6 +16,9 @@ if(-not $DatabaseOnly) {
  foreach($role in @('platform','hospital','hospitalOther','doctor','patient','patientOther')) {
   if($fixture.accounts.$role.id -notmatch $uuid -or $fixture.accounts.$role.username -notmatch '^qa_[A-Za-z]+_[a-f0-9]{32}$' -or -not $fixture.accounts.$role.password) { throw 'Dedicated audit account validation failed' }
  }
+ foreach($resource in @('departmentId','doctorUserId')) {
+  if($fixture.resources.$resource -isnot [string] -or $fixture.resources.$resource -notmatch '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\z') { throw 'Dedicated clinical directory fixture required' }
+ }
  if($fixture.database.host -ne '127.0.0.1' -or $fixture.database.port -in @(3318,8180,8188,10090) -or $fixture.database.uuid -notmatch $uuid -or [IO.Path]::GetFileName((Split-Path $fixture.database.datadir -Parent)) -notmatch '^course-audit-acceptance-[a-f0-9]{32}$') { throw 'Only the owned disposable SQL instance is accepted' }
  if($fixture.paasBaseUrl.TrimEnd('/') -ne $PaasBaseUrl.TrimEnd('/') -or $fixture.portalBaseUrl.TrimEnd('/') -ne $PortalBaseUrl.TrimEnd('/')) { throw 'Explicit container URLs differ from the fixture' }
  $mysql=(Resolve-Path -LiteralPath $MySqlCli).Path
@@ -109,9 +112,19 @@ if(-not $DatabaseOnly) {
    }
   }; return $response
  }
+ $fixtureVerified=$false
  try {
   Assert-Database
   Check (@(Sql "SELECT COUNT(*) FROM tenant WHERE id='$($fixture.tenantId)' AND name='$($fixture.tenantName)'")[0] -eq '1') 'Dedicated hospital identity mismatch'
+  # Read-only ownership checks precede LOGIN too: it writes its own audit event.
+  foreach($role in @('platform','hospital','hospitalOther','doctor','patient','patientOther')) {
+   $dbRole=switch($role) {platform {'PLATFORM_ADMIN'} hospital {'HOSPITAL_ADMIN'} hospitalOther {'HOSPITAL_ADMIN'} doctor {'DOCTOR'} default {'PATIENT'}}
+   $scope=switch($role) {hospital {"tenant_id='$($fixture.tenantId)'"} doctor {"tenant_id='$($fixture.tenantId)'"} hospitalOther {"tenant_id='$($fixture.otherTenantId)'"} default {'tenant_id IS NULL'}}
+   Check (@(Sql "SELECT COUNT(*) FROM user_account WHERE id='$($fixture.accounts.$role.id)' AND username='$($fixture.accounts.$role.username)' AND role='$dbRole' AND $scope")[0] -eq '1') 'Dedicated audit account ownership mismatch'
+  }
+  Check (@(Sql "SELECT COUNT(*) FROM department WHERE id='$($fixture.resources.departmentId)' AND tenant_id='$($fixture.tenantId)'")[0] -eq '1') 'Dedicated clinical resource ownership mismatch'
+  Check (@(Sql "SELECT COUNT(*) FROM doctor_profile WHERE user_id='$($fixture.resources.doctorUserId)' AND user_id='$($fixture.accounts.doctor.id)' AND tenant_id='$($fixture.tenantId)' AND department_id='$($fixture.resources.departmentId)'")[0] -eq '1') 'Dedicated clinical resource ownership mismatch'
+  $fixtureVerified=$true
   foreach($role in @('platform','hospital','hospitalOther','doctor','patient','patientOther')) {
    $response=Request POST '/auth/login' '' @{username=$fixture.accounts.$role.username;password=$fixture.accounts.$role.password}
    Check ($response.status -eq 200 -and $response.body.data.accessToken) "Actual login failed for fixture role $role; HTTP=$($response.status)"
@@ -120,7 +133,6 @@ if(-not $DatabaseOnly) {
    Reconcile $response LOGIN $fixture.accounts.$role.id $tenant $fixture.accounts.$role.id
   }
   if($FaultsOnly) {
-   Check ($fixture.resources.departmentId -match $uuid -and $fixture.resources.doctorUserId -match $uuid) 'Dedicated clinical directory fixture required'
    # Completed appointments are still non-canceled: use a fresh virtual slot, not an already booked one.
    $faultDate=[TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow,'China Standard Time').AddDays(20+[int]@(Sql 'SELECT COUNT(*) FROM schedule_slot')[0]).ToString('yyyy-MM-dd')
    $faultSlot=Action SLOT_CREATE POST '/hospital/slots' hospital @{departmentId=$fixture.resources.departmentId;doctorId=$fixture.resources.doctorUserId;date=$faultDate;startTime='09:00:00';endTime='10:00:00';capacity=10;fee=39.10;status='PUBLISHED'}
@@ -240,8 +252,10 @@ if(-not $DatabaseOnly) {
  } finally {
   try {
    $ledger | ConvertTo-Json -Depth 5 | Out-File -LiteralPath (Join-Path $evidence 'safe-reconciliation.json') -Encoding utf8
-   Assert-Database
-   foreach($trigger in $triggers) { Sql ("DROP TRIGGER IF EXISTS "+$trigger) | Out-Null }
+   if($fixtureVerified) {
+    Assert-Database
+    foreach($trigger in $triggers) { Sql ("DROP TRIGGER IF EXISTS "+$trigger) | Out-Null }
+   }
    $ledger | ConvertTo-Json -Depth 5 | Out-File -LiteralPath (Join-Path $evidence 'safe-reconciliation.json') -Encoding utf8
   } finally { $env:MYSQL_PWD=$priorPassword }
  }
