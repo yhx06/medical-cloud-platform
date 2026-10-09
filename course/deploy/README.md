@@ -8,9 +8,11 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 
 医院启停、全写入口冻结、本院/跨院脱敏统计与真实 MySQL/JTA 证据见 [2026-10-03 平台统计验收](../../docs/course-labs/2026-10-03-platform-statistics-acceptance.md)。本轮仍无数据库结构变更，保留旧 NULL 时间，JPA 使用 `validate`；更新 WAR，不运行初始化或旧库迁移脚本。
 
+持久化脱敏审计、13 个事件入口、保护性加表迁移及本地 MySQL/EJB/门户证据见 [审计专项验收（2026-10-08/09）](../../docs/course-labs/2026-10-04-audit-acceptance.md)。这是后续独立切片，新增 `audit_event`；已有课程库须先完成下述审计升级，不能沿用上一段“无结构变更”的部署结论。医院及平台浏览器筛选分页/布局/键盘、真实故障与登录恢复、停用本人已有历史已观察；真正禁用 JavaScript 的检查未执行，收尾边界详见专项记录。
+
 ## 准备
 
-- JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x；PowerDesigner 16.5 用于编辑 `docs/course-architecture/medical-cloud-course.pdm`。
+- JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x。现有 PowerDesigner 模型为历史八表版本；按用户要求不再编辑或新增 PowerDesigner 图，当前结构以版本化 SQL/JPA/测试说明为准。
 - 建议复制 Tomcat/WildFly 到隔离目录，使用空的课程数据库；不要覆盖教师原安装、MySQL 默认实例或已有项目数据。示例端口：Tomcat 8088、WildFly 8080、隔离 MySQL 3307。教师现场端口以实际配置为准。
 - 在启动 WildFly 的**同一终端**设置 `MEDICAL_COURSE_DB_USER`、`MEDICAL_COURSE_DB_PASSWORD`、长度至少 32 字符的 `MEDICAL_COURSE_JWT_SECRET`。密钥和数据库密码不要提交到 Git。Tomcat 可用 `MEDICAL_COURSE_PAAS_URL` 指向 `http://127.0.0.1:8080/paas/api`，未设置时使用此默认值。
 - 仅在本机隔离环境加载 `seed-demo.sql`。演示账号 `patient_demo`、`doctor_a`、`doctor_b`、`hospital_a`、`platform_admin`、`disabled_user` 的密码均为 `Demo@123456`；停用账号应被拒绝。
@@ -74,7 +76,7 @@ $env:MEDICAL_COURSE_JWT_SECRET = '<至少 32 字符的随机密钥>'
 & course/deploy/scripts/upgrade-audit-database.ps1 -MySqlCli '<mysql.exe>' -MySqlDumpCli '<mysqldump.exe>' -HostName '<已核对主机>' -Port <已核对隔离端口> -Database medical_cloud_course -ExpectedServerUuid '<已核对 UUID>' -BackupPath '<本地盘符:\不存在的备份.sql>'
 ```
 
-全库备份成功后才添加审计表，不改写旧业务行、不补造历史事件。审计表为 InnoDB/utf8mb4、11 个标量字段、微秒时间、三个查询索引和请求/事件唯一约束，无业务外键，不保存身份明细、临床内容、凭据或自由文本。应用审计功能由后续实现接入；本迁移不自动部署 WAR，也不升级现有运行库。
+全库备份成功后才添加审计表，不改写旧业务行、不补造历史事件。审计表为 InnoDB/utf8mb4、11 个标量字段、微秒时间、三个查询索引和请求/事件唯一约束，无业务外键，不保存临床内容、凭据或自由文本。表内仅有受信任的标量账号/对象关联，查询 DTO 不提供这些内部身份字段或明细入口。应用已接入审计；本迁移不自动部署 WAR，也不升级现有运行库。
 
 MySQL DDL 不保证事务回滚。失败时保留备份并报告实际审计结构；若连接中断使结构无法读取，先恢复只读检查。不要盲目重跑、DROP 审计表或将备份覆盖恢复到运行库。原八表 PowerDesigner 模型仍保留，不代表新增审计表后的完整数据库；新增结构以版本化 SQL 和结构测试为准。SQL 以 MySQL 5.6 为兼容目标，当前 disposable 实测版本为 8.0.45，不能据此声称已在 5.6 验证。
 
@@ -86,6 +88,28 @@ if ($result.FailedCount -ne 0 -or $result.SkippedCount -ne 0) { throw 'Audit mig
 测试自行启动独立 loopback MySQL，避开 3318/8180/8188；使用专用实例内的规范库名检查迁移、业务摘要、备份先于 DDL、只读重复执行及结构拒绝。Windows MySQL 启动需要短 ASCII 临时 datadir；测试关闭并核对精确二进制/datadir 的进程退出，备份和日志复制到本轮被 Git 忽略的 `.superpowers/sdd/2026-10-04-medical-cloud-course-audit/fixtures`，临时 datadir 保留用于对账。备份、日志与夹具不得提交或截图。
 
 ### 自动验收与报告截图
+
+#### 审计专项
+
+普通 Maven 构建不配置真实 MySQL 时跳过 37 项集成测试（原 29 项加审计 8 项），不能将跳过计作实际数据库通过。以下门自行建立新的 loopback MySQL、唯一 `course_audit_test_<32hex>` 数据库，并真实运行审计 8 项、生命周期 24 项、统计 4 项和号源快照 1 项；要求指定名称存在、零失败/错误/跳过。默认工具路径可通过 `verify-audit.ps1` 参数改为本机路径。
+
+```powershell
+$result = Invoke-Pester -Script course/deploy/tests/audit-acceptance.Tests.ps1 -TestName 'real MySQL audit acceptance: missing or skipped tests never pass' -PassThru
+if ($result.FailedCount -ne 0 -or $result.SkippedCount -ne 0) { throw 'Real audit database gate failed' }
+```
+
+新库只允许严格匹配的 loopback disposable URL，拒绝原运行端口。正常 SQL `SHUTDOWN` 后核对二进制、端口、启动进程及子进程、服务器 UUID/datadir，保留数据与证据，恢复环境变量；不全局强杀或递归删除。旧 P0 迁移回归也改为这种精确关闭，原业务断言保留。
+
+已部署接口门必须使用另一个新的隔离双容器/数据库副本和专用虚构夹具，不能用于当前运行库或教师原安装。夹具是本地盘符绝对 JSON 路径（拒绝 UNC/相对路径），内容含密码，只存 Git 忽略目录，不输出、截图或共享：`tenantId/tenantName/otherTenantId/emptyTenantId`；六个 `accounts.platform/hospital/hospitalOther/doctor/patient/patientOther` 的 `id/username/password`；`resources.departmentId/doctorUserId`；`database.host/port/uuid/datadir/user/password`；显式 `paasBaseUrl/portalBaseUrl` 及本地 `diagnosticsLogPath`。医院名为 `course_audit_acceptance_<32hex>`，角色用户名为 `qa_<字母角色>_<32hex>`；全部 ID 为 UUID，数据库 datadir 只接受本验收创建的 `course-audit-acceptance-<32hex>/data`。
+
+```powershell
+& course/deploy/scripts/verify-audit.ps1 -PaasBaseUrl '<独立loopback PaaS URL>' -PortalBaseUrl '<独立loopback Portal URL>' -FixturePath '<本地盘符:\专用夹具.json>'
+& course/deploy/scripts/verify-audit.ps1 -PaasBaseUrl '<同一独立PaaS URL>' -PortalBaseUrl '<同一独立Portal URL>' -FixturePath '<同一专用夹具.json>' -FaultsOnly
+```
+
+第一个门执行 13 类成功事件、重复付款 `NO_CHANGE`、授权/默认范围/组合筛选/停用历史及成功/失败审计插入故障。第二个门只为五个临床入口准备必要的虚构状态，逐项验证 book/cancel/start/complete/pay 审计失败的整笔回滚。它们临时创建仅匹配指定 actor/event/result 的触发器，finally 精确移除；故障窗口须串行协调。不要把并发共享同一夹具当作受支持用法。成功的虚构业务行会保留，不清库、不撤销付款、不抹去失败证据。
+
+临时 nonce QA WAR/代理只在 ignored 验收目录，用于实际 JTA 连接、计数/列表中点、提交后展示异常及实际 Tomcat 降级；不随产品部署，不修改生产类。详情及不同证据层级见专项记录。HTTP/JSP 通过不代替真实浏览器检查，真正禁用 JavaScript 的验证仍未执行。
 
 门户脚本的独立回归使用 Node 内置测试工具（仅开发验证需要 Node，Tomcat/WildFly 运行不需要）：
 
@@ -110,7 +134,7 @@ $result = Invoke-Pester -Script course/deploy/tests/platform-statistics.Tests.ps
 if ($result.FailedCount -ne 0) { throw 'MySQL acceptance failed' }
 ```
 
-脚本只创建唯一临时 datadir、loopback 闲置端口和 `course_platform_test_<32位hex>` 库；测试在 create-drop 前严格核对 URL/库名。它真实执行 24 项医院锁/旧快照写测试和 4 项统计测试，要求零失败、零错误、零跳过，最后正常关闭该实例、确认精确 datadir 的进程已退出才清理，并恢复环境变量。普通 `clean verify` 的 29 项跳过为这 28 项加原号源 MySQL 测试，不能将跳过当作实机证据。运行库不得用作该测试库。
+脚本只创建唯一临时 datadir、loopback 闲置端口和 `course_platform_test_<32位hex>` 库；测试在 create-drop 前严格核对 URL/库名。它真实执行 24 项医院锁/旧快照写测试和 4 项统计测试，要求零失败、零错误、零跳过，最后正常关闭该实例、确认精确 datadir 的进程已退出才清理，并恢复环境变量。这一历史专项的 29 项是上述 28 项加原号源 MySQL 测试；当前全套默认跳过还包括审计 8 项，共 37 项，不能将跳过当作实机证据。运行库不得用作该测试库。
 
 已部署接口验收需教师准备自己的虚构专用医院和账号，再提供显式本地磁盘绝对路径的 JSON 文件（拒绝 UNC/相对路径）：
 
@@ -128,4 +152,4 @@ WildFly JNDI 名称为 `java:/jdbc/MedicalCloudCourseDS`，JPA 持久化单元�
 
 ## 已知边界
 
-支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停和本院/跨院脱敏统计已实现；新建医院/医院管理员入口、附件存储和持久化审计中心未实现，也不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。原安装目录和默认服务未改动。MySQL 5.6 与其他教师机器的补丁版本、配置尚未实机验证。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；按 ID 恢复与分页尚待补充。
+支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停、本院/跨院脱敏统计及持久化脱敏审计已实现；新建医院/医院管理员入口、附件存储仍未实现，也不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。审计专项另建新副本和端口，不重启、升级或覆盖上述保护实例。原安装目录和默认服务未改动。MySQL 5.6、其他教师机器、云端部署和真正禁用脚本的浏览器检查尚未验证。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；按 ID 恢复与分页尚待补充。

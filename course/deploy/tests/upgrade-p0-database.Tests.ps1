@@ -25,6 +25,65 @@ function Invoke-FixtureSql([string]$sql, [string]$database = '') {
     return $result
 }
 
+function Stop-OwnedP0Fixture {
+    param([string]$Scratch,[string]$Data,[string]$Server,[int]$LauncherPid,
+        [int]$Port,[string]$ServerUuid,[string]$MySqlCli,[string]$EvidenceRoot)
+    $resolved = [IO.Path]::GetFullPath($Scratch)
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolved.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($resolved) -notmatch '^course-p0-migration-[a-f0-9]{32}$' -or
+        [IO.Path]::GetFullPath($Data) -ine (Join-Path $resolved 'data') -or
+        $Port -lt 1 -or $Port -gt 65535 -or $Port -in @(3318,8180,8188,10090)) {
+        throw 'P0 fixture exact path/port validation failed; retained data'
+    }
+    $expectedBinary = [IO.Path]::GetFullPath($Server)
+    $matchData = '(?:^|\s)--datadir="?' + [regex]::Escape($Data) + '"?(?:\s|$)'
+    $owned = @(Get-CimInstance Win32_Process -Filter "name='mysqld.exe'" -ErrorAction Stop |
+        Where-Object { $_.CommandLine -match $matchData })
+    $shutdown = $false
+    if ($owned.Count) {
+        if ($owned.Count -gt 2 -or -not $ServerUuid -or $LauncherPid -lt 1) { throw 'P0 fixture identity incomplete; shutdown refused' }
+        foreach ($process in $owned) {
+            if ([IO.Path]::GetFullPath($process.ExecutablePath) -ine $expectedBinary -or
+                $process.CommandLine -notmatch ('(?:^|\s)--port=' + $Port + '(?:\s|$)') -or
+                ($process.ProcessId -ne $LauncherPid -and $process.ParentProcessId -ne $LauncherPid)) {
+                throw 'P0 fixture binary/ancestry/port mismatch; shutdown refused'
+            }
+        }
+        $savedPassword = $env:MYSQL_PWD
+        try {
+            $env:MYSQL_PWD = ''
+            $arguments = @('--no-defaults','--protocol=TCP','--host=127.0.0.1',"--port=$Port",'--user=root','--batch','--skip-column-names')
+            $identity = @(& $MySqlCli @arguments --execute='SELECT @@server_uuid,@@port,@@datadir' 2>$null)
+            if ($LASTEXITCODE -ne 0 -or $identity.Count -ne 1) { throw 'P0 SQL identity unreadable; shutdown refused' }
+            $parts = $identity[0] -split [char]9
+            if ($parts.Count -ne 3 -or $parts[0] -ne $ServerUuid -or [int]$parts[1] -ne $Port -or
+                [IO.Path]::GetFullPath($parts[2]).TrimEnd('\','/') -ine [IO.Path]::GetFullPath($Data).TrimEnd('\','/')) {
+                throw 'P0 SQL UUID/port/datadir mismatch; shutdown refused'
+            }
+            & $MySqlCli @arguments --execute='SHUTDOWN' 2>$null | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'P0 SQL SHUTDOWN failed; retained data' }
+            $shutdown = $true
+        } finally { $env:MYSQL_PWD = $savedPassword }
+        for ($wait=0; $wait -lt 40; $wait++) {
+            $remaining = @(Get-CimInstance Win32_Process -Filter "name='mysqld.exe'" -ErrorAction Stop |
+                Where-Object { $_.CommandLine -match $matchData })
+            if (-not $remaining.Count) { break }
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    $remaining = @(Get-CimInstance Win32_Process -Filter "name='mysqld.exe'" -ErrorAction Stop |
+        Where-Object { $_.CommandLine -match $matchData })
+    if ($remaining.Count) { throw 'P0 owned child exit incomplete; retained data' }
+    New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
+    $destination = Join-Path $EvidenceRoot ([IO.Path]::GetFileName($resolved))
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    Get-ChildItem -LiteralPath $resolved -File | Copy-Item -Destination $destination
+    [pscustomobject]@{binary=$expectedBinary;datadir=$Data;port=$Port;uuid=$ServerUuid;launcherPid=$LauncherPid;sqlShutdown=$shutdown;remainingOwnedChildren=0;datadirRetained=$true} |
+        ConvertTo-Json | Out-File -LiteralPath (Join-Path $destination 'cleanup-identity.json') -Encoding utf8
+    Write-Host "P0 exact fixture SQL shutdown=$shutdown; owned children: 0; retained datadir: $Data"
+}
+
 function Get-Shape {
     $sql = @'
 SELECT CONCAT('C:',TABLE_NAME,':',COLUMN_NAME,':',IS_NULLABLE,':',DATA_TYPE)
@@ -202,15 +261,13 @@ INSERT INTO payment_order VALUES ('o','a-completed','dr','t',39.00,'PAID');
         }
     }
 } finally {
-    $env:MYSQL_PWD = $oldPassword
-    $env:MEDICAL_COURSE_DB_USER = $oldUser
-    $env:MEDICAL_COURSE_DB_PASSWORD = $oldCoursePassword
-    if ($serverProcess -and -not $serverProcess.HasExited) { Stop-Process -Id $serverProcess.Id -Force; $serverProcess.WaitForExit(10000) | Out-Null }
-    $resolved = [IO.Path]::GetFullPath($scratch)
-    if ($resolved.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()), [StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved).StartsWith('course-p0-migration-')) {
-        for ($attempt = 0; $attempt -lt 10; $attempt++) {
-            try { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop; break }
-            catch { Start-Sleep -Milliseconds 500 }
-        }
+    try {
+        $launcherPid = if ($serverProcess) { $serverProcess.Id } else { 0 }
+        $repo = (Resolve-Path -LiteralPath (Join-Path $deploy '../..')).Path
+        Stop-OwnedP0Fixture -Scratch $scratch -Data $data -Server $server -LauncherPid $launcherPid -Port $port -ServerUuid $serverUuid -MySqlCli $mysql -EvidenceRoot (Join-Path $repo '.superpowers/sdd/2026-10-04-medical-cloud-course-audit/task7')
+    } finally {
+        $env:MYSQL_PWD = $oldPassword
+        $env:MEDICAL_COURSE_DB_USER = $oldUser
+        $env:MEDICAL_COURSE_DB_PASSWORD = $oldCoursePassword
     }
 }
