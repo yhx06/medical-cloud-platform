@@ -33,6 +33,7 @@
 <section class="card" id="audit-events">
   <div class="section-heading"><div><p class="section-kicker"><%= auditPlatform ? "04 / AUDIT" : "07 / AUDIT" %></p><h2><%= auditPlatform ? "平台审计" : "本院审计" %></h2></div><span class="section-tag">脱敏事件</span></div>
   <p class="subtle">仅展示操作事件、脱敏角色、结果和请求编号，不提供患者身份、临床正文或明细入口。审计读取不产生新事件。</p>
+  <p class="subtle">仅记录审计功能启用后的操作。NO_CHANGE（未变更）是访问结果，不代表新的业务操作。</p>
   <form method="get" action="<%= context %>/<%= workspace %>#audit-events" class="inline-form" aria-describedby="audit-filter-help">
     <%= hiddenFilters(auditOther) %>
     <label>审计开始日期<input type="date" name="auditFrom" value="<%= attribute(request,"auditFrom") %>"></label>

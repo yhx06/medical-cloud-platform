@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'audit-fixture-ownership.ps1')
 $deploy = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $repo = (Resolve-Path -LiteralPath (Join-Path $deploy '../..')).Path
 $upgrade = Join-Path $deploy 'scripts/upgrade-audit-database.ps1'
@@ -26,6 +27,7 @@ $expectedAuditIndexes = @(
 ) | Sort-Object
 
 function Invoke-FixtureSql([string]$sql, [string]$database = 'medical_cloud_course') {
+    Assert-OwnedAuditFixture $owner $mysql
     $arguments = @('--no-defaults','--protocol=TCP','--host=127.0.0.1',"--port=$port",'--user=root','--batch','--skip-column-names')
     if ($database) { $arguments += "--database=$database" }
     $saved = $env:MYSQL_PWD
@@ -53,6 +55,7 @@ INSERT INTO payment_order VALUES ('o','a','p','t',39.00,'PAID',NULL);
 }
 
 function Get-BusinessDigest {
+    Assert-OwnedAuditFixture $owner $mysql
     $saved = $env:MYSQL_PWD
     try {
         $env:MYSQL_PWD = ''
@@ -73,6 +76,7 @@ function Get-AuditIndexes {
 }
 
 function Invoke-Upgrade([string]$backup, [string]$database = 'medical_cloud_course', [string]$uuid = $serverUuid, [int]$targetPort = $port, [string]$dumpCli = $dump) {
+    Assert-OwnedAuditFixture $owner $mysql
     if (-not (Test-Path -LiteralPath $upgrade)) { $script:lastUpgradeOutput = 'Audit upgrade script has not been implemented'; return -999 }
     $script:lastUpgradeOutput = @(& powershell.exe -NoProfile -NonInteractive -File $upgrade -MySqlCli $mysql -MySqlDumpCli $dumpCli -HostName 127.0.0.1 -Port $targetPort -Database $database -ExpectedServerUuid $uuid -BackupPath $backup 2>&1) -join "`n"
     return $LASTEXITCODE
@@ -88,12 +92,19 @@ try {
     New-Item -ItemType Directory -Path $data -Force | Out-Null
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     try { $listener.Start(); $port = $listener.LocalEndpoint.Port } finally { $listener.Stop() }
-    if ($port -in @(3318,8180,8188)) { throw 'Refused protected runtime port' }
+    if ($port -in @(3318,8180,8188,10090)) { throw 'Refused protected runtime port' }
     $base = Split-Path (Split-Path $server -Parent) -Parent
     $env:MYSQL_PWD = ''
     & $server --no-defaults --initialize-insecure "--basedir=$base" "--datadir=$data" 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Disposable MySQL initialization failed' }
-    $serverProcess = Start-Process -FilePath $server -ArgumentList @('--no-defaults',"--basedir=`"$base`"","--datadir=`"$data`"",'--bind-address=127.0.0.1',"--port=$port",'--mysqlx=0','--console') -PassThru -WindowStyle Hidden -RedirectStandardError (Join-Path $scratch 'server.err')
+    # Expected identity comes from this freshly initialized local datadir, never the endpoint.
+    $serverUuid = Get-AuditFixtureOfflineUuid $data
+    $serverProcess = Start-Process -FilePath $server -ArgumentList @('--no-defaults',"--basedir=`"$base`"","--datadir=`"$data`"",'--bind-address=127.0.0.1',"--port=$port",'--mysqlx=0','--console') -PassThru -WindowStyle Hidden -RedirectStandardError (Join-Path $scratch 'server.err') -RedirectStandardOutput (Join-Path $scratch 'server.out')
+    $owner = [pscustomobject]@{Data=[IO.Path]::GetFullPath($data);Server=$server;Port=$port;Uuid=$serverUuid;LauncherPid=$serverProcess.Id;LauncherCreated=$serverProcess.StartTime}
+    # Windows PowerShell JSON Date rounds to milliseconds; keep an exact ISO field
+    # alongside it. The runtime guard continues using the precise in-memory value.
+    $owner | Select-Object *,@{Name='LauncherCreatedIso';Expression={$_.LauncherCreated.ToString('o')}} |
+        ConvertTo-Json | Out-File -LiteralPath (Join-Path $scratch 'launcher-identity.json') -Encoding utf8
     $ready = $false
     for ($i=0; $i -lt 60; $i++) {
         & $mysql --no-defaults --protocol=TCP --connect-timeout=2 --host=127.0.0.1 "--port=$port" --user=root --execute='SELECT 1' 2>$null | Out-Null
@@ -101,7 +112,7 @@ try {
         Start-Sleep -Milliseconds 500
     }
     if (-not $ready) { throw 'Disposable MySQL did not start' }
-    $serverUuid = @(Invoke-FixtureSql 'SELECT @@server_uuid' '')[0]
+    Assert-OwnedAuditFixture $owner $mysql
     $env:MEDICAL_COURSE_DB_USER = 'root'
     $env:MEDICAL_COURSE_DB_PASSWORD = ''
     $p0Schema = (Get-Content -LiteralPath (Join-Path $deploy 'schema.sql') -Raw -Encoding UTF8) -replace '(?s)\r?\nCREATE TABLE IF NOT EXISTS audit_event\s*\(.*?;\s*$', ''
@@ -254,6 +265,7 @@ try {
             Reset-P0Fixture
             $env:MYSQL_PWD = 'prior-password-sentinel'
             try {
+                Assert-OwnedAuditFixture $owner $mysql
                 & $upgrade -MySqlCli $mysql -MySqlDumpCli $dump -HostName 127.0.0.1 -Port $port -Database medical_cloud_course -ExpectedServerUuid $serverUuid -BackupPath (Join-Path $scratch 'restore.sql') | Out-Null
                 $env:MYSQL_PWD | Should BeExactly 'prior-password-sentinel'
                 $env:MEDICAL_COURSE_DB_PASSWORD = 'credential-sentinel'
@@ -264,6 +276,7 @@ try {
                 $env:MYSQL_PWD | Should BeExactly 'prior-password-sentinel'
                 $caught = $false
                 try {
+                    Assert-OwnedAuditFixture $owner $mysql
                     & $upgrade -MySqlCli $mysql -MySqlDumpCli $dump -HostName 127.0.0.1 -Port $port -Database medical_cloud_course -ExpectedServerUuid $serverUuid -BackupPath (Join-Path $scratch 'direct-auth-failed.sql') | Out-Null
                 } catch {
                     $caught = $true
@@ -288,9 +301,7 @@ try {
         if (-not $resolved.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notmatch '^course-audit-[a-f0-9]{32}$') { throw 'Unexpected fixture path; refused cleanup' }
         $owned = @(Get-CimInstance Win32_Process -Filter "name='mysqld.exe'" | Where-Object { $_.CommandLine -match ('(?:^|\s)--datadir="?' + [regex]::Escape($data) + '"?(?:\s|$)') })
         if ($owned.Count) {
-            # On Windows mysqld may spawn a child with the same datadir.
-            if (@($owned | Where-Object { $_.ExecutablePath -ine $server }).Count -or $owned.Count -gt 2) { throw "Fixture process identity mismatch; expected binary $server; actual $($owned.ExecutablePath -join ','); retained datadir" }
-            if ($owned.Count -eq 2 -and @($owned | Where-Object { $_.ParentProcessId -in $owned.ProcessId }).Count -ne 1) { throw 'Fixture process ancestry mismatch; retained datadir' }
+            # Invoke-FixtureSql revalidates offline/process/SQL identity immediately before SHUTDOWN.
             Invoke-FixtureSql 'SHUTDOWN' '' | Out-Null
             for ($wait=0; $wait -lt 40; $wait++) {
                 $stillOwned = @(Get-CimInstance Win32_Process -Filter "name='mysqld.exe'" | Where-Object { $_.CommandLine -match ('(?:^|\s)--datadir="?' + [regex]::Escape($data) + '"?(?:\s|$)') })
@@ -298,13 +309,17 @@ try {
             }
             if ($stillOwned.Count) { throw 'Fixture shutdown incomplete; retained datadir' }
             Write-Host "Fixture shutdown verified for $server and exact datadir $data; remaining owned processes: 0"
+            [pscustomobject]@{binary=$owner.Server;datadir=$owner.Data;port=$owner.Port;uuid=$owner.Uuid;launcherPid=$owner.LauncherPid;launcherCreated=$owner.LauncherCreated;launcherCreatedIso=$owner.LauncherCreated.ToString('o');sqlShutdown=$true;remainingOwnedChildren=0;datadirRetained=$true} |
+                ConvertTo-Json | Out-File -LiteralPath (Join-Path $scratch 'cleanup-identity.json') -Encoding utf8
         }
-        # Preserve evidence under the ignored plan directory; MySQL needs the shorter ASCII datadir.
-        New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
-        $fixtureEvidence = Join-Path $evidenceRoot ([IO.Path]::GetFileName($resolved))
-        New-Item -ItemType Directory -Path $fixtureEvidence -Force | Out-Null
-        Get-ChildItem -LiteralPath $resolved -File | Copy-Item -Destination $fixtureEvidence
     } finally {
-        foreach ($name in $prior.Keys) { [Environment]::SetEnvironmentVariable($name,$prior[$name],'Process') }
+        # Preserve evidence under the ignored plan directory; MySQL needs the shorter ASCII datadir.
+        try {
+            New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+            $fixtureEvidence = Join-Path $evidenceRoot ([IO.Path]::GetFileName($scratch))
+            New-Item -ItemType Directory -Path $fixtureEvidence -Force | Out-Null
+            if (Test-Path -LiteralPath $scratch) { Get-ChildItem -LiteralPath $scratch -File | Copy-Item -Destination $fixtureEvidence }
+        }
+        finally { foreach ($name in $prior.Keys) { [Environment]::SetEnvironmentVariable($name,$prior[$name],'Process') } }
     }
 }

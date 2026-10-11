@@ -30,7 +30,38 @@ class AuditJspTest {
         tomcat.start(); port=tomcat.getConnector().getLocalPort();
     }
     @AfterAll static void stop() throws Exception { if(tomcat!=null){tomcat.stop();tomcat.destroy();} if(fixture!=null)fixture.close(); }
-    @BeforeEach void reset() throws Exception {fixture.auditStatus=200; fixture.directoryStatus=200; fixture.auditData=new ObjectMapper().readTree(AuditPortalTest.page(false));}
+    @BeforeEach void reset() throws Exception {fixture.auditStatus=200; fixture.directoryStatus=200; fixture.delay=0; fixture.auditData=new ObjectMapper().readTree(AuditPortalTest.page(false));}
+
+    @Test void auditUnavailableWordingIsRenderedLocallyFor500AndTimeout() throws Exception {
+        for(String role:new String[]{"hospital","platform"}) {
+            for(boolean timeout:new boolean[]{false,true}) {
+                fixture.auditStatus=timeout?200:500; fixture.delay=timeout?8500:0;
+                try {
+                    String html=render(role), audit=section(html);
+                    assertTrue(audit.contains("审计服务暂时不可用，请稍后重试"),role+" timeout="+timeout);
+                    assertFalse(audit.contains("诊疗服务暂时不可用")); assertFalse(audit.contains("暂无审计事件")); assertFalse(audit.contains("共 0 条"));
+                    assertTrue(html.contains(role.equals("hospital")?"fictional-order":"tenant-management"));
+                } finally {fixture.delay=0;}
+            }
+        }
+        fixture.auditStatus=500;
+        com.medcloud.course.portal.web.PaasRejectedException generic=assertThrows(com.medcloud.course.portal.web.PaasRejectedException.class,
+                () -> fixture.client.get("/hospital/audit-events","fictional-test-token"));
+        assertEquals("诊疗服务暂时不可用，请稍后重试",generic.getMessage(),"Generic client wording remains available to its other consumers");
+        for(int status:new int[]{400,403}) {
+            fixture.auditStatus=status;
+            String audit=section(render("hospital"));
+            assertTrue(audit.contains(status==400?"提交的信息不完整或格式不正确":"当前账号没有执行该操作的权限"));
+            assertFalse(audit.contains("审计服务暂时不可用"));
+        }
+    }
+    @Test void bothAuditWorkspacesExplainHistoricalCoverageAndNoChangeAccessResults() throws Exception {
+        for(String role:new String[]{"hospital","platform"}) {
+            String audit=section(render(role));
+            assertTrue(audit.contains("仅记录审计功能启用后的操作"),role);
+            assertTrue(audit.contains("NO_CHANGE（未变更）是访问结果，不代表新的业务操作"),role);
+        }
+    }
 
     @Test void escapedLabelsAndLongRequestIdsFitScrollableRegion() throws Exception {
         String html=render("platform?auditTenantId="+AuditPortalTest.B); String audit=section(html);

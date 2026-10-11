@@ -1,6 +1,6 @@
 # 脱敏审计专项验收
 
-设计日期：2026-10-04；本地实测日期：2026-10-08/09。审计功能已实现，以下严格区分代码、真实数据库、EJB/HTTP、实际 Tomcat 与浏览器证据。浏览器检查、后续真正禁脚本的特定审计GET场景和临时副本正常收尾已有实际证据；评审发现的夹具资源预检已修复，14项聚焦测试通过，限定复审尚待完成，不能据此宣称专项无条件验收或整个医疗云项目完成。
+设计日期：2026-10-04；本地实测日期：2026-10-08/09。审计功能已实现，以下严格区分代码、真实数据库、EJB/HTTP、实际 Tomcat 与浏览器证据。Task7 限定复审已通过，真正禁脚本的特定审计GET及夹具资源预检两项重要问题已关闭；禁脚本证据限于已记录的 Edge/headless/减少动画/原生键盘场景。随后整体评审发现独立审计迁移夹具的精确实例保护缺口 I1，以及文案、测试清理和证据归属轻项 M1–M5；本轮集中修复后的限定复审仍待完成，不能宣称专项无条件验收或整个医疗云项目完成。
 
 ## 范围与运行环境
 
@@ -17,6 +17,7 @@
 - 13类事件为 LOGIN、TENANT_STATUS_CHANGE、DEPARTMENT_CREATE/UPDATE、DOCTOR_CREATE/UPDATE、SLOT_CREATE/UPDATE、APPOINTMENT_BOOK/CANCEL、CONSULTATION_START/COMPLETE、PAYMENT_PAY。结果仅 SUCCESS/NO_CHANGE/FAILED；重复付款保留首次 SQL 持久化时间并记 NO_CHANGE。
 - 关联 UUID 由服务端生成，不信任客户端 X-Request-ID。失败响应、响应头与唯一审计记录对账；失败目标ID为空。审计读取不生成事件。
 - `audit_event` 的受信任标量关联仅用于内部对账；查询 DTO/页面没有 actorId/objectId、患者身份、临床正文、密码、令牌或明细入口。日志告警只输出 requestId 和安全类型，不输出失败正文。
+- 过期签名令牌拒绝由直接测试 `AuditPrivacyTest.sharedTokenValidationRejectsExpiredTamperedUnsupportedAndMissingSubjects` 证明；停用账号再验证有 RESTEasy dispatcher 与服务层证据。注入浏览器401只证明完整清理，不冒充真实过期令牌/停用账号容器场景；这些容器变体未另行执行。
 
 ## 数据库与实际事务证据
 

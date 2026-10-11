@@ -32,7 +32,10 @@ public final class AuditWorkspace {
             for (String field : new String[]{"from", "to"}) request.setAttribute("audit" + (field.equals("from") ? "From" : "To"), WebEscaper.html(page.path(field).asText()));
             request.setAttribute("auditPageNumber", page.path("page").asInt()); request.setAttribute("auditSize", page.path("size").asInt());
         } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException failure) {
-            WorkspaceAccess.rethrowUnauthorized(failure); request.setAttribute("auditError", WebEscaper.html(failure.getMessage()));
+            WorkspaceAccess.rethrowUnauthorized(failure);
+            boolean unavailable = failure instanceof PaasUnavailableException
+                    || (failure instanceof PaasRejectedException && ((PaasRejectedException) failure).getStatus() >= 500);
+            request.setAttribute("auditError", WebEscaper.html(unavailable ? "审计服务暂时不可用，请稍后重试" : failure.getMessage()));
         }
         if (role == Role.PLATFORM_ADMIN) directory(request, token);
     }

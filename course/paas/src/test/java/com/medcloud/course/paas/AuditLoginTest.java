@@ -14,7 +14,7 @@ class AuditLoginTest extends TenantFixture {
     private static final String USERNAME = "login_username_sentinel";
     private static final String PASSWORD_SOURCE = "login_password_sentinel";
     private final AuditLogCapture logs = new AuditLogCapture();
-    @AfterEach void safeLogs() { logs.assertAbsent(USERNAME, PASSWORD_SOURCE, PASSWORD); logs.close(); }
+    @AfterEach void safeLogs() { try { logs.assertAbsent(USERNAME, PASSWORD_SOURCE, PASSWORD); } finally { logs.close(); } }
 
     @Test void successfulLegacyLoginCannotSilentlySkipItsRequiredAuditTransaction() {
         AuthService auth = new AuthService(manager, SECRET);

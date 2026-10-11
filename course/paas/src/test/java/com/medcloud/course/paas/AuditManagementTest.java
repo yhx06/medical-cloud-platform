@@ -19,7 +19,7 @@ class AuditManagementTest extends TenantFixture {
     static final String CLINICAL = "source_clinical_sentinel";
     private String initialPassword;
     private final AuditLogCapture logs = new AuditLogCapture();
-    @AfterEach void safeLogs() { logs.assertAbsent(USERNAME, CLINICAL, initialPassword); logs.close(); }
+    @AfterEach void safeLogs() { try { logs.assertAbsent(USERNAME, CLINICAL, initialPassword); } finally { logs.close(); } }
 
     @ParameterizedTest
     @org.junit.jupiter.params.provider.CsvSource({"PUT,/platform/tenants/tenant-b/status,TENANT_STATUS_CHANGE", "POST,/hospital/departments,DEPARTMENT_CREATE", "PUT,/hospital/departments/department-b,DEPARTMENT_UPDATE", "POST,/hospital/doctors,DOCTOR_CREATE", "PUT,/hospital/doctors/doctor-b,DOCTOR_UPDATE", "POST,/hospital/slots,SLOT_CREATE", "PUT,/hospital/slots/slot-b,SLOT_UPDATE", "POST,/auth/login,LOGIN"})
