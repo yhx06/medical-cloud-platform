@@ -10,7 +10,31 @@
   <artifactId>paas</artifactId>
   <packaging>war</packaging>
   <build><finalName>paas</finalName></build>
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>2.21.7</version><type>pom</type><scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
   <dependencies>
+    <dependency>
+      <groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>33.7.2-jre</version>
+    </dependency>
+    <!-- OkHttp 5's Maven metadata artifact has no JVM classes. -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId><artifactId>okhttp-jvm</artifactId><version>5.1.0</version>
+    </dependency>
+    <!-- Keep SDK JSON dependencies coherent locally; shared contract/Portal stay on their baseline. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>2.21.7</version>
+    </dependency>
+    <dependency>
+      <groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.6.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>2.0.37</version>
+    </dependency>
     <dependency>
       <groupId>com.medcloud.course</groupId>
       <artifactId>contract</artifactId>
