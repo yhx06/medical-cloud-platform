@@ -38,6 +38,7 @@ function Get-CimInstance { return $script:fakeProcess }
 function Get-NetTCPConnection {
     param($LocalAddress,$LocalPort,$State,$ErrorAction)
     if ($script:fakeListenersAbsent) { return @() }
+    if ($script:storageConsolePort -and $LocalPort -eq $script:storageConsolePort) { return [pscustomobject]@{OwningProcess=$script:storageConsoleOwner;LocalPort=$LocalPort} }
     if ($script:portalShutdownPort -and $LocalPort -eq $script:portalShutdownPort) { return [pscustomobject]@{OwningProcess=$script:portalShutdownOwner} }
     return [pscustomobject]@{OwningProcess=$script:listenerOwner;LocalPort=$(if ($LocalPort) { $LocalPort } else { 45678 })}
 }
@@ -68,6 +69,11 @@ Assert-True ($script:sqlCalls -eq $sqlBeforeWrongUuid) 'wrong UUID executed SQL 
 $fixture.mysql.serverUuid = $uuid
 Assert-True ($script:stopped -eq 0) 'wrong UUID caused shutdown'
 Assert-OwnedAttachmentsFixture $fixture 'mysql'
+$script:listenerOwner = 99999
+$sqlBeforeForeignListener = $script:sqlCalls
+Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'mysql' } 'foreign MySQL listener is refused before credential-bearing identity query'
+Assert-True ($script:sqlCalls -eq $sqlBeforeForeignListener) 'foreign MySQL listener received SQL identity probe'
+$script:listenerOwner = 23456
 $script:identity = "00000000-0000-0000-0000-000000000000`t45678`t$data"
 Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'mysql' } 'live foreign UUID refused'
 $script:identity = "$uuid`t45678`t$data"
@@ -78,15 +84,32 @@ $storageData = Join-Path $testRoot 'storage-data'
 [IO.Directory]::CreateDirectory($storageData) | Out-Null
 $storageExe = Join-Path $testRoot 'minio.exe'
 [IO.File]::WriteAllText($storageExe,'fake')
-$fixture | Add-Member -NotePropertyName storage -NotePropertyValue ([pscustomobject]@{pid=23457;created=$created;executable=$storageExe;port=45679;url='http://127.0.0.1:45679';dataDirectory=$storageData})
-$script:fakeProcess = [pscustomobject]@{ProcessId=23457;CreationDate=$created;ExecutablePath=$storageExe;CommandLine="`"$storageExe`" server `"$storageData`" --address 127.0.0.1:12345"}
+$fixture | Add-Member -NotePropertyName storage -NotePropertyValue ([pscustomobject]@{pid=23457;created=$created;executable=$storageExe;port=45679;consolePort=45682;url='http://127.0.0.1:45679';dataDirectory=$storageData})
+$script:storageConsolePort = 45682
+$script:storageConsoleOwner = 23457
+$script:fakeProcess = [pscustomobject]@{ProcessId=23457;CreationDate=$created;ExecutablePath=$storageExe;CommandLine="`"$storageExe`" server `"$storageData`" --address 127.0.0.1:12345 --console-address 127.0.0.1:45682"}
 $script:listenerOwner = 23457
 Assert-Throws { Stop-OwnedAttachmentsFixture $fixture 'storage' } 'storage port mismatch cannot be stopped'
 Assert-True ($script:stopped -eq 0) 'storage wrong port was stopped'
-$script:fakeProcess.CommandLine = "`"$storageExe`" server `"$storageData`" --address 127.0.0.1:45679"
+$script:fakeProcess.CommandLine = "`"$storageExe`" server `"$storageData`" --address 127.0.0.1:45679 --console-address 127.0.0.1:45682"
 $script:listenerOwner = 99999
 Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'storage' } 'foreign storage listener refused'
 $script:listenerOwner = 23457
+Assert-OwnedAttachmentsFixture $fixture 'storage'
+foreach ($badConsolePort in @(0,-1,65536,3318,8180,8188,10090)) {
+    $fixture.storage.consolePort = $badConsolePort
+    Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'storage' } "storage invalid/protected console $badConsolePort refused before operations"
+}
+$fixture.storage.consolePort = 45682
+$script:fakeProcess.CommandLine = "`"$storageExe`" server `"$storageData`" --address 127.0.0.1:45679 --console-address 127.0.0.1:12345"
+Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'storage' } 'storage console command address mismatch refused'
+$script:fakeProcess.CommandLine = "`"$storageExe`" server `"$storageData`" --address 127.0.0.1:45679 --console-address 0.0.0.0:45682"
+Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'storage' } 'storage wildcard console bind refused'
+$script:fakeProcess.CommandLine = "`"$storageExe`" server `"$storageData`" --address 127.0.0.1:45679 --console-address 127.0.0.1:45682"
+$script:storageConsoleOwner = 99999
+Assert-Throws { Assert-OwnedAttachmentsFixture $fixture 'storage' } 'foreign storage console listener refused before operations'
+$script:storageConsoleOwner = 23457
+Assert-OwnedAttachmentsFixture $fixture 'storage'
 Assert-Throws { Stop-OwnedAttachmentsFixture $fixture 'storage' } 'storage without graceful shutdown credentials is refused'
 Assert-True ($script:stopped -eq 0) 'storage without graceful shutdown was force stopped'
 $script:fakeProcess = [pscustomobject]@{ProcessId=23456;CreationDate=$created;ExecutablePath=$mysqlExe;CommandLine="`"$mysqlExe`" --datadir=`"$data`" --port=45678 --bind-address=127.0.0.1"}

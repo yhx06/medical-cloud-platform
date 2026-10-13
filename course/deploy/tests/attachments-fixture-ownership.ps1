@@ -62,16 +62,22 @@ function Assert-OwnedAttachmentsFixture {
         if ($command -notmatch [regex]::Escape($data)) { throw 'Process data directory mismatch' }
         $offline = @([IO.File]::ReadAllLines((Join-Path $data 'auto.cnf')) | Where-Object { $_ -match '^server-uuid=([0-9a-fA-F-]{36})$' })
         if ($offline.Count -ne 1 -or ($offline[0] -split '=',2)[1] -ine $part.serverUuid) { throw 'Offline MySQL UUID mismatch' }
+        Assert-AttachmentsOwnedListener $part.port $part.pid
         $identity = (Get-AttachmentsSqlIdentity $Fixture) -split [char]9
         if ($identity.Count -ne 3 -or $identity[0] -ine $part.serverUuid -or $identity[1] -ne [string]$part.port -or
             [IO.Path]::GetFullPath($identity[2]).TrimEnd('\','/') -ine $data) { throw 'Live MySQL UUID/port/datadir mismatch' }
-        Assert-AttachmentsOwnedListener $part.port $part.pid
     } else {
         $uri = [uri]$part.url
         if ($uri.Host -notin @('127.0.0.1','localhost') -or $uri.Port -ne $part.port) { throw 'Component URL/port mismatch' }
         $ownedDir = Assert-AttachmentsOwnedPath $part.dataDirectory $root "$Component data directory"
         if ($command -notmatch [regex]::Escape($ownedDir)) { throw 'Process runtime directory mismatch' }
         if ($Component -eq 'storage' -and $command -notmatch ('(?:^|\s)--address(?:=|\s+)127\.0\.0\.1:' + [regex]::Escape([string]$part.port) + '(?:\s|$)')) { throw 'Storage process port mismatch' }
+        if ($Component -eq 'storage') {
+            if (-not $part.consolePort -or $part.consolePort -lt 1 -or $part.consolePort -gt 65535 -or
+                $part.consolePort -in @(3318,8180,8188,10090) -or $part.consolePort -eq $part.port) { throw 'Storage console port invalid or protected' }
+            if ($command -notmatch ('(?:^|\s)--console-address(?:=|\s+)127\.0\.0\.1:' + [regex]::Escape([string]$part.consolePort) + '(?:\s|$)')) { throw 'Storage console command address mismatch' }
+            Assert-AttachmentsOwnedListener $part.consolePort $part.pid
+        }
         if ($Component -eq 'paas') {
             $offset = $part.port - 8080
             if ($offset -lt 0 -or $command -notmatch ('(?:^|\s)-Djboss\.socket\.binding\.port-offset=' + $offset + '(?:\s|$)')) { throw 'PaaS process port mismatch' }
