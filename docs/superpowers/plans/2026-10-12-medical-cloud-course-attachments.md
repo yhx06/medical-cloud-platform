@@ -1,12 +1,12 @@
 # 医疗云课程版附件服务 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已选择多智能体并行；计划审阅确认前不执行产品编码。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已确认本计划，选择多智能体并行开发；任务须通过相应审查与验证才勾选完成。
 
 **Goal:** 实现患者预约资料与医生已完成病历附件的私有上传、分页、恢复、删除、五分钟下载授权及审计，交付隔离环境的可复现演示。
 
 **Architecture:** 保留老师要求的双 WAR 课程架构。PaaS 以持久上传意图、短 EJB 事务、事务外 MinIO 调用和后台补偿处理数据库/对象存储一致性；Portal 独立 Servlet 接收有界 multipart 并使用会话令牌转发。存储故障仅降级附件，不阻断核心诊疗。
 
-**Tech Stack:** JDK 8、Tomcat 9 Servlet/JSP、WildFly 10 Java EE 7/JAX-RS/EJB、JPA/JNDI、MySQL、私有 MinIO、JUnit 5、PowerShell；MinIO SDK 8.5.17 与 PDFBox 2.0.34 是 Task 1 的精确候选，未作安全/兼容通过声明。
+**Tech Stack:** JDK 8、Tomcat 9 Servlet/JSP、WildFly 10 Java EE 7/JAX-RS/EJB、JPA/JNDI、MySQL、私有 MinIO、JUnit 5、PowerShell。原候选 MinIO SDK 8.5.17 / PDFBox 2.0.34 在实施安全核对后改为 8.6.0 / 2.0.37（Task 1 依赖报告需保存官方公告依据）；补丁候选不等于已通过全部安全/容器兼容门。
 
 **Spec:** [已确认附件设计](../specs/2026-10-12-medical-cloud-course-attachments-design.md)，实施基线 `codex/course-environment` / `975e8f31d16238425f9ce1b0bc1372bf4d951691`。
 
@@ -71,7 +71,7 @@
 
 ### Task 1：共享契约及 Java 8/WildFly 依赖门
 
-**Files:** 新建 C/{AttachmentSourceType,AttachmentState,AttachmentView,AttachmentPage,PrepareUploadRequest,UploadOperationView,AttachmentDeleteView,DownloadAuthorizationView}.java；修改 C/AuditEventType.java、AuditObjectType.java；修改 course/paas/pom.xml。新建 A/{AttachmentException,AttachmentLimits,AttachmentDescriptors,ValidatedAttachment,UploadAttempt,AttachmentSnapshot,CleanupCandidate,StoreObjectInfo,StoreDownload,PrivateObjectStore}.java；测试 CT/AttachmentContractTest.java、PT/AttachmentDependencyTest.java、PT/probe/SdkProbeServlet.java（仅测试探针，不进入产品WAR）；记录 docs/course-labs/2026-10-12-attachments-dependencies.md。
+**Files:** 新建 C/{AttachmentSourceType,AttachmentState,AttachmentView,AttachmentPage,PrepareUploadRequest,UploadOperationView,AttachmentDeleteView,DownloadAuthorizationView}.java；修改 C/AuditEventType.java、AuditObjectType.java；修改 course/paas/pom.xml。新建 A/{AttachmentException,AttachmentLimits,AttachmentDescriptors,ValidatedAttachment,UploadAttempt,AttachmentSnapshot,CleanupCandidate,StoreObjectInfo,StoreDownload,PrivateObjectStore}.java；测试 CT/AttachmentContractTest.java、PT/AttachmentDependencyTest.java、PT/probe/{SdkProbeServlet,SdkProbeResource}.java（仅测试探针，不进入产品WAR）；记录 docs/course-labs/2026-10-12-attachments-dependencies.md。真实 WildFly 门复现旧 Jackson 优先加载后，允许 Task 1 增加产品 course/paas/src/main/webapp/WEB-INF/jboss-deployment-structure.xml 及相应测试，实施最小应用级隔离；不改教师安装、不捆绑替代 RESTEasy。
 
 **Interfaces — Consumes:** 既有 ApiResponse/审计枚举与 Task 9 fixture；**Produces:** DTO Java 8 构造器/getters。AttachmentView(String fileId, AttachmentSourceType sourceType, String fileName, String contentType, long sizeBytes, String createdAt)；AttachmentPage(List<AttachmentView> items,long total,int page,int pageSize)；PrepareUploadRequest 的可反序列化字段为 String uploadKey/fileName/contentType/sha256、long sizeBytes；UploadOperationView(String uploadId,AttachmentState state,AttachmentView file)；AttachmentDeleteView(String fileId,AttachmentState state)；DownloadAuthorizationView(String fileId,String url,String expiresAt)。时间为 ISO_OFFSET_DATE_TIME +08:00；列表防御复制。
 
@@ -85,8 +85,9 @@ AttachmentDescriptors.requireValid(PrepareUploadRequest request,AttachmentLimits
 
 - [ ] 编写 metadataSerializationContainsOnlyApprovedFields（JSON 字段恰好六个展示字段）、operationIdEqualsPublishedFileId、fileEventsUseFileMetadataObjectType（恰好新增三事件，不改旧事件）、internalFieldsNeverAppearInPublicViews；依赖测试 sdkClassLoadsOnJava8 及 warDoesNotBundleJavaEeOrResteasy。
 - [ ] RED：M -pl contract,paas -am -Dtest=AttachmentContractTest,AttachmentDependencyTest -Dsurefire.failIfNoSpecifiedTests=false test；预期缺失新类型/明确字段断言失败。
-- [ ] 实现 DTO/接口/限制/异常，审计新增 FILE_UPLOAD/FILE_DELETE/FILE_DOWNLOAD_AUTHORIZE → FILE_METADATA；将 MinIO 8.5.17、PDFBox 2.0.34 作为精确依赖候选核对上游维护/已知漏洞/传递依赖与字节码 ≤52。锁安全兼容版本后记录决定；如需换同系列兼容补丁，统一更新本计划/证据，禁止悄改 Java/容器架构。
+- [ ] 实现 DTO/接口/限制/异常，审计新增 FILE_UPLOAD/FILE_DELETE/FILE_DOWNLOAD_AUTHORIZE → FILE_METADATA；核对 MinIO 8.6.0、PDFBox 2.0.37 的上游维护/已知漏洞/传递依赖与字节码 ≤52（原候选8.5.17/2.0.34因公告受影响而更换，不删除原候选历史）。锁安全兼容版本后记录决定；如需再换同系列兼容补丁，统一更新本计划/证据，禁止悄改 Java/容器架构。
 - [ ] GREEN：上述命令通过；M -pl paas -am dependency:tree、M -pl paas -am package；AttachmentDependencyTest 在 COURSE_ATTACHMENTS_FIXTURE 指向 Task 9 清单时，构建仅测试用探针WAR、部署真实Java8/WildFly10并断言SDK实例化/既有JSON序列化正常，记录WAR jar清单；未提供夹具应明确门未执行而非兼容通过。此兼容门未通过不得派存储实现或宣称版本已锁安全。
+- [ ] 实机类加载修复门：探针复制产品真实 Application 和完全相同的部署描述符，使用容器 RESTEasy 执行 ApiResponse 写出与 PrepareUploadRequest 读入，并同时实例化 SDK；不得以探针独有配置或手动 ObjectMapper 替代容器提供者。保留旧 Jackson 冲突失败证据，披露 WAR 与容器提供者两套依赖的安全核对边界。
 - [ ] 提交：feat(course): define attachment contracts and compatible dependencies（只提交本任务文件）。
 
 ### Task 2：真实验证、私有存储及附件配置降级
@@ -216,6 +217,14 @@ Servlet 使用精确新路径 /patient/files、/doctor/files（GET详情），/p
 
 ## 主代理计划自审记录
 
+### 2026-10-13 实机兼容性修订
+
+并行顺序细化：公共 DTO/HTTP 契约已在独立审查中批准，且 SDK 重定位不改变它们。因此 Task 7 可在隔离目标目录、只构建 contract/portal 的条件下先并行实现；不能增加后端占位实现，最终真实 HTTP/浏览器门仍由 Task 8 统一验证。Task 2 的存储实现仍严格等待 Task 1 完整兼容门及审查，不因门户单元通过而解除该门。
+
+WildFly 10 默认 JSON 提供者导出的旧 Jackson 导致 SDK 失败；尝试应用 import-filter 后，真实注册接口的 `@JsonIgnoreProperties` 行为又失效。保留两次失败证据，该过滤方案不作为最终实现。Task 1 改为新增内部 `course/attachment-sdk` JAR，私有重定位 MinIO 及其 Jackson 类；不增加部署 WAR、不替换容器 RESTEasy、不改原 DTO/业务规则。Task 1 额外独占 `course/attachment-sdk/pom.xml`、`course/pom.xml` 的模块登记、`course/contract/pom.xml` 的最小构建阶段设置；相关测试、PaaS 依赖和依赖文档仍归 Task 1。移除该任务自行新增但未提交的失败部署描述符，不改教师安装。
+
+内部 jar/shade 在 process-classes 产出，contract jar 在 process-classes 产出，PaaS WAR 在 process-test-classes 产出，以实际普通 `clean test` 和 `verify` 验证，不依赖旧 target 或预先安装内部 SDK。检查重定位后的类、资源/服务元数据、许可证、Java 8 字节码和完整上游依赖版本，并真实复测 SDK 初始化、附件请求/响应及原有带注解的注册/医院状态请求。所有兼容与安全门通过并审查之前，不解锁 Task 2。
+
 以下是各任务首轮测试的关键断言示例（测试名已在任务步骤指定；输入与夹具由所属任务构造，不作为缺失实现的占位代码）：
 
 ```java
@@ -248,4 +257,4 @@ if ($mandatorySkipped -gt 0 -and $verificationExit -eq 0) { throw 'Skipped manda
 
 设计1–4（双流程/组件/权限）→Tasks1/4/5/7；5（文件/资源）→Tasks1/2/7；6（结构）→Tasks3/4；7（一致性）→Tasks4/6/8；8（删除/签发）→Tasks4/6/7/8；9（契约）→Tasks1/5/7；10（审计）→Tasks1/4/5/6/7/8；11（兼容/配置/迁移）→Tasks1/2/3/9；12（九验收门）→Task8及其引用的真实门；13–14（审阅/依据）→本计划审批及验收报告引用。
 
-已检查共享签名/值对象由Task1定义、数据库消费者与生产者同名同类型、Review Focus五项都有拥有者测试、红绿和提交可独立检查。计划不展开算法正文，不复述全部设计；必需实机门不会被单元Mock或历史405项结果替代。状态：待用户审阅实施计划；尚未实施产品代码。
+已检查共享签名/值对象由Task1定义、数据库消费者与生产者同名同类型、Review Focus五项都有拥有者测试、红绿和提交可独立检查。计划不展开算法正文，不复述全部设计；必需实机门不会被单元Mock或历史405项结果替代。状态：用户已确认实施计划，正在多智能体实施；本文未勾选任务不表示完成。

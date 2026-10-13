@@ -1,0 +1,85 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>com.medcloud.course</groupId><artifactId>medical-cloud-course</artifactId><version>0.1.0-SNAPSHOT</version></parent>
+  <artifactId>attachment-sdk</artifactId>
+  <packaging>jar</packaging>
+  <name>Private attachment SDK (not a deployed service)</name>
+  <properties><minio.version>8.6.0</minio.version><sdk.jackson.version>2.21.7</sdk.jackson.version></properties>
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>com.fasterxml.jackson</groupId><artifactId>jackson-bom</artifactId><version>${sdk.jackson.version}</version><type>pom</type><scope>import</scope></dependency>
+    </dependencies>
+  </dependencyManagement>
+  <dependencies>
+    <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>${minio.version}</version></dependency>
+    <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${sdk.jackson.version}</version></dependency>
+    <dependency><groupId>com.carrotsearch.thirdparty</groupId><artifactId>simple-xml-safe</artifactId><version>2.7.1</version></dependency>
+    <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>33.7.2-jre</version></dependency>
+    <dependency><groupId>com.squareup.okhttp3</groupId><artifactId>okhttp-jvm</artifactId><version>5.1.0</version></dependency>
+    <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId><version>1.85</version></dependency>
+    <dependency><groupId>org.apache.commons</groupId><artifactId>commons-compress</artifactId><version>1.28.0</version></dependency>
+    <dependency><groupId>commons-codec</groupId><artifactId>commons-codec</artifactId><version>1.18.0</version></dependency>
+    <dependency><groupId>org.xerial.snappy</groupId><artifactId>snappy-java</artifactId><version>1.1.10.7</version></dependency>
+  </dependencies>
+  <build>
+    <resources><resource><directory>src/main/resources</directory><filtering>true</filtering></resource></resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><version>3.7.0</version>
+        <executions><execution><id>capture-sdk-input</id><phase>process-resources</phase><goals><goal>copy</goal></goals>
+          <configuration><artifactItems><artifactItem>
+            <groupId>io.minio</groupId><artifactId>minio</artifactId><version>${minio.version}</version><type>jar</type>
+            <outputDirectory>${project.build.directory}/sdk-provenance</outputDirectory><destFileName>minio-upstream.jar</destFileName>
+          </artifactItem></artifactItems></configuration>
+        </execution></executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.2.0</version>
+        <executions><execution><id>sdk-source-checksum</id><phase>process-resources</phase><goals><goal>run</goal></goals>
+          <configuration><target>
+            <checksum file="${project.build.directory}/sdk-provenance/minio-upstream.jar" algorithm="SHA-256" property="sdk.input.sha256"/>
+            <propertyfile file="${project.build.outputDirectory}/META-INF/medcloud-attachment-sdk.properties">
+              <entry key="minio.source.sha256" value="${sdk.input.sha256}"/>
+              <entry key="minio.source.coordinate" value="io.minio:minio:${minio.version}"/>
+            </propertyfile>
+          </target></configuration>
+        </execution></executions>
+      </plugin>
+      <!-- Produce the private artifact before downstream compile even for plain test. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+        <executions>
+          <execution><id>default-jar</id><phase>none</phase></execution>
+          <execution><id>bootstrap-sdk-jar</id><phase>process-classes</phase><goals><goal>jar</goal></goals></execution>
+        </executions>
+        <configuration><forceCreation>true</forceCreation></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId><artifactId>maven-shade-plugin</artifactId><version>3.6.2</version>
+        <executions>
+          <execution>
+            <id>private-sdk</id><phase>process-classes</phase><goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <artifactSet><includes><include>io.minio:minio</include><include>com.fasterxml.jackson.core:*</include></includes></artifactSet>
+              <relocations>
+                <relocation><pattern>io.minio</pattern><shadedPattern>com.medcloud.course.paas.sdk.internal.minio</shadedPattern></relocation>
+                <relocation><pattern>com.fasterxml.jackson</pattern><shadedPattern>com.medcloud.course.paas.sdk.internal.jackson</shadedPattern></relocation>
+              </relocations>
+              <filters>
+                <filter><artifact>*:*</artifact><excludes>
+                  <exclude>META-INF/*.SF</exclude><exclude>META-INF/*.RSA</exclude><exclude>META-INF/*.DSA</exclude>
+                  <exclude>module-info.class</exclude><exclude>META-INF/versions/**</exclude>
+                </excludes></filter>
+              </filters>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

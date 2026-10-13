@@ -8,6 +8,7 @@
   <packaging>pom</packaging>
   <modules>
     <module>contract</module>
+    <module>attachment-sdk</module>
     <module>paas</module>
     <module>portal</module>
   </modules>

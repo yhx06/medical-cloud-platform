@@ -1,7 +1,7 @@
 package com.medcloud.course.paas.probe;
 
 import com.medcloud.course.contract.*;
-import io.minio.MinioClient;
+import com.medcloud.course.paas.sdk.internal.minio.MinioClient;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.*;

@@ -1,0 +1,14 @@
+Private medical-cloud attachment SDK assembly.
+
+Contains relocated MinIO Java SDK 8.6.0 and Jackson annotations 2.21,
+core/databind 2.21.7, under the Apache License, Version 2.0.
+Upstream license/notice resources are retained/merged in META-INF.
+
+Original coordinates and source SHA-256 are recorded in
+META-INF/medcloud-attachment-sdk.properties. MinIO's published runtime
+version marker reports "dev"; provenance relies on the resolved Maven
+coordinate, captured source JAR bytes, and recorded checksum.
+
+Relocation changes package names and references only. It does not
+patch container-provided RESTEasy/Jackson or certify dependency safety.
+Forwarded dependencies remain separately packaged with their own notices.
