@@ -50,6 +50,6 @@
     <div><strong>PaaS</strong><span>WildFly 10 · JAX-RS 接口与 EJB 业务组件；MySQL 数据服务 · JNDI/JPA</span></div>
     <div><strong>IaaS</strong><span>计算、网络、存储与虚拟化 · 70 台逻辑服务器模型（不实际启动）</span></div>
   </div>
-  <p class="subtle">统计仅展示跨院脱敏数值和医院汇总，不提供患者身份、临床正文或明细下钻。</p>
+  <p class="subtle">统计仅展示跨院脱敏数值和医院汇总，不提供患者身份、临床正文或明细下钻。附件审计仅显示操作事件，管理账号不能查看附件文件名或内容。</p>
 </section>
 <%@ include file="footer.jspf" %>

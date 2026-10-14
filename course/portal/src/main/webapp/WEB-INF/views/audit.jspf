@@ -2,6 +2,9 @@
 <%@ page import="com.medcloud.course.contract.AuditEventType,com.medcloud.course.contract.AuditResult" %>
 <%!
   private String auditEventLabel(String event) {
+    if("FILE_UPLOAD".equals(event))return "附件上传";
+    if("FILE_DELETE".equals(event))return "附件移出资料";
+    if("FILE_DOWNLOAD_AUTHORIZE".equals(event))return "附件下载授权";
     String[] keys = {"LOGIN", "TENANT_STATUS_CHANGE", "DEPARTMENT_CREATE", "DEPARTMENT_UPDATE", "DOCTOR_CREATE", "DOCTOR_UPDATE", "SLOT_CREATE", "SLOT_UPDATE", "APPOINTMENT_BOOK", "APPOINTMENT_CANCEL", "CONSULTATION_START", "CONSULTATION_COMPLETE", "PAYMENT_PAY"};
     String[] labels = {"登录", "医院状态变更", "新增科室", "更新科室", "新增医生", "更新医生", "新增号源", "更新号源", "预约挂号", "取消预约", "开始接诊", "完成诊疗", "模拟缴费"};
     for (int i=0;i<keys.length;i++) if(keys[i].equals(event)) return labels[i];
@@ -14,6 +17,7 @@
     for(int i=0;i<keys.length;i++)if(keys[i].equals(reason))return labels[i];return "未知原因";
   }
   private String auditObjectLabel(String object) {
+    if("FILE_METADATA".equals(object))return "附件元数据";
     String[] keys={"ACCOUNT","TENANT","DEPARTMENT","DOCTOR_ACCOUNT","SLOT","APPOINTMENT","CLINICAL_RECORD","PAYMENT_ORDER"};
     String[] labels={"账号","医院","科室","医生账号","号源","预约","诊疗记录","模拟账单"};
     for(int i=0;i<keys.length;i++)if(keys[i].equals(object))return labels[i];return "未知对象";

@@ -179,4 +179,5 @@
 </section>
 <%@ include file="statistics.jspf" %>
 <%@ include file="audit.jspf" %>
+<p class="subtle">附件审计仅显示上传、移出资料和下载授权事件；管理账号不能查看附件文件名或内容。</p>
 <%@ include file="footer.jspf" %>

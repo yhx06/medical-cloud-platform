@@ -14,6 +14,8 @@
     <td class="identifier"><%= WebEscaper.html(appointment.path("slotId").asText()) %></td>
     <td><%= stateBadge(appointment.path("status").asText()) %></td>
     <td>
+      <% if(appointment.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
+      <a href="<%= context %>/doctor/files?appointmentId=<%= id %>">查看患者资料</a><% } %>
       <% if (!workspaceWritable) { %><span class="read-only-reason"><%= readOnlyReason(hospitalContext == null ? "" : hospitalContext.path("status").asText()) %></span>
       <% } else if ("BOOKED".equals(appointment.path("status").asText())) { %>
       <form method="post" action="<%= context %>/doctor/start">
@@ -58,7 +60,9 @@
     <td><%= WebEscaper.html(record.path("complaint").asText("")) %></td>
     <td><%= WebEscaper.html(record.path("diagnosis").asText()) %></td>
     <td><%= WebEscaper.html(record.path("advice").asText()) %></td>
-    <td><%= WebEscaper.html(record.path("notes").asText("")) %></td></tr>
+    <td><%= WebEscaper.html(record.path("notes").asText("")) %>
+      <% if(record.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
+      <a href="<%= context %>/doctor/files?recordId=<%= WebEscaper.html(record.path("id").asText()) %>">查阅或追加病历附件</a><% } %></td></tr>
   <% } %>
   </tbody></table></div>
   <% if (records.size() == 0) { %><p class="empty-state">暂无符合条件的病历，已完成接诊的记录会显示在这里。</p><% } %>

@@ -98,7 +98,9 @@
         String recordUrl = context + "/patient?" + (filterQuery.isEmpty() ? "" : filterQuery + "&")
           + "appointmentId=" + URLEncoder.encode(appointment.path("id").asText(), "UTF-8") + "#record-billing"; %>
       <a class="record-link" href="<%= WebEscaper.html(recordUrl) %>">查看病历与账单</a>
-      <% } } %></td></tr>
+      <% } } %>
+      <% if(appointment.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
+      <a href="<%= context %>/patient/files?appointmentId=<%= WebEscaper.html(appointment.path("id").asText()) %>">查看诊疗附件</a><% } %></td></tr>
   <% } %></tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无预约记录，完成挂号后可在这里查看。</p><% } %>
   <% } %>
