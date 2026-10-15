@@ -130,6 +130,11 @@ public class AttachmentDatabaseService {
         if(f.state!=AttachmentState.UPLOADING || attemptToken==null || !attemptToken.equals(f.attemptToken)) return false;
         abort(f,now); manager.flush(); return true;
     }
+    /** Read-only identity/state/version view for coordinator cleanup and ownership checks. */
+    public CleanupCandidate cleanupTarget(String fileId) {
+        FileMetadata f=manager.find(FileMetadata.class,fileId);
+        return f==null?null:new CleanupCandidate(f.id,f.objectKey,f.state,f.version);
+    }
     public List<CleanupCandidate> claimCleanupBatch(Instant now,int limit) {
         if(limit<1 || limit>100) throw new IllegalArgumentException("Invalid cleanup batch");
         List<FileMetadata> rows=manager.createQuery("select f from FileMetadata f where (f.state in (:reserved,:uploading) and f.leaseUntil<=:now) or (f.state in (:pending,:deleted,:aborted) and (f.nextRetryAt is null or f.nextRetryAt<=:now)) order by f.id",FileMetadata.class)
