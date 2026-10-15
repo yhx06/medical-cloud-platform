@@ -40,6 +40,14 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
 
     public static AuditReasonCode reasonFor(RuntimeException failure) {
         failure = unwrap(failure);
+        if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
+            int status = ((com.medcloud.course.paas.attachment.AttachmentException) failure).getStatus();
+            if (status == 401) return AuditReasonCode.UNAUTHORIZED;
+            if (status == 403) return AuditReasonCode.FORBIDDEN;
+            if (status == 400 || status == 413 || status == 415) return AuditReasonCode.BAD_REQUEST;
+            if (status == 409 || status == 429) return AuditReasonCode.CONFLICT;
+            return AuditReasonCode.INTERNAL_ERROR;
+        }
         if (failure instanceof AuditInfrastructureException) return AuditReasonCode.INTERNAL_ERROR;
         if (failure instanceof AccessDeniedException) return AuditReasonCode.FORBIDDEN;
         if (failure instanceof SecurityException) return AuditReasonCode.UNAUTHORIZED;
@@ -47,6 +55,24 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         if (failure instanceof IllegalStateException || failure instanceof LockTimeoutException
                 || failure instanceof PessimisticLockException) return AuditReasonCode.CONFLICT;
         return AuditReasonCode.INTERNAL_ERROR;
+    }
+
+    private static final java.util.Map<String,String> ATTACHMENT_MESSAGES;
+    static {
+        java.util.Map<String,String> messages = new java.util.HashMap<>();
+        messages.put("FILE_INVALID", "File content rejected");
+        messages.put("UPLOAD_DESCRIPTOR_INVALID", "Invalid upload descriptor");
+        messages.put("FILE_TOO_LARGE", "File too large");
+        messages.put("FILE_TYPE_UNSUPPORTED", "File type not supported");
+        messages.put("UPLOAD_IN_PROGRESS", "Upload already in progress");
+        messages.put("UPLOAD_CONFLICT", "Upload key conflict");
+        messages.put("FILE_STATE_CONFLICT", "File state conflict");
+        messages.put("FILE_LIMIT_REACHED", "Too many pending uploads");
+        messages.put("OBJECT_STORE_UNAVAILABLE", "Attachment storage unavailable");
+        messages.put("UNAUTHORIZED", "Authentication required or account inactive");
+        messages.put("FORBIDDEN", "Access denied");
+        messages.put("INTERNAL_ERROR", "Service temporarily unavailable");
+        ATTACHMENT_MESSAGES = java.util.Collections.unmodifiableMap(messages);
     }
 
     private String auditedRequestId(RuntimeException failure) {
@@ -60,6 +86,17 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         }
         return null;
     }
+
+    /** The JSON-only 415 wording must never be applied to the binary upload entry. */
+    private boolean binaryUploadRoute() {
+        if (request == null) return false;
+        try {
+            String path = request.getUri() == null ? "" : String.valueOf(request.getUri().getPath());
+            return path.contains("files/uploads/") && path.endsWith("/content");
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
     @Override
     public Response toResponse(RuntimeException failure) {
         String trackedId = auditedRequestId(failure);
@@ -68,10 +105,16 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         int status;
         String code;
         String message;
-        if (failure instanceof NotSupportedException) {
+        if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
+            com.medcloud.course.paas.attachment.AttachmentException attachment = (com.medcloud.course.paas.attachment.AttachmentException) failure;
+            status = attachment.getStatus();
+            code = attachment.getCode();
+            message = ATTACHMENT_MESSAGES.get(code);
+            if (message == null) message = "Attachment operation failed";
+        } else if (failure instanceof NotSupportedException) {
             status = 415;
             code = "UNSUPPORTED_MEDIA_TYPE";
-            message = "JSON content type required";
+            message = binaryUploadRoute() ? "Unsupported media type" : "JSON content type required";
         } else if (failure instanceof AccessDeniedException) {
             status = 403;
             code = "FORBIDDEN";

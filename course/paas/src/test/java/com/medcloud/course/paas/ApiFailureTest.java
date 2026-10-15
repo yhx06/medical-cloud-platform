@@ -64,4 +64,29 @@ class ApiFailureTest {
         assertEquals(415, response.getStatus());
         assertEquals("UNSUPPORTED_MEDIA_TYPE", ((ApiError) response.getEntity()).getCode());
     }
+
+    @Test
+    void attachmentErrorsKeepStableCodesAndSafeMessages() {
+        int[][] cases = {{400,400},{413,413},{415,415},{409,409},{429,429},{503,503}};
+        String[] codes = {"FILE_INVALID","FILE_TOO_LARGE","FILE_TYPE_UNSUPPORTED","UPLOAD_IN_PROGRESS","FILE_LIMIT_REACHED","OBJECT_STORE_UNAVAILABLE"};
+        for (int i = 0; i < codes.length; i++) {
+            Response response = new ApiFailureMapper().toResponse(new com.medcloud.course.paas.attachment.AttachmentException(cases[i][0], codes[i]));
+            assertEquals(cases[i][0], response.getStatus());
+            ApiError error = (ApiError) response.getEntity();
+            assertEquals(codes[i], error.getCode());
+            assertFalse(error.getMessage().contains("Attachment operation failed"));
+        }
+    }
+
+    @Test
+    void attachmentReasonsFollowTheClosedVocabulary() {
+        assertEquals(com.medcloud.course.contract.AuditReasonCode.BAD_REQUEST,
+            ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(413, "FILE_TOO_LARGE")));
+        assertEquals(com.medcloud.course.contract.AuditReasonCode.CONFLICT,
+            ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(409, "FILE_STATE_CONFLICT")));
+        assertEquals(com.medcloud.course.contract.AuditReasonCode.INTERNAL_ERROR,
+            ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(503, "OBJECT_STORE_UNAVAILABLE")));
+        assertEquals(com.medcloud.course.contract.AuditReasonCode.UNAUTHORIZED,
+            ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(401, "UNAUTHORIZED")));
+    }
 }
