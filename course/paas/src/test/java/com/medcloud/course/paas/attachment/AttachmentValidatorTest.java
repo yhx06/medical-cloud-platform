@@ -126,7 +126,7 @@ class AttachmentValidatorTest {
         assertTrue(Files.isRegularFile(file),"successfully returned files must not be deleted");
     }
     @Test void handoffCompletionThenAbandonAlwaysCleansFile() throws Exception {
-        // Deterministic barrier interleaving of the completion/cancel race: whichever side loses owns cleanup.
+        // Barrier-synchronized both-orderings stress of the completion/cancel race: whichever side loses owns cleanup.
         for(int round=0;round<50;round++) {
             AttachmentValidator.TempFileHandoff handoff=new AttachmentValidator.TempFileHandoff();
             final Path file=Files.createTempFile(temp,"handoff-",".tmp");

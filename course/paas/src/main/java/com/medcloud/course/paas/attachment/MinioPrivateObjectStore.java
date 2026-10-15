@@ -7,6 +7,7 @@ import com.medcloud.course.paas.sdk.internal.minio.errors.ErrorResponseException
 import com.medcloud.course.paas.sdk.internal.minio.http.Method;
 import com.medcloud.course.paas.sdk.internal.minio.messages.Item;
 import com.medcloud.course.paas.sdk.internal.minio.messages.VersioningConfiguration;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.time.Instant;
@@ -15,6 +16,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import okhttp3.Call;
+import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Protocol;
 
@@ -22,6 +25,8 @@ import okhttp3.Protocol;
 public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCloseable {
     private static final ObjectMapper POLICY_JSON=new ObjectMapper();
     private static final DateTimeFormatter SIGNATURE_MOMENT=DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
+    /** In-flight HTTP calls of the storage attempt running on the current pooled thread. */
+    private static final ThreadLocal<CallTracker> CURRENT_CALLS=new ThreadLocal<>();
     private final MinioClient internalClient;
     private final MinioClient publicClient;
     private final String bucket;
@@ -55,6 +60,7 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
             .readTimeout(total,TimeUnit.MILLISECONDS)
             .callTimeout(total,TimeUnit.MILLISECONDS)
             .protocols(Collections.singletonList(Protocol.HTTP_1_1))
+            .eventListenerFactory(call->new TrackingListener())
             .build();
         return MinioClient.builder().endpoint(endpoint).region(region).credentials(accessKey,secretKey).httpClient(http,true).build();
     }
@@ -205,14 +211,45 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
         catch(Exception ex) {throw unavailable();}
     }
 
+    /** In-flight OkHttp calls of one storage attempt, so the absolute deadline can reclaim them. */
+    private static final class CallTracker {
+        private final Set<Call> active=Collections.newSetFromMap(new ConcurrentHashMap<Call,Boolean>());
+        private volatile boolean canceled;
+        void track(Call call) {
+            if(canceled) {cancel(call);return;}
+            active.add(call);
+            if(canceled)cancel(call);
+        }
+        void untrack(Call call) {active.remove(call);}
+        void cancelActive() {
+            canceled=true;
+            for(Call call:active)cancel(call);
+            active.clear();
+        }
+        private static void cancel(Call call) {try{call.cancel();}catch(Exception ignored){}}
+    }
+    private static final class TrackingListener extends EventListener {
+        private volatile CallTracker bound;
+        @Override public void callStart(Call call) {CallTracker tracker=CURRENT_CALLS.get();if(tracker!=null){bound=tracker;tracker.track(call);}}
+        @Override public void callEnd(Call call) {CallTracker tracker=bound;if(tracker!=null)tracker.untrack(call);}
+        @Override public void callFailed(Call call,IOException ioe) {CallTracker tracker=bound;if(tracker!=null)tracker.untrack(call);}
+    }
+
     private <T> T execute(StoreOperation<T> operation) {
         if(closed)throw unavailable();
         long deadlineNanos=System.nanoTime()+TimeUnit.SECONDS.toNanos(deadlineSeconds);
+        CallTracker tracker=new CallTracker();
         Future<T> future;
-        try {future=calls.submit(()->operation.run(deadlineNanos));} catch(RejectedExecutionException ex){throw unavailable();}
+        try {
+            future=calls.submit(()->{
+                CURRENT_CALLS.set(tracker);
+                try {return operation.run(deadlineNanos);}
+                finally {CURRENT_CALLS.remove();}
+            });
+        } catch(RejectedExecutionException ex){throw unavailable();}
         try {return future.get(deadlineSeconds,TimeUnit.SECONDS);}
-        catch(TimeoutException ex){future.cancel(true);throw unavailable();}
-        catch(InterruptedException ex){future.cancel(true);Thread.currentThread().interrupt();throw unavailable();}
+        catch(TimeoutException ex){tracker.cancelActive();future.cancel(true);throw unavailable();}
+        catch(InterruptedException ex){tracker.cancelActive();future.cancel(true);Thread.currentThread().interrupt();throw unavailable();}
         catch(ExecutionException ex){
             Throwable cause=ex.getCause();if(cause instanceof AttachmentException)throw (AttachmentException)cause;throw unavailable();
         }

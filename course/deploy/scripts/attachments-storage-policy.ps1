@@ -8,7 +8,8 @@ function Get-AttachmentsStoragePolicy {
     )
     if ([string]::IsNullOrWhiteSpace($Bucket)) { throw 'Bucket is required' }
     if ([string]::IsNullOrWhiteSpace($Prefix)) { throw 'Prefix is required' }
-    if ($Bucket -match '[^A-Za-z0-9.\-]' -or $Prefix -match '\.\.') { throw 'Bucket or prefix escapes the owned naming rules' }
+    if ($Bucket -match '[^A-Za-z0-9.\-]') { throw 'Bucket escapes the owned naming rules' }
+    if ($Prefix -notmatch '^[A-Za-z0-9_./-]+$' -or $Prefix -match '\.\.') { throw 'Prefix escapes the owned naming rules' }
     [ordered]@{
         Version = '2012-10-17'
         Statement = @(

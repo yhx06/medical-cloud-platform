@@ -61,6 +61,9 @@ Assert-Throws { Get-AttachmentsStoragePolicy -Bucket '' -Prefix $prefix } 'empty
 Assert-Throws { Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix '' } 'emptyPrefixRejected'
 Assert-Throws { Get-AttachmentsStoragePolicy -Bucket '../other' -Prefix $prefix } 'bucketEscapeRejected'
 Assert-Throws { Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix '../' } 'prefixEscapeRejected'
+Assert-Throws { Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix '*' } 'wildcardPrefixRejected'
+Assert-Throws { Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix 'files/*"' } 'quotePrefixRejected'
+Assert-Throws { Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix 'files/ ' } 'spacePrefixRejected'
 
 # The generator must consume this shared policy instead of drifting a private copy.
 $creator = Join-Path $PSScriptRoot '../scripts/new-attachments-fixture.ps1'
