@@ -2,8 +2,8 @@ param(
     [Parameter(Mandatory = $true)][string]$FixturePath,
     [Parameter(Mandatory = $true)][string]$EvidenceRoot
 )
-# Contract tests for verify-attachments.ps1: mandatory skips must fail the summary, every
-# evidence write is ownership guarded, and the summary never carries signed URL material.
+# Live-fixture contracts for the partial HTTP verifier. These do not substitute for
+# the nine design acceptance categories; short controlled-driver tests are separate.
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $repo 'course\deploy\tests\attachments-fixture-ownership.ps1')
@@ -45,7 +45,7 @@ $contractEvidence = Join-Path $evidenceFull 'contract-mandatory-skip'
 [void][IO.Directory]::CreateDirectory($contractEvidence)
 $skippedRun = Invoke-Verify $fixtureFull @('app-health') $contractEvidence
 Assert-True ($skippedRun.exit -ne 0) 'mandatorySkippedGateFailsSummary: exit must be non-zero'
-Assert-True ($skippedRun.output -match 'mandatory gate skipped') 'mandatorySkippedGateFailsSummary: failure reason recorded'
+Assert-True ($skippedRun.output -match 'VERIFICATION FAILED|VERIFICATION INCOMPLETE') 'mandatorySkippedGateFailsSummary: failure reason recorded'
 $summary = [IO.File]::ReadAllText((Join-Path $contractEvidence 'attachments-verification-summary.json')) | ConvertFrom-Json
 Assert-True (@($summary.mandatorySkipped) -contains 'app-health') 'mandatorySkippedGateFailsSummary: summary lists the skipped mandatory gate'
 
@@ -64,8 +64,14 @@ Assert-True (-not (Test-Path (Join-Path $foreignDir 'attachments-verification-su
 $mainEvidence = Join-Path $evidenceFull 'contract-redaction'
 [void][IO.Directory]::CreateDirectory($mainEvidence)
 $fullRun = Invoke-Verify $fixtureFull $null $mainEvidence
-Assert-True ($fullRun.exit -eq 0) 'verification gates must pass for the redaction contract'
+Assert-True ($fullRun.exit -ne 0) 'missing design coverage cannot pass the full verifier'
 $summaryText = [IO.File]::ReadAllText((Join-Path $mainEvidence 'attachments-verification-summary.json'))
+$partialSummary = $summaryText | ConvertFrom-Json
+Assert-True (@($partialSummary.executed).Count -eq 7) 'seven HTTP subchecks executed for the live redaction contract'
+Assert-True (@($partialSummary.passed).Count -eq 7 -and @($partialSummary.failed).Count -eq 0) 'seven HTTP subchecks must pass independently of incomplete design coverage'
+Assert-True (@($partialSummary.unverified).Count -ge 9) 'unexecuted design coverage remains explicitly unverified'
+Assert-True (@($partialSummary.designCoverage).Count -eq 9) 'all nine design categories disclosed'
+Assert-True (@($partialSummary.designCoverage | Where-Object status -eq 'passed').Count -eq 0) 'partial HTTP success never passes a whole design category'
 Assert-True ($summaryText -notmatch 'X-Amz-Signature') 'signedUrlsRedactedFromEvidenceSummary: no signature in summary'
 Assert-True ($summaryText -notmatch 'X-Amz-Credential') 'signedUrlsRedactedFromEvidenceSummary: no credential scope in summary'
 Assert-True ($summaryText -notmatch 'X-Amz-Security-Token') 'signedUrlsRedactedFromEvidenceSummary: no session token in summary'

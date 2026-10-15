@@ -3,12 +3,32 @@ param(
     [Parameter(Mandatory = $true)][string]$EvidenceRoot,
     [string[]]$SkipGate = @()
 )
-# Attachment acceptance driver: runs the design section 12 gates against one owned fixture
-# and writes a redacted JSON summary. A failed gate or a skipped mandatory gate exits non-zero.
+# Seven HTTP subchecks provide partial evidence for section 12, not full acceptance.
+# Required design coverage that this driver cannot measure remains unverified and fails closed.
 $ErrorActionPreference = 'Stop'
+try {
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 . (Join-Path $repo 'course\deploy\tests\attachments-fixture-ownership.ps1')
 
+$httpChecks = @('app-health','patient-jpg-png','pagination-recovery','limits','matrix','audit-redaction','storage-private-signing')
+$notRun = [ordered]@{
+    'two-classes-three-formats' = 'Doctor completed-record append and patient/doctor JPG, PNG and PDF uploads were not measured.'
+    'file-validation-boundaries' = 'Exact 10 MiB, changed limits, empty/corrupt/spoofed content, digest mismatch, image decompression and restricted PDF negatives were not measured.'
+    'complete-authorization-matrix' = 'Four roles, two hospitals/patients, same-hospital unassigned doctor, all six actions and substituted parent/file/upload identifiers were not measured in full.'
+    'clinical-state-concurrency' = 'In-progress/completed/cancelled clinical rules and actual start/delete, complete/publish, hospital-disable/publish database races plus record/order invariance were not measured.'
+    'private-storage-expiry-content' = 'Anonymous object GET/key-only denial, downloaded digest, actual 300-second expiry rejection and browser-reachable endpoint were not measured; signed URLs grant holder access until expiry.'
+    'fault-restart-late-put' = 'Upload-key retry/concurrent claim, lost/unknown commit, database/audit failures after PUT, restart, expiry cleanup, late PUT and physical-delete retry were not measured with database/storage digest and state reconciliation.'
+    'migration-jpa-concurrency' = 'Fresh/repeated protected migration, baseline/partial-table/backup refusals, old-row digests, foreign keys/indexes/JPA validate and real disposable MySQL concurrency were not measured; MySQL 5.6/teacher environment remains unverified.'
+    'deployed-sdk-jta-failure-audit' = 'Fresh JDK8/Tomcat9/WildFly10 SDK, inactive JTA at storage boundary and independent failure-audit transaction observations were not measured.'
+    'audit-persistence-redaction' = 'Audit filters and persisted database/security logs plus non-authorized page source were not inspected for file bodies, keys, signatures or credentials.'
+    'chrome-edge-no-js' = 'Current Chrome/Edge patient/doctor upload/delete/download, keyboard/laptop layout, no-JS and 401/expired/403/503/413/415/429/timeout/recovery/frozen-hospital flows were not observed.'
+    'clean-reproduction' = 'A new independent environment was not configured, bucket-initialized, migrated, started and fully demonstrated from documentation during this invocation.'
+    'minio-outage-core-chain' = 'The core appointment-to-consultation-to-record/order-to-mock-payment chain was not observed with owned MinIO stopped/faulted.'
+}
+$mandatory = @($httpChecks) + @($notRun.Keys)
+foreach ($name in $SkipGate) {
+    if ($mandatory -notcontains $name) { Write-Output 'VERIFICATION FAILED: UNKNOWN_SKIP_GATE'; exit 3 }
+}
 $fixtureFull = [IO.Path]::GetFullPath($FixturePath)
 $evidenceFull = [IO.Path]::GetFullPath($EvidenceRoot)
 if (-not (Test-Path -LiteralPath $fixtureFull -PathType Leaf)) { throw 'Fixture identity missing' }
@@ -17,12 +37,12 @@ $fixture = [IO.File]::ReadAllText($fixtureFull) | ConvertFrom-Json
 foreach ($component in @('mysql','storage','portal','paas')) { Assert-OwnedAttachmentsFixture $fixture $component }
 [void][IO.Directory]::CreateDirectory($evidenceFull)
 
-$mandatory = @('app-health','uploads-three-formats','pagination-recovery','limits','matrix','audit-redaction','storage-private-signing')
 $found = New-Object 'System.Collections.Generic.List[string]'
 $executed = New-Object 'System.Collections.Generic.List[string]'
 $passed = New-Object 'System.Collections.Generic.List[string]'
 $failed = New-Object 'System.Collections.Generic.List[string]'
 $skipped = New-Object 'System.Collections.Generic.List[string]'
+$unverified = New-Object 'System.Collections.Generic.List[string]'
 $limitations = New-Object 'System.Collections.Generic.List[string]'
 
 function Register-Gate([string]$Name) { [void]$script:found.Add($Name) }
@@ -41,8 +61,10 @@ function Invoke-Gate([string]$Name, [scriptblock]$Body) {
         Write-Output ('PASSED ' + $Name)
     } catch {
         [void]$script:failed.Add($Name)
-        Write-Evidence ('failure-' + $Name) @{ message = $_.Exception.Message }
-        Write-Output ('FAILED ' + $Name + ': ' + $_.Exception.Message)
+        # Unknown exception/response text can contain signatures, credentials or tokens.
+        # Fixed codes intentionally discard those details rather than trying to redact patterns.
+        Write-Evidence ('failure-' + $Name) @{ code = 'GATE_CHECK_FAILED'; message = 'Required HTTP check did not pass' }
+        Write-Output ('FAILED ' + $Name + ': GATE_CHECK_FAILED')
     }
 }
 
@@ -60,6 +82,16 @@ function Get-Token([string]$User) {
 function Send-Request([string]$Method, [string]$Uri, [string]$User, $Body, [byte[]]$Binary, [string]$BinaryType) {
     $headers = @{}
     if ($User) { $headers.Authorization = 'Bearer ' + (Get-Token $User) }
+    # Recheck immediately before every HTTP mutation, including login and content PUT.
+    # Ownership failure must escape the HTTP catch so a foreign listener is never contacted.
+    if ($Method -notin @('GET','HEAD','OPTIONS')) {
+        foreach ($component in @('mysql','storage','portal','paas')) {
+            Assert-OwnedAttachmentsFixture $script:fixture $component
+        }
+        $target = [uri]$Uri
+        if ($target.Scheme -ne 'http' -or $target.Host -ne '127.0.0.1' -or $target.Port -ne $script:fixture.paas.port -or
+            -not $target.AbsolutePath.StartsWith('/paas/api/', [StringComparison]::Ordinal)) { throw 'MUTATION_TARGET_REFUSED' }
+    }
     $arguments = @{ Uri = $Uri; Method = $Method; Headers = $headers; TimeoutSec = 90; ErrorAction = 'Stop' }
     if ($Binary) { $arguments.Body = $Binary; $arguments.ContentType = $BinaryType }
     elseif ($null -ne $Body) { $arguments.Body = ($Body | ConvertTo-Json -Depth 5); $arguments.ContentType = 'application/json' }
@@ -105,10 +137,10 @@ function New-UploadDescriptor([byte[]]$Bytes, [string]$Name, [string]$Mime) {
 }
 function Complete-Upload([string]$User, [string]$PreparePath, [byte[]]$Bytes, [string]$Name, [string]$Mime) {
     $prepared = Api POST $PreparePath $User (New-UploadDescriptor $Bytes $Name $Mime)
-    Assert-True ($prepared.status -eq 200) "prepare $Name failed ($($prepared.status) $($prepared.raw))"
+    Assert-True ($prepared.status -eq 200) 'UPLOAD_PREPARE_FAILED'
     $uploadId = $prepared.body.data.uploadId
     $content = Api PUT ("files/uploads/$uploadId/content") $User $null $Bytes 'application/octet-stream'
-    Assert-True ($content.status -eq 200) "content $Name failed ($($content.status) $($content.raw))"
+    Assert-True ($content.status -eq 200) 'UPLOAD_CONTENT_FAILED'
     return $uploadId
 }
 
@@ -128,7 +160,7 @@ Invoke-Gate 'app-health' {
     Assert-True ($anonymous.status -eq 401 -or $anonymous.status -eq 403) "anonymous appointments must be rejected, got $($anonymous.status)"
 }
 
-Invoke-Gate 'uploads-three-formats' {
+Invoke-Gate 'patient-jpg-png' {
     $book = Api POST 'patient/appointments' 'patient_demo' @{ slotId = $script:slotA }
     if ($book.status -eq 200) {
         $script:appointment = $book.body.data.id
@@ -137,7 +169,7 @@ Invoke-Gate 'uploads-three-formats' {
         Assert-True ($existing.status -eq 200) "existing appointments lookup failed ($($existing.status))"
         $match = @($existing.body.data | Where-Object { $_.slotId -eq $script:slotA }) | Select-Object -First 1
         if (-not $match) { $match = @($existing.body.data)[0] }
-        Assert-True ($null -ne $match) "booking failed ($($book.status) $($book.raw)) and no existing appointment found"
+        Assert-True ($null -ne $match) 'BOOKING_FAILED_WITHOUT_EXISTING_APPOINTMENT'
         $script:appointment = $match.id
     }
     Assert-True ([bool]$script:appointment) 'booking response must carry the appointment id'
@@ -152,7 +184,7 @@ Invoke-Gate 'uploads-three-formats' {
     Assert-True ($tooLarge.status -eq 413) "oversize descriptor must be 413, got $($tooLarge.status)"
     $wrongType = Api POST $script:preparePath 'patient_demo' (New-UploadDescriptor $jpg 'note.txt' 'text/plain')
     Assert-True ($wrongType.status -eq 400) "wrong type must be 400, got $($wrongType.status)"
-    Write-Evidence 'upload-classes-formats' @{ appointmentId = $script:appointment; uploads = @($script:uploadIds) }
+    Write-Evidence 'patient-jpg-png' @{ sourceType = 'patient'; formats = @('jpg','png'); uploadedCount = $script:uploadIds.Count }
 }
 
 Invoke-Gate 'pagination-recovery' {
@@ -217,17 +249,43 @@ Invoke-Gate 'storage-private-signing' {
     $tampered = $download.body.data.url -replace 'X-Amz-Signature=[0-9a-fA-F]', 'X-Amz-Signature=0'
     $denied = Send-Request 'GET' $tampered $null
     Assert-True ($denied.status -ge 400) "tampered signature denied, got $($denied.status)"
-    Write-Evidence 'signed-download' @{ fileId = $fileId; expiresAt = $download.body.data.expiresAt }
+    Write-Evidence 'signed-download' @{ signedGetReadable = $true; tamperedSignatureRejected = $true; expiryObserved = $false }
 }
 
-Write-Output ('summary found=' + $found.Count + ' executed=' + $executed.Count + ' passed=' + $passed.Count + ' failed=' + $failed.Count + ' skipped=' + $skipped.Count)
-$javaVersion = (cmd /c '"D:\Java\jdk1.8.0_341\bin\java.exe" -version 2>&1' | Select-Object -First 1)
+foreach ($name in $notRun.Keys) {
+    Register-Gate $name
+    if ($SkipGate -contains $name) { [void]$skipped.Add($name) }
+    else { [void]$unverified.Add($name) }
+    [void]$limitations.Add($notRun[$name])
+}
+[void]$limitations.Add('Only seven HTTP subchecks are implemented here. Historical unit/integration reports are not current runtime evidence. Environment versions, HTTPS and teacher-machine compatibility were not re-observed.')
+$categoryChecks = @(
+    @('patient-jpg-png','pagination-recovery','limits','two-classes-three-formats','file-validation-boundaries'),
+    @('matrix','complete-authorization-matrix'),
+    @('clinical-state-concurrency'),
+    @('storage-private-signing','private-storage-expiry-content'),
+    @('fault-restart-late-put'),
+    @('migration-jpa-concurrency'),
+    @('app-health','audit-redaction','deployed-sdk-jta-failure-audit','audit-persistence-redaction'),
+    @('chrome-edge-no-js'),
+    @('clean-reproduction','minio-outage-core-chain')
+)
+$designCoverage = @()
+for ($i = 0; $i -lt 9; $i++) {
+    $checks = @($categoryChecks[$i])
+    $state = 'unverified'
+    if (@($checks | Where-Object { $failed -contains $_ }).Count -gt 0) { $state = 'failed' }
+    elseif (@($checks | Where-Object { $skipped -contains $_ }).Count -gt 0) { $state = 'skipped' }
+    $designCoverage += [ordered]@{ category = ($i + 1); status = $state; required = $checks; passedSubchecks = @($checks | Where-Object { $passed -contains $_ }); unverified = @($checks | Where-Object { $unverified -contains $_ }) }
+}
+Write-Output ('summary required=' + $mandatory.Count + ' executed=' + $executed.Count + ' passed=' + $passed.Count + ' failed=' + $failed.Count + ' skipped=' + $skipped.Count + ' unverified=' + $unverified.Count)
 $summary = [ordered]@{
-    found = @($found); executed = @($executed); passed = @($passed); failed = @($failed); skipped = @($skipped)
+    required = @($mandatory); found = @($found); executed = @($executed); passed = @($passed); failed = @($failed); skipped = @($skipped); unverified = @($unverified)
+    httpSubchecks = @($httpChecks); designCoverage = @($designCoverage)
     mandatorySkipped = @($skipped | Where-Object { $mandatory -contains $_ })
     environment = [ordered]@{
         ownerId = $fixture.ownerId; paasPort = $fixture.paas.port; portalPort = $fixture.portal.port; storagePort = $fixture.storage.port
-        java = "$javaVersion"; fixture = $fixtureFull
+        runtimeVersions = 'not observed in this invocation'
     }
     limitations = @($limitations)
 }
@@ -237,5 +295,10 @@ $summaryPath = Join-Path $evidenceFull 'attachments-verification-summary.json'
 Write-Output $summaryPath
 if ($failed.Count -gt 0) { Write-Output 'VERIFICATION FAILED'; exit 1 }
 if (@($skipped | Where-Object { $mandatory -contains $_ }).Count -gt 0) { Write-Output 'VERIFICATION FAILED: mandatory gate skipped'; exit 2 }
+if ($unverified.Count -gt 0) { Write-Output 'VERIFICATION INCOMPLETE: required coverage unverified'; exit 4 }
 Write-Output 'VERIFICATION PASSED'
 exit 0
+} catch {
+    Write-Output 'VERIFICATION FAILED: FIXTURE_OR_DRIVER_ERROR'
+    exit 3
+}
