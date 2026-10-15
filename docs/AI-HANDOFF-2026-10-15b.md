@@ -2,7 +2,7 @@
 
 更新：2026-10-15，Asia/Shanghai。本文取代 [2026-10-15 交接](AI-HANDOFF-2026-10-15.md) 的“存储切片审查未通过/I1–I4 未修”状态；其余全系统范围与纪律继续有效。
 
-**结论：Task2 存储切片的 I1–I4/M1/生成器权限缺口已修复、独立复审质量 Approved（无新 Critical/Important）、并经真实 MinIO 门在两个从零环境复现。附件切片仍未与门户/编排联调，Task5/6/8 与全系统剩余范围未完成。不得据此宣称附件全部完成或系统完成；无推送、无合并。**
+**结论：Task2 存储切片的 I1–I4/M1/生成器权限缺口已修复、独立复审质量 Approved（无新 Critical/Important）、并经真实 MinIO 门在两个从零环境复现。Task6 编排/回收与 Task5 八路由 API 已实现并联合 GREEN（435 项 PaaS 回归 0 失败）。Task8 实机/浏览器验收与全系统剩余范围未完成。不得据此宣称附件全部完成或系统完成；无推送、无合并。**
 
 ## 1. 接手先做什么
 
@@ -14,7 +14,7 @@
 ## 2. 权威工作树、提交与授权
 
 - 权威工作树：`E:/云服务工程/云服务项目-医疗云/.worktrees/course-environment`（已有 linked worktree，不要新建）。
-- 本轮提交（本地，未推送）：`f179263` fix(course): close attachment storage review findings I1-I4；`3172eea` fix(course): reclaim in-flight storage calls at the deadline。接手以 `git rev-parse HEAD` 为准。
+- 本轮提交（本地，未推送）：`f179263` fix(course): close attachment storage review findings I1-I4；`3172eea` fix(course): reclaim in-flight storage calls at the deadline；`cfc5479` feat(course): coordinate attachment recovery and cleanup（Task6）；`3b125f9` feat(course): expose safe attachment api routes（Task5）。接手以 `git rev-parse HEAD` 为准。
 - 授权沿用：附件设计/计划/多智能体并行/本地 Git 提交，验证完成后的推送合并授权仍在但**门未全过不推不并**。私有仓库 `yhx06/medical-cloud-platform`。Git 全局代理 `http://127.0.0.1:7890` 不反复改。
 - 保留未跟踪 `docs/course-architecture/Medical Cloud API Probe.eam` 与另一会话加在 `docs/AI-HANDOFF-2026-10-15.md` 的演示注记（其演示环境已不存在，该注记仅历史）。不清理、不顺手暂存。
 
@@ -42,8 +42,8 @@
 
 ## 5. 下一阶段（按已批准计划）
 
-1. **Task6 编排/回收**：NOT_SUPPORTED 编排、上传认领/真实解析/PUT 后重新认证、短事务发布、未知提交先新事务查库；AVAILABLE 不得猜失败删对象；持久墓碑、attempt/version fencing、迟到 PUT 回收、退避、重启恢复均需真实验证。迟到 PUT 补偿是设计的一部分，不能替代资源时限（I4 的 callTimeout/取消机制已就位）。
-2. **Task5 API**：设计八路由、认证→父资源授权→分页解析、稳定错误与安全审计；不得靠假 coordinator 让测试绿；与 Task6 先冻结接口、独占文件，最终联合 GREEN。
+1. ~~**Task6 编排/回收**~~ 已完成（`cfc5479`）：NOT_SUPPORTED 编排、认领/真实校验/PUT 后重认证、短事务发布、未知提交先新事务查库（AVAILABLE 保留、库不可读不删除不猜审计）、独立失败审计、持久墓碑/围栏/退避/枚举告警。15 项定向测试通过；WildFly JTA 与真实故障收敛仍留 Task8。
+2. ~~**Task5 API**~~ 已完成（`3b125f9`）：八路由、鉴权/父授权先于分页与内容、稳定错误码与封闭原因、200/202 删除语义、下载 no-store 不入列表。19 项定向测试 + 联合回归 435/0 失败。
 3. **Task8**：实际双容器/CDI/JTA 代理、数据源 RR、两类三格式上传、替换 ID/角色/租户矩阵、并发回滚、提交响应丢失、迟到 PUT/重启/删除失败、真实签名/脱敏日志、Chrome/Edge 及无 JS、从零环境复现、停 MinIO 核心链仍成功。必需门 skip 必须失败退出。
 4. **全系统剩余**（权威清单 `docs/course-labs/2026-10-04-full-scope-inventory.md`）：病情补充、病历草稿/更正、医院及管理员开通/状态、人员资料、跨号源患者时间冲突、支付流水唯一性、订单取消语义、完整分页/按 ID 恢复；处方与原需求排除冲突、可选评价/AI 按已批准材料核对；另有 50 并发/p95≤2秒、备份真实恢复、API/OpenAPI 与设计说明、云资源/HTTPS 授权、完整浏览器主流程、期末报告/PPT/演示/备用环境/真实成员贡献。
 
