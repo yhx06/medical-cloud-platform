@@ -132,7 +132,8 @@ $storageAppSecret = New-Secret 48
 $dbName = 'medical_cloud_course'
 $dbUser = 'attach_' + $ownerId.Substring(0,12)
 $bucket = 'medical-attachments-' + $ownerId.Substring(0,12)
-$prefix = 'files/'
+# Design section 5: object keys look like course-attachments/<file_uuid>/<random_uuid>.
+$prefix = 'course-attachments/'
 $mysqlOptions = Join-Path $root 'mysql-client.cnf'
 $credentialsFile = Join-Path $root 'credentials.json'
 $fixturePath = Join-Path $evidenceRoot 'fixture.json'

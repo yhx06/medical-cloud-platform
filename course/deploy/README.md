@@ -10,6 +10,17 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 
 持久化脱敏审计、13 个事件入口、保护性加表迁移及本地 MySQL/EJB/门户证据见 [审计专项验收（2026-10-08/09）](../../docs/course-labs/2026-10-04-audit-acceptance.md)。这是后续独立切片，新增 `audit_event`；已有课程库须先完成下述审计升级，不能沿用上一段“无结构变更”的部署结论。医院及平台浏览器筛选分页/布局/键盘、真实故障与登录恢复、停用本人已有历史已观察；真正禁JavaScript的Edge/headless/减少动画/原生键盘审计GET筛选及第二页已执行，失败尝试、交互范围与正常关闭边界详见专项记录。
 
+## 附件验收驱动
+
+部署并导入 schema/种子/附件迁移后，对一个已归属的夹具运行：
+
+```powershell
+& course/deploy/scripts/verify-attachments.ps1 -FixturePath '<夹具身份 json>' -EvidenceRoot '<Git 忽略证据目录>'
+```
+
+脚本逐门执行设计第 12 节验收（健康/两类三格式/分页与按 ID 恢复/限额/矩阵/审计脱敏/私有桶与签名），输出脱敏 JSON 摘要（found/executed/passed/failed/skipped/environment/limitations）；失败或必需门被 `-SkipGate` 跳过时退出码非 0。每次写入证据前执行归属校验，摘要不含签名材料。契约测试：`course/deploy/tests/attachments-acceptance.Tests.ps1 -FixturePath ... -EvidenceRoot ...`。验收结论见 [附件验收记录](../course-labs/2026-10-12-attachments-acceptance.md)。
+
+
 ## 准备
 
 - JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x。现有 PowerDesigner 模型为历史八表版本；按用户要求不再编辑或新增 PowerDesigner 图，当前结构以版本化 SQL/JPA/测试说明为准。

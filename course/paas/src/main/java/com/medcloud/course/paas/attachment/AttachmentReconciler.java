@@ -35,13 +35,13 @@ public class AttachmentReconciler {
         CleanupCandidate cleanupTarget(String fileId);
     }
 
-    private final CleanupTransactions db;
-    private final PrivateObjectStore store;
     private final String listPrefix;
+    @javax.ejb.EJB private AttachmentDatabaseService service;
+    @javax.inject.Inject private AttachmentConfiguration configuration;
+    private CleanupTransactions db;
+    private PrivateObjectStore store;
 
     public AttachmentReconciler() {
-        this.db = null;
-        this.store = null;
         this.listPrefix = OBJECT_KEY_ROOT;
     }
 
@@ -54,6 +54,15 @@ public class AttachmentReconciler {
     @Schedule(hour = "*", minute = "*", second = "0", persistent = false)
     public void scheduledSweep(Timer timer) {
         runBatch(Instant.now());
+    }
+
+    /** Delegates to the container-managed service; each call is its own transaction. */
+    private static final class ServiceCleanupTransactions implements CleanupTransactions {
+        private final AttachmentDatabaseService service;
+        ServiceCleanupTransactions(AttachmentDatabaseService service) { this.service = service; }
+        public List<CleanupCandidate> claimCleanupBatch(Instant now, int limit) { return service.claimCleanupBatch(now, limit); }
+        public void recordCleanup(String fileId, long expectedVersion, boolean confirmedAbsent, Instant now) { service.recordCleanup(fileId, expectedVersion, confirmedAbsent, now); }
+        public CleanupCandidate cleanupTarget(String fileId) { return service.cleanupTarget(fileId); }
     }
 
     public int runBatch(Instant now) {
@@ -130,12 +139,12 @@ public class AttachmentReconciler {
     }
 
     private CleanupTransactions db() {
-        if (db == null) throw new IllegalStateException("Cleanup transactions unavailable");
+        if (db == null) db = new ServiceCleanupTransactions(service);
         return db;
     }
 
     private PrivateObjectStore store() {
-        if (store == null) throw new IllegalStateException("Object store unavailable");
+        if (store == null) store = configuration.createStore();
         return store;
     }
 }
