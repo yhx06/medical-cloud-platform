@@ -12,6 +12,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AttachmentValidatorTest {
@@ -113,5 +114,78 @@ class AttachmentValidatorTest {
         AttachmentLimits shortLimits=new AttachmentLimits(10485760,20000000,200,4,2,3,90,1);
         long start=System.nanoTime();assertThrows(AttachmentException.class,()->validator.validate(slow,null,d,shortLimits,temp));
         assertTrue((System.nanoTime()-start)/1000000<2500,"receive total deadline");
+    }
+    @Test void handoffKeepsFileUntilCallerAccepts() throws Exception {
+        AttachmentValidator.TempFileHandoff handoff=new AttachmentValidator.TempFileHandoff();
+        Path file=Files.createTempFile(temp,"handoff-",".tmp");
+        assertTrue(handoff.offerFile(file));
+        ValidatedAttachment result=new ValidatedAttachment(file,"demo.png","image/png",1,digest(png()));
+        assertTrue(handoff.offerResult(result));
+        assertTrue(handoff.accept());
+        assertNull(handoff.abandon(),"accepted files belong to the caller and must not be reclaimed");
+        assertTrue(Files.isRegularFile(file),"successfully returned files must not be deleted");
+    }
+    @Test void handoffCompletionThenAbandonAlwaysCleansFile() throws Exception {
+        // Deterministic barrier interleaving of the completion/cancel race: whichever side loses owns cleanup.
+        for(int round=0;round<50;round++) {
+            AttachmentValidator.TempFileHandoff handoff=new AttachmentValidator.TempFileHandoff();
+            final Path file=Files.createTempFile(temp,"handoff-",".tmp");
+            handoff.offerFile(file);
+            final ValidatedAttachment result=new ValidatedAttachment(file,"demo.png","image/png",1,digest(png()));
+            final java.util.concurrent.CyclicBarrier barrier=new java.util.concurrent.CyclicBarrier(2);
+            final AtomicReference<Path> victim=new AtomicReference<>();
+            Thread worker=new Thread(()->{
+                await(barrier);
+                handoff.offerResult(result);
+                if(!handoff.handedOver())deleteQuietly(file);
+            });
+            Thread caller=new Thread(()->{
+                await(barrier);
+                victim.set(handoff.abandon());
+                if(victim.get()!=null)deleteQuietly(victim.get());
+            });
+            worker.start();caller.start();worker.join(5000);caller.join(5000);
+            assertFalse(Files.exists(file),"a completed validation abandoned by the caller must still be cleaned");
+        }
+    }
+    @Test void handoffAbandonBeforeCompletionRefusesResult() throws Exception {
+        AttachmentValidator.TempFileHandoff handoff=new AttachmentValidator.TempFileHandoff();
+        Path file=Files.createTempFile(temp,"handoff-",".tmp");
+        handoff.offerFile(file);
+        assertEquals(file,handoff.abandon());
+        Files.deleteIfExists(file);
+        assertFalse(handoff.offerResult(new ValidatedAttachment(file,"demo.png","image/png",1,digest(png()))),"abandoned handoff must refuse a late result");
+        assertFalse(handoff.handedOver(),"worker keeps cleanup duty after a refused result");
+    }
+    @Test void handoffAbandonBeforeFileCreationLetsWorkerClean() throws Exception {
+        AttachmentValidator.TempFileHandoff handoff=new AttachmentValidator.TempFileHandoff();
+        assertNull(handoff.abandon());
+        Path file=Files.createTempFile(temp,"handoff-",".tmp");
+        assertFalse(handoff.offerFile(file),"worker must learn the caller already abandoned");
+        assertFalse(handoff.handedOver());
+        Files.deleteIfExists(file);
+    }
+    @Test void timeoutWhileReceivingCleansCreatedTempFile() throws Exception {
+        byte[] bytes=png(); PrepareUploadRequest d=descriptor(bytes,"demo.png","image/png");
+        InputStream drip=new InputStream() {
+            public int read() throws IOException {
+                try{Thread.sleep(50);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException();}
+                return 1;
+            }
+        };
+        AttachmentLimits shortLimits=new AttachmentLimits(10485760,20000000,200,4,2,3,90,1);
+        assertThrows(AttachmentException.class,()->validator.validate(drip,null,d,shortLimits,temp));
+        long waitUntil=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(3);
+        while(System.nanoTime()<waitUntil) {
+            try(java.util.stream.Stream<Path> files=Files.list(temp)) { if(files.count()==0)return; }
+            Thread.sleep(50);
+        }
+        try(java.util.stream.Stream<Path> files=Files.list(temp)) { assertEquals(0,files.count(),"every failure path must eventually clean its temp file"); }
+    }
+    static void await(java.util.concurrent.CyclicBarrier barrier) {
+        try{barrier.await(5,java.util.concurrent.TimeUnit.SECONDS);}catch(Exception ex){throw new IllegalStateException(ex);}
+    }
+    static void deleteQuietly(Path file) {
+        try{Files.deleteIfExists(file);}catch(IOException ignored){}
     }
 }

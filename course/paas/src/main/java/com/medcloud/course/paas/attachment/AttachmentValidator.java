@@ -13,10 +13,25 @@ import java.nio.file.*;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @ApplicationScoped
 public class AttachmentValidator {
+    /**
+     * Explicit temp-file ownership shared by the validating worker and its caller.
+     * The worker offers the exact path and the successful result; ownership only
+     * passes with {@link #accept()}. If the caller gives up first, {@link #abandon()}
+     * returns the path to clean, so a completion/cancel race can never orphan it.
+     */
+    static final class TempFileHandoff {
+        private Path file;
+        private boolean completed, accepted, abandoned;
+        synchronized boolean offerFile(Path path) {this.file=path;return !abandoned;}
+        synchronized boolean offerResult(ValidatedAttachment result) {if(abandoned)return false;completed=true;return true;}
+        synchronized boolean accept() {if(abandoned||!completed)return false;accepted=true;return true;}
+        synchronized Path abandon() {abandoned=true;if(accepted)return null;return file;}
+        synchronized boolean handedOver() {return completed||accepted;}
+        synchronized boolean isAbandoned() {return abandoned;}
+    }
     private ThreadPoolExecutor workers;
     private synchronized ThreadPoolExecutor workers(AttachmentLimits limits) {
         if(workers==null) {
@@ -25,30 +40,40 @@ public class AttachmentValidator {
         }
         return workers;
     }
-    /** On success caller owns the returned exact path; every failure cleans its own temp file. */
+    /** On success caller owns the returned exact path; every failure is cleaned by worker and caller coordination. */
     public ValidatedAttachment validate(InputStream input,Long declaredLength,PrepareUploadRequest descriptor,AttachmentLimits limits,Path tempDirectory) {
         PrepareUploadRequest safe=AttachmentDescriptors.requireValid(descriptor,limits);
         if(input==null || tempDirectory==null || declaredLength!=null && declaredLength.longValue()!=safe.getSizeBytes())throw invalid();
-        AtomicBoolean canceled=new AtomicBoolean();
+        TempFileHandoff handoff=new TempFileHandoff();
         Future<ValidatedAttachment> future;
-        try { future=workers(limits).submit(()->receive(input,safe,limits,tempDirectory,canceled)); }
+        try { future=workers(limits).submit(()->receive(input,safe,limits,tempDirectory,handoff)); }
         catch(RejectedExecutionException ex) {throw new AttachmentException(429,"FILE_LIMIT_REACHED");}
-        try {return future.get(limits.getReceiveDeadlineSeconds(),TimeUnit.SECONDS);}
-        catch(InterruptedException ex) {canceled.set(true);future.cancel(true);Thread.currentThread().interrupt();throw invalid();}
-        catch(TimeoutException ex) {canceled.set(true);future.cancel(true);throw invalid();}
-        catch(ExecutionException ex) {if(ex.getCause() instanceof AttachmentException)throw (AttachmentException)ex.getCause();throw invalid();}
+        try {
+            ValidatedAttachment result=future.get(limits.getReceiveDeadlineSeconds(),TimeUnit.SECONDS);
+            if(!handoff.accept()) {abandon(handoff);throw invalid();}
+            return result;
+        }
+        catch(InterruptedException ex) {abandon(handoff);future.cancel(true);Thread.currentThread().interrupt();throw invalid();}
+        catch(TimeoutException ex) {abandon(handoff);future.cancel(true);throw invalid();}
+        catch(ExecutionException ex) {abandon(handoff);if(ex.getCause() instanceof AttachmentException)throw (AttachmentException)ex.getCause();throw invalid();}
     }
-    private ValidatedAttachment receive(InputStream input,PrepareUploadRequest d,AttachmentLimits limits,Path directory,AtomicBoolean canceled) {
-        Path file=null;boolean handedOff=false;
+    /** Caller gives up: claim the exact path from the shared state and clean whatever it still owns. */
+    private static void abandon(TempFileHandoff handoff) {
+        Path victim=handoff.abandon();
+        if(victim!=null)try{Files.deleteIfExists(victim);}catch(IOException ignored){}
+    }
+    private ValidatedAttachment receive(InputStream input,PrepareUploadRequest d,AttachmentLimits limits,Path directory,TempFileHandoff handoff) {
+        Path file=null;
         try {
             Path root=directory.toAbsolutePath().normalize();Files.createDirectories(root);
             if(Files.isSymbolicLink(root) || !Files.isDirectory(root,LinkOption.NOFOLLOW_LINKS))throw invalid();
             file=Files.createTempFile(root,"attachment-",".tmp");
+            if(!handoff.offerFile(file))throw invalid();
             MessageDigest digest=MessageDigest.getInstance("SHA-256");long length=0;
             try(OutputStream out=Files.newOutputStream(file)) {
                 byte[] buffer=new byte[8192];int read;
                 while((read=input.read(buffer))!=-1) {
-                    if(canceled.get()||Thread.currentThread().isInterrupted())throw invalid();
+                    if(handoff.isAbandoned()||Thread.currentThread().isInterrupted())throw invalid();
                     if(read==0)continue;
                     length+=read;if(length>limits.getMaxBytes())throw new AttachmentException(413,"FILE_TOO_LARGE");
                     if(length>d.getSizeBytes())throw invalid();out.write(buffer,0,read);digest.update(buffer,0,read);
@@ -58,12 +83,11 @@ public class AttachmentValidator {
             String actual=verifyFormat(file,limits,root);
             if(!actual.equals(d.getContentType()))throw new AttachmentException(415,"FILE_TYPE_UNSUPPORTED");
             ValidatedAttachment result=new ValidatedAttachment(file,d.getFileName(),actual,length,d.getSha256());
-            // Serialize cancellation and transfer, preventing an orphan if caller times out at completion.
-            synchronized(canceled) { if(canceled.get() || Thread.currentThread().isInterrupted())throw invalid();handedOff=true; }
+            if(!handoff.offerResult(result))throw invalid();
             return result;
         } catch(AttachmentException ex) {throw ex;}
         catch(Exception ex) {throw invalid();}
-        finally {if(!handedOff && file!=null)try{Files.deleteIfExists(file);}catch(IOException ignored){} }
+        finally {if(!handoff.handedOver() && file!=null)try{Files.deleteIfExists(file);}catch(IOException ignored){} }
     }
     private String verifyFormat(Path file,AttachmentLimits limits,Path directory) throws Exception {
         byte[] signature=new byte[8];try(InputStream in=Files.newInputStream(file)){if(in.read(signature)<5)throw invalid();}

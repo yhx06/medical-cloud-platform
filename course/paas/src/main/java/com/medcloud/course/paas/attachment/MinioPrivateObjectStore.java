@@ -1,5 +1,7 @@
 package com.medcloud.course.paas.attachment;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.medcloud.course.paas.sdk.internal.minio.*;
 import com.medcloud.course.paas.sdk.internal.minio.errors.ErrorResponseException;
 import com.medcloud.course.paas.sdk.internal.minio.http.Method;
@@ -8,11 +10,18 @@ import com.medcloud.course.paas.sdk.internal.minio.messages.VersioningConfigurat
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 
 /** Private, prefix-confined MinIO adapter. It never falls back to deployment root credentials. */
 public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCloseable {
+    private static final ObjectMapper POLICY_JSON=new ObjectMapper();
+    private static final DateTimeFormatter SIGNATURE_MOMENT=DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC);
     private final MinioClient internalClient;
     private final MinioClient publicClient;
     private final String bucket;
@@ -22,6 +31,9 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
     private final Object preflightLock=new Object();
     private volatile boolean preflightComplete;
     private volatile boolean closed;
+
+    /** One storage attempt bound by a single absolute deadline covering queueing, preflight and retries. */
+    private interface StoreOperation<T> { T run(long deadlineNanos) throws Exception; }
 
     public MinioPrivateObjectStore(String internalEndpoint,String publicEndpoint,String region,String bucket,
                                    String accessKey,String secretKey,String prefix,AttachmentLimits limits) {
@@ -34,18 +46,25 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
     }
 
     private static MinioClient client(String endpoint,String region,String accessKey,String secretKey,AttachmentLimits limits) {
-        MinioClient client=MinioClient.builder().endpoint(endpoint).region(region).credentials(accessKey,secretKey).build();
         long connect=Math.min(limits.getConnectTimeoutSeconds(),limits.getStoreDeadlineSeconds())*1000L;
         long total=limits.getStoreDeadlineSeconds()*1000L;
-        client.setTimeout(connect,total,total);
-        return client;
+        // callTimeout is the total HTTP call deadline: slow drips and retries cannot outlive it.
+        OkHttpClient http=new OkHttpClient().newBuilder()
+            .connectTimeout(connect,TimeUnit.MILLISECONDS)
+            .writeTimeout(total,TimeUnit.MILLISECONDS)
+            .readTimeout(total,TimeUnit.MILLISECONDS)
+            .callTimeout(total,TimeUnit.MILLISECONDS)
+            .protocols(Collections.singletonList(Protocol.HTTP_1_1))
+            .build();
+        return MinioClient.builder().endpoint(endpoint).region(region).credentials(accessKey,secretKey).httpClient(http,true).build();
     }
 
     @Override public void put(String objectKey,ValidatedAttachment content) {
         requireKey(objectKey);
         if(content==null||content.getPath()==null||content.getSha256()==null)throw invalid();
-        execute(()->{
-            preflight();
+        execute(deadline->{
+            preflight(deadline);
+            checkDeadline(deadline);
             if(!Files.isRegularFile(content.getPath())||Files.size(content.getPath())!=content.getSizeBytes())throw invalid();
             Map<String,String> metadata=Collections.singletonMap("sha256",content.getSha256());
             try(InputStream input=Files.newInputStream(content.getPath())) {
@@ -58,8 +77,9 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
 
     @Override public StoreObjectInfo head(String objectKey) {
         requireKey(objectKey);
-        return execute(()->{
-            preflight();
+        return execute(deadline->{
+            preflight(deadline);
+            checkDeadline(deadline);
             try {
                 StatObjectResponse response=internalClient.statObject(StatObjectArgs.builder().bucket(bucket).object(objectKey).build());
                 String sha=metadata(response.userMetadata(),"sha256");
@@ -72,48 +92,57 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
     @Override public StoreDownload signGet(AttachmentSnapshot file,Instant issuedAt,int ttlSeconds) {
         if(file==null||issuedAt==null||ttlSeconds<1||ttlSeconds>604800)throw invalid();
         requireKey(file.getObjectKey());
-        return execute(()->{
-            preflight();
+        return execute(deadline->{
+            preflight(deadline);
+            checkDeadline(deadline);
             String url=publicClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder().method(Method.GET)
                 .bucket(bucket).object(file.getObjectKey()).expiry(ttlSeconds).build());
-            return new StoreDownload(url,issuedAt.plusSeconds(ttlSeconds));
+            // Design: expiresAt is the signature generation moment plus the TTL, not an earlier issuedAt.
+            Instant signedAt=signatureMoment(url);
+            return new StoreDownload(url,signedAt.plusSeconds(ttlSeconds));
         });
     }
 
     @Override public void delete(String objectKey) {
         requireKey(objectKey);
-        execute(()->{preflight();internalClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());return null;});
+        execute(deadline->{preflight(deadline);checkDeadline(deadline);internalClient.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());return null;});
     }
 
     @Override public List<String> listKeys(String requestedPrefix,String afterKey,int limit) {
         requireListPrefix(requestedPrefix);
         if(afterKey!=null)requireKey(afterKey);
         if(limit<1||limit>100)throw invalid();
-        return execute(()->{
-            preflight();
+        return execute(deadline->{
+            preflight(deadline);
+            checkDeadline(deadline);
             List<String> keys=new ArrayList<>();
-            Iterable<Result<Item>> results=internalClient.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix(requestedPrefix)
-                .startAfter(afterKey).recursive(true).maxKeys(limit).build());
-            for(Result<Item> result:results) {
-                String key=result.get().objectName();
-                if(key!=null&&key.startsWith(prefix)&&keys.size()<limit)keys.add(key);
+            Iterator<Result<Item>> results=internalClient.listObjects(ListObjectsArgs.builder().bucket(bucket).prefix(requestedPrefix)
+                .startAfter(afterKey).recursive(true).maxKeys(limit).build()).iterator();
+            // maxKeys is a page size, not a total cap: stop consuming as soon as the batch is full.
+            while(keys.size()<limit&&results.hasNext()) {
+                checkDeadline(deadline);
+                String key=results.next().get().objectName();
+                if(key!=null&&key.startsWith(prefix))keys.add(key);
             }
             Collections.sort(keys);return keys;
         });
     }
 
-    private void preflight() throws Exception {
+    private void preflight(long deadline) throws Exception {
         if(preflightComplete)return;
         synchronized(preflightLock) {
             if(preflightComplete)return;
+            checkDeadline(deadline);
             VersioningConfiguration versioning=internalClient.getBucketVersioning(GetBucketVersioningArgs.builder().bucket(bucket).build());
             if(versioning!=null&&versioning.status()!=null&&versioning.status()!=VersioningConfiguration.Status.OFF)throw unavailable();
             try {
+                checkDeadline(deadline);
                 if(internalClient.getObjectLockConfiguration(GetObjectLockConfigurationArgs.builder().bucket(bucket).build())!=null)throw unavailable();
             } catch(ErrorResponseException ex) {
                 if(!isCode(ex,"ObjectLockConfigurationNotFoundError","NoSuchObjectLockConfiguration","NotFound"))throw ex;
             }
             try {
+                checkDeadline(deadline);
                 String policy=internalClient.getBucketPolicy(GetBucketPolicyArgs.builder().bucket(bucket).build());
                 if(grantsAnonymousAccess(policy))throw unavailable();
             } catch(ErrorResponseException ex) {
@@ -123,23 +152,75 @@ public final class MinioPrivateObjectStore implements PrivateObjectStore, AutoCl
         }
     }
 
-    private static boolean grantsAnonymousAccess(String policy) {
+    /**
+     * Fail-closed structural scan of a bucket policy: any statement that allows an
+     * anonymous principal, or any shape we cannot prove safe, blocks the operation.
+     */
+    static boolean grantsAnonymousAccess(String policy) {
         if(policy==null||policy.trim().isEmpty())return false;
-        String compact=policy.replaceAll("\\s+","");
-        return compact.contains("\"Effect\":\"Allow\"")&&
-            (compact.contains("\"Principal\":\"*\"")||compact.contains("\"AWS\":\"*\""));
+        JsonNode root;
+        try {root=POLICY_JSON.readTree(policy);} catch(Exception ex) {return true;}
+        if(root==null||!root.isObject())return true;
+        JsonNode statements=root.get("Statement");
+        if(statements==null||statements.isNull())return true;
+        if(statements.isObject())return statementGrantsAnonymous(statements);
+        if(!statements.isArray())return true;
+        for(JsonNode statement:statements)if(statementGrantsAnonymous(statement))return true;
+        return false;
     }
 
-    private <T> T execute(Callable<T> operation) {
+    private static boolean statementGrantsAnonymous(JsonNode statement) {
+        if(statement==null||!statement.isObject())return true;
+        JsonNode effect=statement.get("Effect");
+        if(effect==null||!effect.isTextual())return true;
+        if("Deny".equals(effect.asText()))return false;
+        if(!"Allow".equals(effect.asText()))return true;
+        if(statement.has("NotPrincipal")&&!statement.get("NotPrincipal").isNull())return true;
+        JsonNode principal=statement.get("Principal");
+        if(principal==null||principal.isNull())return true;
+        return principalIsAnonymous(principal);
+    }
+
+    private static boolean principalIsAnonymous(JsonNode principal) {
+        if(principal.isTextual())return "*".equals(principal.asText());
+        if(principal.isArray()) {for(JsonNode item:principal)if(principalIsAnonymous(item))return true;return false;}
+        if(principal.isObject()) {
+            if(principal.size()==0)return true;
+            Iterator<Map.Entry<String,JsonNode>> fields=principal.fields();
+            while(fields.hasNext())if(principalIsAnonymous(fields.next().getValue()))return true;
+            return false;
+        }
+        return true;
+    }
+
+    /** Exact signature moment recorded in the presigned URL; unknown shapes are rejected. */
+    private static Instant signatureMoment(String url) {
+        if(url==null)throw unavailable();
+        int at=url.indexOf("X-Amz-Date=");
+        if(at<0)throw unavailable();
+        String value=url.substring(at+"X-Amz-Date=".length());
+        int end=value.indexOf('&');
+        if(end>=0)value=value.substring(0,end);
+        try {return LocalDateTime.parse(value,SIGNATURE_MOMENT).toInstant(ZoneOffset.UTC);}
+        catch(Exception ex) {throw unavailable();}
+    }
+
+    private <T> T execute(StoreOperation<T> operation) {
         if(closed)throw unavailable();
+        long deadlineNanos=System.nanoTime()+TimeUnit.SECONDS.toNanos(deadlineSeconds);
         Future<T> future;
-        try {future=calls.submit(operation);} catch(RejectedExecutionException ex){throw unavailable();}
+        try {future=calls.submit(()->operation.run(deadlineNanos));} catch(RejectedExecutionException ex){throw unavailable();}
         try {return future.get(deadlineSeconds,TimeUnit.SECONDS);}
         catch(TimeoutException ex){future.cancel(true);throw unavailable();}
         catch(InterruptedException ex){future.cancel(true);Thread.currentThread().interrupt();throw unavailable();}
         catch(ExecutionException ex){
             Throwable cause=ex.getCause();if(cause instanceof AttachmentException)throw (AttachmentException)cause;throw unavailable();
         }
+    }
+
+    private static void checkDeadline(long deadlineNanos) {
+        // A cancelled attempt must not start another storage call; clear the flag for the pooled thread.
+        if(Thread.interrupted()||System.nanoTime()-deadlineNanos>=0)throw unavailable();
     }
 
     private void requireKey(String key) {

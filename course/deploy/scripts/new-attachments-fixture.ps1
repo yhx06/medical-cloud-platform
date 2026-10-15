@@ -23,6 +23,7 @@ $required = @(
 foreach ($path in $required) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Required local runtime binary unavailable; no files changed' }
 }
+. (Join-Path $PSScriptRoot 'attachments-storage-policy.ps1')
 
 function New-Secret([int]$Length) {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
@@ -179,10 +180,7 @@ try {
         Invoke-PrivateMc @('mb',"attachments_fixture/$bucket")
         Invoke-PrivateMc @('anonymous','set','none',"attachments_fixture/$bucket")
         $policyPath=Join-Path $root 'storage-policy.json'
-        $policy=[ordered]@{Version='2012-10-17';Statement=@(
-            [ordered]@{Effect='Allow';Action=@('s3:ListBucket');Resource=@("arn:aws:s3:::$bucket");Condition=@{'StringLike'=@{'s3:prefix'=@($prefix + '*')}}},
-            [ordered]@{Effect='Allow';Action=@('s3:GetObject','s3:PutObject','s3:DeleteObject');Resource=@("arn:aws:s3:::$bucket/$prefix*")}
-        )}
+        $policy=Get-AttachmentsStoragePolicy -Bucket $bucket -Prefix $prefix
         Save-PrivateText $policyPath ($policy | ConvertTo-Json -Depth 10)
         Invoke-PrivateMc @('admin','user','add','attachments_fixture',$storageAppKey,$storageAppSecret)
         $policyName='attachments-' + $ownerId.Substring(0,12)
