@@ -22,7 +22,7 @@
 - 旧complete无草稿时允许缺省complaint/expectedDraftRevision；有草稿必须匹配revision。本次四字段完整提交，不暗中混合缺省草稿值。
 - 医院冻结允许授权历史读取、不允许新写；账号停用拒绝；患者tenant_id可空。管理员无临床正文访问权。
 - 成功审计与业务同事务、失败在业务事务结束后独立记录；不改AuditOperationRunner单业务EJB约束。正文/更正原因/before/after不入通用审计、错误或日志。
-- 普通JSON上限1MiB；历史分页page/pageSize默认1/20、页长1～100、稳定序号；先授权再解析分页，总数及行同视图。
+- 普通JSON上限1MiB；完整正文更正历史分页page/pageSize默认1/5、页长1～5、稳定序号（用户已批准尺寸冲突修订，其他列表不变）；先授权再解析分页，总数及行同视图。
 - Portal全部写表单POST+CSRF，PRG、禁JS可用、UTF8及转义，正文不入URL/flash/长期session/localStorage。
 - 新表InnoDB/utf8mb4/MySQL5.6语法，无级联/JSON/CHECK/8专用；生产JPA validate，不自动DDL。旧数据描述null、时间null、revision0。
 - 004前置003十表精确基线，先身份/结构校验及成功全库备份，失败不DROP/覆盖恢复/重跑seed；004后不将旧003拒绝最新结构误判成幂等成功。
@@ -97,7 +97,7 @@ ClinicalService新增complete(CurrentActor,String appointmentId,String complaint
 
 **Interfaces:** 消费Task3全部签名；路由与DTO恰为Spec6表。现有complete调用新重载传expectedDraftRevision；其他旧响应不变。ClinicalSupplementException映射固定status/code/requestId，拒绝自由文本。查询/错误信息不得含未授权正文；成功写入口@AuditTracked+AuditOperationRunner单业务EJB，不另调用多个业务事务。
 
-- [ ] 测试 anonymousBeforeInvalidPage401、foreignParentDeniedBeforePagination、administratorCannotReadDraftOrCorrections、crossPatientAndUnassignedDoctor403、requestCannotOverrideActorTenantTime、newErrorsHaveSafeRequestId、oldCompleteNoDraftCompatibility、withDraftMissingRevision409、repeatedCorrectionOneRowAndNoChangeAudit；实际RESTEasy派发，不只调用方法。
+- [ ] 测试 anonymousBeforeInvalidPage401、foreignParentDeniedBeforePagination、administratorCannotReadDraftOrCorrections、crossPatientAndUnassignedDoctor403、requestCannotOverrideActorTenantTime、newErrorsHaveSafeRequestId、oldCompleteNoDraftCompatibility、withDraftMissingRevision409、repeatedCorrectionOneRowAndNoChangeAudit、fiveFullLengthUnicodeCorrectionsFitOneMiB、authorizedPageSizeSixRejected400；实际RESTEasy派发，不只调用方法。容量断言在真实JSON响应UTF8字节上执行，不仅算Java字符数。
 - [ ] RED：M -pl paas -am -Dtest=ClinicalSupplementDispatchTest,ClinicalSupplementResourceTest -Dsurefire.failIfNoSpecifiedTests=false test；路由/行为失败而非占位service。
 - [ ] 实现独立资源及旧complete最小接线、分页先授权、DTO请求验证及安全失败审计。after从客户端读入须支持容器JSON构造，不能测试专用ObjectMapper替代真实JSON门。
 - [ ] GREEN：同命令及ApiFailureTest/AuditRequestIdsTest/AttachmentDispatchTest回归。精确提交 `feat(course): expose clinical supplement endpoints`。
@@ -129,4 +129,4 @@ ClinicalService新增complete(CurrentActor,String appointmentId,String complaint
 
 Spec1～3→Tasks1/3/5；4→Tasks2/3；5→Tasks3/4/6；6→Tasks1/4/5；7→Tasks1/3/4/5/6；8→Tasks2/6；9→各任务TDD/审查/Task6。五项ReviewFocus均有具名测试，原始/有效字段无混用，operationKey/expectedRevision/审计requestId独立；共享文件已明确单一所有者。
 
-计划仍待用户审阅确认。多智能体执行方式已经选定，不再重复询问方式；批准后按上述依赖推进。附件验收可在此期间继续，但任何临床实机部署等附件故障窗口退出后串行执行。
+用户已确认本计划并要求开始并行实施；更正历史每页最多5条的后续修订亦已确认，不再重复询问设计、计划或执行方式。按上述依赖推进。附件验收可在此期间继续，但任何临床实机部署等附件故障窗口退出后串行执行。
