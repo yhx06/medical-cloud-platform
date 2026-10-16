@@ -15,7 +15,8 @@
     <td><%= stateBadge(appointment.path("status").asText()) %></td>
     <td>
       <% if(appointment.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
-      <a href="<%= context %>/doctor/files?appointmentId=<%= id %>">查看患者资料</a><% } %>
+      <a href="<%= context %>/doctor/files?appointmentId=<%= id %>">查看患者资料</a>
+      <% if("IN_PROGRESS".equals(appointment.path("status").asText()) || "BOOKED".equals(appointment.path("status").asText())){ %><a href="<%= context %>/doctor/clinical?appointmentId=<%= id %>">打开私有接诊草稿与完成工作区</a><% } %><% } %>
       <% if (!workspaceWritable) { %><span class="read-only-reason"><%= readOnlyReason(hospitalContext == null ? "" : hospitalContext.path("status").asText()) %></span>
       <% } else if ("BOOKED".equals(appointment.path("status").asText())) { %>
       <form method="post" action="<%= context %>/doctor/start">
@@ -23,15 +24,7 @@
         <input type="hidden" name="appointmentId" value="<%= id %>"><button type="submit">开始接诊</button>
       </form>
       <% } else if ("IN_PROGRESS".equals(appointment.path("status").asText())) { %>
-      <form method="post" action="<%= context %>/doctor/complete" class="clinical-form">
-        <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
-        <input type="hidden" name="appointmentId" value="<%= id %>">
-        <label>主诉<textarea name="complaint" maxlength="500" required></textarea></label>
-        <label>诊断<input name="diagnosis" maxlength="500" required></label>
-        <label>建议<textarea name="advice" maxlength="2000" required></textarea></label>
-        <label>备注<textarea name="notes" maxlength="2000"></textarea></label>
-        <button type="submit">完成接诊并生成账单</button>
-      </form>
+      <span class="subtle">请进入接诊工作区保存草稿或完成诊疗</span>
       <% } else if ("CANCELED".equals(appointment.path("status").asText())) { %><span class="subtle">已取消</span>
       <% } else { %><span class="subtle">已完成</span><% } %>
     </td></tr>
@@ -42,7 +35,7 @@
 </section>
 <section class="card" id="clinical-history">
   <div class="section-heading"><div><p class="section-kicker">02 / CLINICAL RECORDS</p><h2>我的病历</h2></div></div>
-  <p class="subtle" id="record-filter-help">按接诊完成日期筛选；起止日期可留空，开始日期不得晚于结束日期。</p>
+  <p class="subtle" id="record-filter-help">此表展示原始病历；当前有效版本及更正历史请打开详情。按接诊完成日期筛选；起止日期可留空，开始日期不得晚于结束日期。</p>
   <%= sectionError(request, "recordsError") %>
   <form method="get" action="<%= context %>/doctor#clinical-history" class="inline-form" aria-describedby="record-filter-help">
     <label>开始日期<input type="date" name="from" value="<%= request.getAttribute("from") == null ? "" : request.getAttribute("from") %>"></label>
@@ -62,6 +55,7 @@
     <td><%= WebEscaper.html(record.path("advice").asText()) %></td>
     <td><%= WebEscaper.html(record.path("notes").asText("")) %>
       <% if(record.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
+      <a href="<%= context %>/doctor/record-details?recordId=<%= WebEscaper.html(record.path("id").asText()) %>">原始、有效病历与更正历史</a>
       <a href="<%= context %>/doctor/files?recordId=<%= WebEscaper.html(record.path("id").asText()) %>">查阅或追加病历附件</a><% } %></td></tr>
   <% } %>
   </tbody></table></div>

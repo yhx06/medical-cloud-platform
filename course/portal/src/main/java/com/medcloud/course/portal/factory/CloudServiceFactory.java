@@ -14,9 +14,9 @@ public final class CloudServiceFactory {
         }
         switch (role) {
             case PATIENT:
-                return facade("/patient", "患者门户", "view-slots", "book", "view-record", "view-order", "pay", "view-files", "upload-files", "delete-files", "download-files");
+                return facade("/patient", "患者门户", "view-slots", "book", "view-record", "view-order", "pay", "view-files", "upload-files", "delete-files", "download-files", "supplement-complaint", "view-record-details");
             case DOCTOR:
-                return facade("/doctor", "医生门户", "view-appointments", "start", "complete", "view-files", "upload-files", "download-files");
+                return facade("/doctor", "医生门户", "view-appointments", "start", "complete", "view-files", "upload-files", "download-files", "save-draft", "view-record-details", "append-correction");
             case HOSPITAL_ADMIN:
                 return facade("/hospital", "医院门户", "view-slots", "view-statistics");
             case PLATFORM_ADMIN:

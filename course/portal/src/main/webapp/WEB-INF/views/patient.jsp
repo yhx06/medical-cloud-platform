@@ -100,6 +100,8 @@
       <a class="record-link" href="<%= WebEscaper.html(recordUrl) %>">查看病历与账单</a>
       <% } } %>
       <% if(appointment.path("id").asText().matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")){ %>
+      <a href="<%= context %>/patient/complaint?appointmentId=<%= WebEscaper.html(appointment.path("id").asText()) %>">补充或查阅病情</a>
+      <% if("COMPLETED".equals(appointment.path("status").asText())){ %><a href="<%= context %>/patient/record-details?appointmentId=<%= WebEscaper.html(appointment.path("id").asText()) %>">查看原始、有效病历与更正历史</a><% } %>
       <a href="<%= context %>/patient/files?appointmentId=<%= WebEscaper.html(appointment.path("id").asText()) %>">查看诊疗附件</a><% } %></td></tr>
   <% } %></tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无预约记录，完成挂号后可在这里查看。</p><% } %>
@@ -121,7 +123,7 @@
   <% JsonNode record = (JsonNode) request.getAttribute("record");
      JsonNode order = (JsonNode) request.getAttribute("order");
      if (record != null) { %>
-    <div class="result"><h3>诊断结果</h3><p><%= WebEscaper.html(record.path("diagnosis").asText()) %></p>
+    <div class="result"><h3>原始诊断结果</h3><p>当前有效版本与更正历史请打开预约的病历详情。</p><p><%= WebEscaper.html(record.path("diagnosis").asText()) %></p>
     <h3>医生建议</h3><p><%= WebEscaper.html(record.path("advice").asText()) %></p></div>
   <% } if (order != null) { %>
     <div class="result"><h3>诊疗账单</h3><p><span class="money">¥<%= WebEscaper.html(order.path("amount").asText()) %></span> · <%= stateBadge(order.path("status").asText()) %></p>

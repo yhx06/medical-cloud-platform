@@ -80,7 +80,7 @@ class WorkspaceJspTest {
                 if ("patient".equals(page) || "doctor".equals(page)) {
                     request.setAttribute("appointments", JSON.readTree("["
                             + "{\"id\":\"booked-id\",\"status\":\"BOOKED\",\"patientId\":\"patient-id\",\"slotId\":\"slot-id\"},"
-                            + "{\"id\":\"progress-id\",\"status\":\"IN_PROGRESS\"},"
+                            + "{\"id\":\"11111111-1111-1111-1111-111111111111\",\"status\":\"IN_PROGRESS\"},"
                             + "{\"id\":\"done-id\",\"status\":\"COMPLETED\"},"
                             + "{\"id\":\"cancel-id\",\"status\":\"CANCELED\"}]"));
                     request.setAttribute("slots", JSON.readTree("[{\"id\":\"bookable-slot\",\"date\":\"2030-01-01\",\"startTime\":\"09:00\",\"endTime\":\"10:00\",\"departmentId\":\"department-id\",\"doctorId\":\"doctor-id\",\"remaining\":1,\"capacity\":2,\"fee\":39}]"));
@@ -252,19 +252,17 @@ class WorkspaceJspTest {
     }
 
     @Test
-    void doctorNavigationKeepsClinicalInputsAndLocalizesAppointmentStates() throws Exception {
+    void doctorNavigationOpensPrivateClinicalWorkspaceAndLocalizesAppointmentStates() throws Exception {
         String html = render("doctor");
         assertSectionLinks(html, "接诊工作台", "病历记录");
         assertStates(html, "已预约", "接诊中", "已完成", "已取消");
         assertTrue(html.contains("action=\"/portal/doctor/start\""));
-        assertTrue(html.contains("action=\"/portal/doctor/complete\""));
-        for (String field : new String[]{"complaint", "diagnosis", "advice", "notes", "csrfToken"})
-            assertTrue(html.contains("name=\"" + field + "\""), field);
+        assertTrue(html.contains("href=\"/portal/doctor/clinical?appointmentId=11111111-1111-1111-1111-111111111111\""));
         assertTrue(html.contains("12345678-1234-1234-1234-123456789012"));
         assertTrue(html.contains("演示主诉 &lt;script&gt;unsafe&lt;/script&gt;"));
         assertFalse(html.contains("<script>unsafe</script>"));
-        assertFormField(html, "/portal/doctor/complete", "appointmentId", "progress-id");
-        assertFormField(html, "/portal/doctor/complete", "csrfToken", "fixture-csrf");
+        assertFormField(html, "/portal/doctor/start", "appointmentId", "booked-id");
+        assertFormField(html, "/portal/doctor/start", "csrfToken", "fixture-csrf");
     }
 
     @Test
