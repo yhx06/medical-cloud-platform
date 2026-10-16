@@ -1,4 +1,4 @@
-param([ValidateSet('Banner','Bom','Empty','ExistingMismatch','All')][string]$Regression = 'All')
+param([ValidateSet('Banner','Bom','Empty','ExistingMismatch','Boundary','PercentPath','TempPath','All')][string]$Regression = 'All')
 $ErrorActionPreference = 'Stop'
 $script = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\scripts\configure-wildfly.ps1')).Path
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ("course-wildfly-preflight-" + [guid]::NewGuid().ToString('N'))
@@ -14,9 +14,12 @@ $originalExit = $env:CLI_EXIT
 $originalStage = $env:CLI_FAIL_STAGE
 $originalEmpty = $env:CLI_EMPTY_SUCCESS
 $originalDatasource = $env:CLI_DATASOURCE_FILE
+$originalBoundaryAlias = $env:CLI_BOUNDARY_ALIAS
+$originalTemp = $env:TEMP
+$originalTmp = $env:TMP
 New-Item -ItemType Directory -Path $scratch | Out-Null
 try {
-    $expected = Join-Path $scratch '课程-wildfly'
+    $expected = Join-Path $scratch '课程 wildfly'
     $other = Join-Path $scratch 'other-wildfly'
     $bin = Join-Path $expected 'bin'
     New-Item -ItemType Directory -Path $bin, $other | Out-Null
@@ -91,6 +94,47 @@ exit /b 0
     $module = Join-Path $expected 'modules\system\layers\base\com\mysql\main'
     $controller = '127.0.0.1:19990'
     $env:CLI_EXIT = ''; $env:CLI_BANNER = ''; $env:CLI_FAIL_STAGE = ''; $env:CLI_EMPTY_SUCCESS = ''
+
+    if ($Regression -in @('Boundary','All')) {
+        $marker = Join-Path $scratch 'cmd-boundary-marker.txt'
+        # The only injected action is a harmless echo to this test-owned marker.
+        $unsafeController = '127.0.0.1:19990" & echo CMD_BOUNDARY_MARKER>"' + $marker + '" & rem "'
+        $rejected = $false
+        try { & $script -WildFlyHome $expected -ConnectorJar $jar -Controller $unsafeController -DriverOnly | Out-Null }
+        catch { $rejected = $true }
+        if (Test-Path -LiteralPath $marker) { throw 'Controller escaped cmd argument boundary and emitted marker before home guard' }
+        if (-not $rejected -or (Test-Path -LiteralPath $env:CLI_TRACE)) { throw 'Unsafe controller reached native CLI' }
+        if (Test-Path -LiteralPath $module) { throw 'Unsafe controller wrote module files' }
+        if ($Regression -eq 'Boundary') { Write-Output 'configure-wildfly controller shell boundary: PASS'; return }
+    }
+    if ($Regression -in @('PercentPath','TempPath','All')) {
+        $env:CLI_BOUNDARY_ALIAS = 'expanded'
+        $literalHome = Join-Path $scratch 'wildfly-%CLI_BOUNDARY_ALIAS%'
+        $expandedHome = Join-Path $scratch 'wildfly-expanded'
+        foreach ($fixtureHome in @($literalHome, $expandedHome)) {
+            $homeBin = Join-Path $fixtureHome 'bin'
+            New-Item -ItemType Directory -Path $homeBin | Out-Null
+            Copy-Item -LiteralPath $fakeCli -Destination (Join-Path $homeBin 'jboss-cli.bat')
+        }
+        [IO.File]::WriteAllText($env:CLI_RESPONSE_FILE, '{"outcome" => "success", "result" => "' + $literalHome.Replace('\','\\') + '"}')
+        if ($Regression -ne 'TempPath') {
+            $rejected = $false
+            try { & $script -WildFlyHome $literalHome -ConnectorJar $jar -Controller $controller -DriverOnly | Out-Null }
+            catch { $rejected = $true }
+            if (-not $rejected -or (Test-Path -LiteralPath $env:CLI_TRACE)) { throw 'Percent-containing CLI path expanded and reached native CLI' }
+        }
+        $literalTemp = Join-Path $scratch 'temp-%CLI_BOUNDARY_ALIAS%'
+        New-Item -ItemType Directory -Path $literalTemp | Out-Null
+        [IO.File]::WriteAllText($env:CLI_RESPONSE_FILE, '{"outcome" => "success", "result" => "' + $expected.Replace('\','\\') + '"}')
+        try {
+            $env:TEMP = $literalTemp; $env:TMP = $literalTemp
+            $rejected = $false
+            try { & $script -WildFlyHome $expected -ConnectorJar $jar -Controller $controller -DriverOnly | Out-Null }
+            catch { $rejected = $true }
+            if (-not $rejected -or (Test-Path -LiteralPath $env:CLI_TRACE)) { throw 'Percent-containing TEMP path was not refused before native invocation' }
+        } finally { $env:TEMP = $originalTemp; $env:TMP = $originalTmp }
+        if ($Regression -in @('PercentPath','TempPath')) { Write-Output 'configure-wildfly literal percent path boundaries: PASS'; return }
+    }
 
     Set-Content -LiteralPath $env:CLI_RESPONSE_FILE -Encoding UTF8 -Value @(
         '{',
@@ -242,7 +286,7 @@ exit /b 0
             if (Test-Path -LiteralPath $temporaryPath) { throw "Temporary source remains after $stage failure" }
         }
     }
-    Write-Output "configure-wildfly: PASS (32 behavioral checks; PowerShell $($PSVersionTable.PSVersion); $Regression)"
+    Write-Output "configure-wildfly: PASS (35 behavioral checks; PowerShell $($PSVersionTable.PSVersion); $Regression)"
 } finally {
     $env:CLI_TRACE = $originalTrace
     $env:CLI_RESPONSE_FILE = $originalResponse
@@ -255,6 +299,9 @@ exit /b 0
     $env:CLI_FAIL_STAGE = $originalStage
     $env:CLI_EMPTY_SUCCESS = $originalEmpty
     $env:CLI_DATASOURCE_FILE = $originalDatasource
+    $env:CLI_BOUNDARY_ALIAS = $originalBoundaryAlias
+    $env:TEMP = $originalTemp
+    $env:TMP = $originalTmp
     [Console]::OutputEncoding = $originalEncoding
     $resolvedScratch = [IO.Path]::GetFullPath($scratch)
     if ($resolvedScratch.StartsWith([IO.Path]::GetFullPath([IO.Path]::GetTempPath()),

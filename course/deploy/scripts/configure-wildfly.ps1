@@ -7,18 +7,27 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Controller is an endpoint token, never cmd syntax. Validate before invoking a batch file.
+if ($Controller -cmatch '[^A-Za-z0-9_.:\[\]/+\-]') { throw 'Unsupported WildFly controller characters' }
 $wildflyRoot = (Resolve-Path -LiteralPath $WildFlyHome).Path
 $jar = (Resolve-Path -LiteralPath $ConnectorJar).Path
 $cli = Join-Path $wildflyRoot 'bin\jboss-cli.bat'
+# cmd expands percent expressions even inside quotes; refuse literal percent paths.
+if ($cli.Contains('%') -or ([IO.Path]::GetTempPath()).Contains('%')) {
+    throw 'WildFly CLI and temporary directory paths must not contain percent characters'
+}
 if (-not (Test-Path -LiteralPath $cli)) { throw "WildFly CLI missing: $cli" }
 $previousJbossHome = $env:JBOSS_HOME
 $previousJavaToolOptions = $env:JAVA_TOOL_OPTIONS
 $previousOutputEncoding = [Console]::OutputEncoding
 # Read native streams directly: PS5.1 otherwise promotes Java stderr banners to errors.
 function Invoke-WildFlyCli([string]$Operation) {
+    foreach ($argument in @($cli, $Controller, $Operation)) {
+        if ($argument -match '["%\r\n]') { throw 'Unsafe WildFly CLI argument' }
+    }
     $start = New-Object System.Diagnostics.ProcessStartInfo
     $start.FileName = $env:ComSpec
-    $start.Arguments = '/d /s /c ""' + $cli + '" "--controller=' + $Controller + '" "--connect" "' + $Operation + '""'
+    $start.Arguments = '/d /v:off /s /c ""' + $cli + '" "--controller=' + $Controller + '" "--connect" "' + $Operation + '""'
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
