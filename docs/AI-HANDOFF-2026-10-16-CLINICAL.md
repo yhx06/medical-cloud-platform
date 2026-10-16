@@ -2,6 +2,14 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+最新优先状态：验收驱动三项Important已由原作者Fix1修复并经原reviewer正式窄复审3 ADDRESSED/无新增Critical或Important；根代理独立全行为复跑会话10816退出0，40场景303断言零失败，两SHA匹配。精确驱动/测试两文件提交 `2b9c835`；权限契约及证据分层的两文档勘误另经窄审批准，提交 `09946cc`。原始失败及21/174历史保留，不代表完整Task6通过。原驱动作者及两审查者目前已完成，不重派实现。
+
+根代理真实HTTP验收会话 **31295** 正在运行（本检查点最后一次观察确认仍live，尚未取得最终摘要）。命令使用当前clinical-running-20261016-fixture.json、clinical-application/accounts.json及同目录clinical-evidence私有证据父目录；全部源码冻结，不能同时部署/故障注入、修改driver或重新准备预约。请首先轮询同一会话，不因观察超时重跑。当前真实只读SQL进度曾见两条COMPLETED、一条BOOKED、一条CANCELED、草稿0；这些只是阶段观察，不是整条业务链或更正验收通过。此运行会消耗main/legacy目标；browser目标仍独立。结束后读取本次新UUID证据目录的clinical-supplements-summary.json及实际退出值。未验证外部门应非零；缺失最终摘要不算通过。不能盲重跑已经接诊/更正过的目标。
+
+额外真实只读API预检15153退出0：四目标归属/状态、null/null/revision0病情及三个初始BOOKEDworkspace无草稿/病历正确（这是启动真实驱动前的快照，不是现在状态）。浏览器工具实际库存只有IAB及MCP Apps，Chrome创建返回不可用；IAB医疗云登录页已观察中文布局并保留tab1交接，但没有登录临床操作，不能替代Chrome/Edge/禁JS/键盘门。所有原全系统缺口及附件/JTA/浏览器/故障检查仍保留。
+
+2026-10-17当前优先状态：驱动独立首审 `task-6-driver-review.md` 判定规格不通过、质量需修复，三项Important（无Critical）：证据目标ACL私有性未强制、JSON转义后敏感文本漏检、第二至第六次更正及分页历史正文/原因未完整核对请求期望。root已核对代码并交原作者Fix1，先完成文档冻结，再为每项新反例实跑RED/GREEN；修复仅原driver/test，随后root复跑和同reviewer窄复审。不能把原21/174通过当这三项已覆盖，也不要运行或提交未批准驱动。原作者 `clinical_task6_driver` 正在收尾两份验收文档并接续Fix1；`clinical_task6_driver_review` 可复用窄复审。最新细节在SDD progress.md。全部实机外部门及完整系统目标仍未完成。
+
 2026-10-17增量：UTF8窄修复独立审查规格通过/质量批准，无发现；root新鲜PS5五项原生行为测试全部通过，精确两文件提交 `2c4a125`。独立实测通过真实API创建四个未来虚构预约：appointmentId、legacyAppointmentId、browserAppointmentId为BOOKED，canceledAppointmentId为CANCELED；ID已写入原私有accounts.json，过程证明位于clinical-application/http-prerequisites-20261017.json。无需重新建号源或重跑一次性准备脚本；该脚本遇到既有证明会拒绝重放。未完成任何临床业务。驱动作者已冻结两文件并提交报告：21场景174断言，外部必需门保持unverified且非零；现由clinical_task6_driver_review独立审查。报告及差异为task-6-driver-report.md、review-driver-20261017.diff、review-driver-tests-20261017.diff。此前额度限制已恢复，不再视为阻塞。
 
 root独立复跑驱动行为套件：第一次因非E盘TEMP被正确拒绝，未执行业务；改为全新E盘测试目录并finally恢复环境后，会话9081退出0，21场景174断言零失败。仅行为边界测试，尚未运行真实临床驱动。私有accounts.json原继承ACL虽仅本用户可读，AreAccessRulesProtected为false；root在验证专属实例后将现有允许规则转为显式保护（未增加主体），现为true，符合驱动契约。原驱动作者已接续仅两文档的Task6指南/范围清单证据增量任务，不写驱动或其他源码；尚待独立文档审查。
