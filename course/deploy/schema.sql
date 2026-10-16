@@ -67,6 +67,9 @@ CREATE TABLE IF NOT EXISTS appointment (
     booked_on DATE NOT NULL,
     booked_at DATETIME(6) NULL,
     started_at DATETIME NULL,
+    patient_complaint VARCHAR(500) NULL,
+    complaint_updated_at DATETIME(6) NULL,
+    complaint_revision BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT fk_course_appointment_patient FOREIGN KEY (patient_id) REFERENCES user_account(id),
     CONSTRAINT fk_course_appointment_slot FOREIGN KEY (slot_id) REFERENCES schedule_slot(id),
     CONSTRAINT fk_course_appointment_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
@@ -156,4 +159,51 @@ CREATE TABLE IF NOT EXISTS file_metadata (
     CONSTRAINT fk_attachment_doctor FOREIGN KEY (doctor_id) REFERENCES user_account(id),
     CONSTRAINT fk_attachment_uploader FOREIGN KEY (uploader_id) REFERENCES user_account(id),
     CONSTRAINT fk_attachment_record FOREIGN KEY (record_id) REFERENCES clinical_record(id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS clinical_draft (
+    id VARCHAR(36) PRIMARY KEY,
+    appointment_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    doctor_id VARCHAR(36) NOT NULL,
+    patient_id VARCHAR(36) NOT NULL,
+    complaint VARCHAR(500) NULL,
+    diagnosis VARCHAR(500) NULL,
+    advice VARCHAR(2000) NULL,
+    notes VARCHAR(2000) NULL,
+    saved_at DATETIME(6) NOT NULL,
+    revision BIGINT NOT NULL,
+    CONSTRAINT uk_clinical_draft_appointment UNIQUE (appointment_id),
+    CONSTRAINT fk_clinical_draft_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id),
+    CONSTRAINT fk_clinical_draft_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+    CONSTRAINT fk_clinical_draft_doctor FOREIGN KEY (doctor_id) REFERENCES user_account(id),
+    CONSTRAINT fk_clinical_draft_patient FOREIGN KEY (patient_id) REFERENCES user_account(id)
+) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS record_correction (
+    id VARCHAR(36) PRIMARY KEY,
+    record_id VARCHAR(36) NOT NULL,
+    appointment_id VARCHAR(36) NOT NULL,
+    tenant_id VARCHAR(36) NOT NULL,
+    doctor_id VARCHAR(36) NOT NULL,
+    patient_id VARCHAR(36) NOT NULL,
+    sequence_number BIGINT NOT NULL,
+    before_complaint VARCHAR(500) NULL,
+    before_diagnosis VARCHAR(500) NOT NULL,
+    before_advice VARCHAR(2000) NOT NULL,
+    before_notes VARCHAR(2000) NULL,
+    after_complaint VARCHAR(500) NULL,
+    after_diagnosis VARCHAR(500) NOT NULL,
+    after_advice VARCHAR(2000) NOT NULL,
+    after_notes VARCHAR(2000) NULL,
+    reason VARCHAR(2000) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    operation_key VARCHAR(36) NOT NULL,
+    CONSTRAINT uk_record_correction_sequence UNIQUE (record_id, sequence_number),
+    CONSTRAINT uk_record_correction_operation UNIQUE (doctor_id, operation_key),
+    CONSTRAINT fk_record_correction_record FOREIGN KEY (record_id) REFERENCES clinical_record(id),
+    CONSTRAINT fk_record_correction_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id),
+    CONSTRAINT fk_record_correction_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
+    CONSTRAINT fk_record_correction_doctor FOREIGN KEY (doctor_id) REFERENCES user_account(id),
+    CONSTRAINT fk_record_correction_patient FOREIGN KEY (patient_id) REFERENCES user_account(id)
 ) ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
