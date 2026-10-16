@@ -93,7 +93,7 @@ ClinicalService新增complete(CurrentActor,String appointmentId,String complaint
 
 ### Task 4：PaaS路由与错误审计
 
-**Files:** 新建P/api/ClinicalSupplementResource.java；修改P/api/{AppointmentResource,ApiFailureMapper}.java；测试PT/{ClinicalSupplementDispatchTest,ClinicalSupplementResourceTest}.java。Task3拥有ClinicalService，Task4不得改其实现。
+**Files:** 新建P/api/ClinicalSupplementResource.java；修改P/api/{ClinicalResource,ApiFailureMapper}.java；测试PT/{ClinicalSupplementDispatchTest,ClinicalSupplementResourceTest}.java。Task3拥有ClinicalService，Task4不得改其实现。实施定位勘误：旧complete实际位于ClinicalResource，原AppointmentResource为文件名笔误；替换文件所有权，不增加路由/任务范围。
 
 **Interfaces:** 消费Task3全部签名；路由与DTO恰为Spec6表。现有complete调用新重载传expectedDraftRevision；其他旧响应不变。ClinicalSupplementException映射固定status/code/requestId，拒绝自由文本。查询/错误信息不得含未授权正文；成功写入口@AuditTracked+AuditOperationRunner单业务EJB，不另调用多个业务事务。
 
