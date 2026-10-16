@@ -17,7 +17,7 @@ class AttachmentContractTest {
         assertEquals(operation.getUploadId(), operation.getFile().getFileId());
     }
     @Test void fileEventsUseFileMetadataObjectType() {
-        assertEquals(16, AuditEventType.values().length);
+        assertEquals(19, AuditEventType.values().length);
         for (String name : Arrays.asList("FILE_UPLOAD", "FILE_DELETE", "FILE_DOWNLOAD_AUTHORIZE")) assertEquals(AuditObjectType.FILE_METADATA, AuditEventType.valueOf(name).getObjectType());
         assertEquals(AuditObjectType.PAYMENT_ORDER, AuditEventType.PAYMENT_PAY.getObjectType());
     }
