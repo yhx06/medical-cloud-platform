@@ -18,7 +18,7 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 & course/deploy/scripts/verify-attachments.ps1 -FixturePath '<夹具身份 json>' -EvidenceRoot '<Git 忽略证据目录>'
 ```
 
-脚本逐门执行设计第 12 节验收（健康/两类三格式/分页与按 ID 恢复/限额/矩阵/审计脱敏/私有桶与签名），输出脱敏 JSON 摘要（found/executed/passed/failed/skipped/environment/limitations）；失败或必需门被 `-SkipGate` 跳过时退出码非 0。每次写入证据前执行归属校验，摘要不含签名材料。契约测试：`course/deploy/tests/attachments-acceptance.Tests.ps1 -FixturePath ... -EvidenceRoot ...`。验收结论见 [附件验收记录](../course-labs/2026-10-12-attachments-acceptance.md)。
+脚本当前实际执行七项 HTTP 子检查（患者 JPG/PNG，不含医生 PDF），并列出十二组尚未覆盖的必需检查。摘要区分已执行、失败、跳过与未验证；七项全通过仍不代表设计第 12 节完整验收通过。直接驱动退出码：4 表示必需项未验证，1 表示检查失败，2 表示显式跳过必需项，3 表示未知跳过项或准备失败。完整验收未覆盖时不得以删去必需项或跳过方式制造成功。每次 HTTP 请求前校验夹具归属和本机地址，摘要不含签名材料。契约测试：`course/deploy/tests/attachments-acceptance.Tests.ps1 -FixturePath ... -EvidenceRoot ...`；无运行环境的摘要行为测试：`course/deploy/tests/attachments-acceptance-summary.Tests.ps1`。验收结论见 [附件验收记录](../../docs/course-labs/2026-10-12-attachments-acceptance.md)。
 
 
 ## 准备
@@ -26,7 +26,7 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 - JDK 8、Maven、Tomcat 9、WildFly 10、MySQL 与 MySQL Connector/J 8.x。现有 PowerDesigner 模型为历史八表版本；按用户要求不再编辑或新增 PowerDesigner 图，当前结构以版本化 SQL/JPA/测试说明为准。
 - 建议复制 Tomcat/WildFly 到隔离目录，使用空的课程数据库；不要覆盖教师原安装、MySQL 默认实例或已有项目数据。示例端口：Tomcat 8088、WildFly 8080、隔离 MySQL 3307。教师现场端口以实际配置为准。
 - 在启动 WildFly 的**同一终端**设置 `MEDICAL_COURSE_DB_USER`、`MEDICAL_COURSE_DB_PASSWORD`、长度至少 32 字符的 `MEDICAL_COURSE_JWT_SECRET`。密钥和数据库密码不要提交到 Git。Tomcat 可用 `MEDICAL_COURSE_PAAS_URL` 指向 `http://127.0.0.1:8080/paas/api`，未设置时使用此默认值。
-- 仅在本机隔离环境加载 `seed-demo.sql`。演示账号 `patient_demo`、`doctor_a`、`doctor_b`、`hospital_a`、`platform_admin`、`disabled_user` 的密码均为 `Demo@123456`；停用账号应被拒绝。
+- 仅在本机隔离环境加载 `seed-demo.sql`。虚构账号及公开种子登录信息见 [种子脚本](seed-demo.sql)；停用账号应被拒绝。种子登录信息不得用于对外部署，运行环境私有凭据不得提交或分享。
 
 ## 构建与部署（PowerShell）
 
@@ -47,7 +47,7 @@ $env:MEDICAL_COURSE_JWT_SECRET = '<至少 32 字符的随机密钥>'
 & course/deploy/scripts/check-environment.ps1 -JavaHome $env:JAVA_HOME -TomcatHome '<Tomcat 9 路径>' -WildFlyHome '<WildFly 10 路径>' -MysqlCli '<mysql.exe 路径>'
 ```
 
-启动 WildFly 后，在同一环境中注册 JDBC 模块、驱动与数据源；`ConnectorJar` 指向已下载的 MySQL Connector/J JAR。`Controller` 必须指向该隔离 WildFly 的管理地址（示例为 `127.0.0.1:9990`）。脚本先只读核对运行实例的 `home-dir` 与 `WildFlyHome`，不一致或无法核对时会在复制模块和写入 CLI 配置前停止。`configure-wildfly.ps1` 针对首次配置，若已有同名数据源，应先核查配置，不要盲目重复添加。
+启动 WildFly 后，在同一环境中注册 JDBC 模块、驱动与数据源；`ConnectorJar` 指向已下载的 MySQL Connector/J JAR。`Controller` 必须指向该隔离 WildFly 的管理地址（示例为 `127.0.0.1:9990`）。脚本先只读核对运行实例的 `home-dir` 与 `WildFlyHome`，不一致或无法核对时会在复制模块和写入 CLI 配置前停止。现已支持 PowerShell 5.1 原生 stderr 分流及无 BOM CLI 文件；重复配置会只读核验现有数据源的七项设置，不盲目重新添加，不匹配则拒绝。控制器仅接受安全地址格式，CLI/TEMP 路径含字面 `%` 不受支持并提前拒绝；Unicode 和空格路径受支持。
 
 ```powershell
 & course/deploy/scripts/configure-wildfly.ps1 -WildFlyHome '<WildFly 10 路径>' -Controller '127.0.0.1:9990' -ConnectorJar '<mysql-connector-j.jar 路径>' -DbPort 3307
@@ -163,4 +163,4 @@ WildFly JNDI 名称为 `java:/jdbc/MedicalCloudCourseDS`，JPA 持久化单元�
 
 ## 已知边界
 
-支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停、本院/跨院脱敏统计及持久化脱敏审计已实现；新建医院/医院管理员入口、附件存储仍未实现，也不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。审计专项另建新副本和端口，不重启、升级或覆盖上述保护实例。原安装目录和默认服务未改动。MySQL 5.6、其他教师机器、云端部署和全主要流程多浏览器兼容尚未验证；禁脚本审计GET的特定Edge环境与交互边界见专项。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；按 ID 恢复与分页尚待补充。
+支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停、本院/跨院脱敏统计及持久化脱敏审计已实现；新建医院/医院管理员入口仍未实现。附件存储和接口已实现，但完整实机验收未完成，见最新交接，亦不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。审计专项另建新副本和端口，不重启、升级或覆盖上述保护实例。原安装目录和默认服务未改动。MySQL 5.6、其他教师机器、云端部署和全主要流程多浏览器兼容尚未验证；禁脚本审计GET的特定Edge环境与交互边界见专项。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；业务模块的完整按 ID 恢复与分页尚待补充，附件已具备专项分页/按 ID 接口。
