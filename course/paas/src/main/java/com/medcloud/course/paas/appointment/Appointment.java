@@ -44,6 +44,15 @@ public class Appointment {
     @Column(name = "started_at")
     private Timestamp startedAt;
 
+    @Column(name = "patient_complaint", length = 500)
+    private String patientComplaint;
+
+    @Column(name = "complaint_updated_at")
+    private Timestamp complaintUpdatedAt;
+
+    @Column(name = "complaint_revision", nullable = false, columnDefinition = "BIGINT DEFAULT 0")
+    private long complaintRevision;
+
     protected Appointment() { }
 
     public Appointment(String id, String patientId, String slotId, String tenantId,
@@ -74,6 +83,16 @@ public class Appointment {
     public Date getBookedOn() { return bookedOn; }
     public Timestamp getBookedAt() { return bookedAt; }
     public Timestamp getStartedAt() { return startedAt; }
+    public String getPatientComplaint() { return patientComplaint; }
+    public Timestamp getComplaintUpdatedAt() { return complaintUpdatedAt; }
+    public long getComplaintRevision() { return complaintRevision; }
+
+    /** Caller holds the appointment lock and validates content and expected revision. */
+    public void updatePatientComplaint(String description, Instant now) {
+        patientComplaint = description;
+        complaintUpdatedAt = Timestamp.from(now);
+        complaintRevision++;
+    }
 
     public void start() { start(Instant.now()); }
 

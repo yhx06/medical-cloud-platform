@@ -63,12 +63,19 @@ class AuditClinicalFlowTest extends AuditClinicalFixture {
 
     @Test void repeatPaymentIsNoChangeWithOriginalPaidAt() {
         PaymentService payments = new PaymentService(manager);
-        java.sql.Timestamp firstPaidAt = tx(() -> payments.pay(PATIENT,"order-unpaid").getPaidAt());
-        tx(() -> payments.pay(PATIENT,"order-unpaid")); manager.clear();
+        AuditContext firstPayment = AuditContext.create(AuditEventType.PAYMENT_PAY,UUID.randomUUID().toString());
+        AuditContext retryPayment = AuditContext.create(AuditEventType.PAYMENT_PAY,UUID.randomUUID().toString());
+        java.sql.Timestamp firstPaidAt = tx(() -> payments.pay(PATIENT,"order-unpaid",firstPayment).getPaidAt());
+        tx(() -> payments.pay(PATIENT,"order-unpaid",retryPayment)); manager.clear();
         List<AuditEvent> rows = events(AuditEventType.PAYMENT_PAY);
         assertEquals(2, rows.size());
-        AuditEvent secondPaymentEvent = rows.get(1);
-        assertEquals(AuditResult.SUCCESS, rows.get(0).getResult());
+        AuditEvent firstPaymentEvent = rows.stream().filter(e -> firstPayment.getRequestId().equals(e.getRequestId()))
+                .findFirst().orElseThrow(() -> new AssertionError("First payment audit event missing"));
+        AuditEvent secondPaymentEvent = rows.stream().filter(e -> retryPayment.getRequestId().equals(e.getRequestId()))
+                .findFirst().orElseThrow(() -> new AssertionError("Retry payment audit event missing"));
+        assertEquals("order-unpaid", firstPaymentEvent.getObjectId());
+        assertEquals("order-unpaid", secondPaymentEvent.getObjectId());
+        assertEquals(AuditResult.SUCCESS, firstPaymentEvent.getResult());
         assertEquals(AuditResult.NO_CHANGE, secondPaymentEvent.getResult());
         assertEquals(AuditReasonCode.UNCHANGED, secondPaymentEvent.getReasonCode());
         PaymentOrder orderAfterRetry = manager.find(PaymentOrder.class,"order-unpaid");

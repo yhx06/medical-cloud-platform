@@ -11,6 +11,8 @@
     <class>com.medcloud.course.paas.auth.Account</class>
     <class>com.medcloud.course.paas.appointment.Appointment</class>
     <class>com.medcloud.course.paas.consultation.ClinicalRecord</class>
+    <class>com.medcloud.course.paas.consultation.ClinicalDraft</class>
+    <class>com.medcloud.course.paas.consultation.RecordCorrection</class>
     <class>com.medcloud.course.paas.order.PaymentOrder</class>
     <class>com.medcloud.course.paas.audit.AuditEvent</class>
     <class>com.medcloud.course.paas.attachment.FileMetadata</class>

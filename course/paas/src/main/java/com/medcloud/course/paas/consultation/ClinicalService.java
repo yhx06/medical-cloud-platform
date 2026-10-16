@@ -3,6 +3,7 @@ package com.medcloud.course.paas.consultation;
 import com.medcloud.course.paas.audit.*;
 import com.medcloud.course.contract.AuditEventType;
 import com.medcloud.course.contract.AuditResult;
+import com.medcloud.course.contract.ClinicalContentView;
 import javax.ejb.EJB;
 
 import com.medcloud.course.contract.Role;
@@ -73,40 +74,39 @@ public class ClinicalService {
                                    String diagnosis, String advice, String notes, Instant now, AuditContext context) {
         if (diagnosis == null || diagnosis.trim().isEmpty() || advice == null || advice.trim().isEmpty()
                 || now == null) throw new IllegalArgumentException("diagnosis, advice and time required");
+        return complete(actor,appointmentId,complaint,diagnosis,advice,notes,now,context,null);
+    }
+
+    public ClinicalRecord complete(CurrentActor actor, String appointmentId, String complaint,
+                                   String diagnosis, String advice, String notes, Instant now, AuditContext context,
+                                   Long expectedDraftRevision) {
+        if(now==null)throw new IllegalArgumentException("completion time required");
+        ClinicalContentView content=ClinicalContentRules.requireFinal(new ClinicalContentView(complaint,diagnosis,advice,notes));
         Appointment appointment = lockedDoctorAppointment(actor, appointmentId, context);
+        List<ClinicalDraft> drafts=manager.createQuery("select d from ClinicalDraft d where d.appointmentId=:id",ClinicalDraft.class)
+                .setParameter("id",appointmentId).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        ClinicalDraft draft=drafts.isEmpty()?null:drafts.get(0);
+        if(draft!=null)manager.refresh(draft,LockModeType.PESSIMISTIC_WRITE);
+        new ClinicalAccessPolicy(manager).verifyDraft(draft,appointment);
+        if(expectedDraftRevision!=null)ClinicalContentRules.requireRevision(expectedDraftRevision);
+        if(draft!=null&&(expectedDraftRevision==null||expectedDraftRevision.longValue()!=draft.getRevision())
+                ||draft==null&&expectedDraftRevision!=null&&expectedDraftRevision.longValue()!=0)
+            throw new ClinicalSupplementException(409,"CLINICAL_REVISION_CONFLICT");
         appointment.complete();
         ClinicalRecord record = new ClinicalRecord(UUID.randomUUID().toString(), appointmentId,
                 appointment.getTenantId(), appointment.getDoctorId(), appointment.getPatientId(),
-                complaint, diagnosis, advice, notes, now);
+                content.getComplaint(), content.getDiagnosis(), content.getAdvice(), content.getNotes(), now);
         PaymentOrder order = new PaymentOrder(UUID.randomUUID().toString(), appointmentId,
                 appointment.getPatientId(), appointment.getTenantId(), appointment.getFee());
         manager.persist(record);
         manager.persist(order);
+        if(draft!=null)manager.remove(draft);
         journal.append(context,record.getId(),AuditResult.SUCCESS,Instant.now());
         return record;
     }
 
     private Appointment lockedDoctorAppointment(CurrentActor actor, String appointmentId, AuditContext context) {
-        Appointment candidate = manager.find(Appointment.class, appointmentId);
-        Account verified = requireDoctor(actor, candidate);
-        context.attachActor(new CurrentActor(verified.getId(),Role.DOCTOR,verified.getTenantId()));
-        String tenantId = candidate.getTenantId();
-        new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
-        Account doctor = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
-        manager.refresh(doctor, LockModeType.PESSIMISTIC_WRITE);
-        if (!"ACTIVE".equals(doctor.getStatus())) throw new AccessDeniedException();
-        ScheduleSlot slot = manager.find(ScheduleSlot.class, candidate.getSlotId(), LockModeType.PESSIMISTIC_WRITE);
-        if (slot == null) throw new AccessDeniedException();
-        manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
-        Appointment appointment = manager.find(Appointment.class, appointmentId, LockModeType.PESSIMISTIC_WRITE);
-        if (appointment == null) throw new AccessDeniedException();
-        manager.refresh(appointment, LockModeType.PESSIMISTIC_WRITE);
-        requireDoctor(actor, appointment);
-        if (!slot.getId().equals(appointment.getSlotId()) || !tenantId.equals(appointment.getTenantId())
-                || !tenantId.equals(slot.getTenantId()) || !appointment.getDoctorId().equals(slot.getDoctorId()))
-            throw new AccessDeniedException();
-        context.attachVerifiedTenant(appointment.getTenantId());
-        return appointment;
+        return new ClinicalAccessPolicy(manager).lockedDoctorAppointment(actor,appointmentId,context);
     }
 
     public List<ClinicalRecord> forDoctor(CurrentActor actor, Date from, Date to) {
