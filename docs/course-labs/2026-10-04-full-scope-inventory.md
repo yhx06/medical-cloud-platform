@@ -124,10 +124,14 @@
 
 临床004保护迁移已实现，顺序为001→002→003→004，004后使用最新临床升级器核验，旧003严格拒绝新增预约形状。根代理在新专属MySQL8.0.45已记录六项实机观察：精确十表基线、完整备份、旧病历/已付订单逐行摘要不变、旧预约NULL/NULL/0、只读重复、空库与升级后元数据一致；真实部分DDL/备份失败/外来等失败保护路径尚未补齐。MySQL业务专项mandatory九项实际执行且零失败/错误/跳过，包含实际锁等待观察与RESOURCE_LOCAL审计故障回滚；这些记录不证明实际WildFly JTA、独立失败审计、双容器授权或浏览器。
 
-临床驱动历史初轮PS5.1为21场景/174断言/零失败，首审发现三项Important；2026-10-17 Fix1新增反例后为**40场景/303断言/零失败**，根代理新鲜复跑exit0且源码SHA匹配，独立窄复审3 ADDRESSED、无新增Critical/Important，精确两文件已提交`2b9c835`。这是驱动级修复批准，不是wholeTask6通过。注册表保留**53个必需门**、三个参数，测试替身的完整HTTP绿色场景仍为21 passed/32 unverified，返回非零4，wholeTask6Accepted=false；该数字是行为契约证据，不是本机实机结果。缺失、failed、skipped或unverified必需门均不能成功，历史结果不能导入为passed。根代理已用真实API准备四个独立未来预约并核对私有账号ACL，Fix1批准后已开始真实HTTP驱动；截至本次窄勘误结果待定，准备及启动不记通过。后续本轮实际摘要由根代理增补。
+临床驱动历史初轮PS5.1为21场景/174断言/零失败，首审发现三项Important；2026-10-17 Fix1新增反例后为**40场景/303断言/零失败**，根代理新鲜复跑exit0且源码SHA匹配，独立窄复审3 ADDRESSED、无新增Critical/Important，精确两文件已提交`2b9c835`。这是驱动级修复批准，不是wholeTask6通过。注册表保留**53个必需门**、三个参数，测试替身的完整HTTP绿色场景仍为21 passed/32 unverified，返回非零4，wholeTask6Accepted=false；该数字是行为契约证据，不是本机实机结果。缺失、failed、skipped或unverified必需门均不能成功，历史结果不能导入为passed。首轮真实HTTP session31295已退出1：111请求、23 executed、22 passed、1 container-log-redaction failed、0 skipped、30 unverified，completeDriverRun=false、wholeTask6Accepted=false；四个facts originalUnchanged/orderUnchanged/retryRecovered/historyChainValid均true，只证明对应观察。原失败摘要保留；日志Fix2正在TDD、尚未批准，不提前写成新通过。
 
 当前仍未关闭：当前临床真实Chrome/Edge、禁JS/键盘、CSRF/中文转义/冲突输入、账号停用/医院冻结及写竞态、停MinIO后的补充/草稿/更正、WildFly EJB/JTA及独立失败审计、全切片审查与最终完整验收。以前审计无JS GET、旧核心链停存储或附件局部DOM观察不能换算为这些新门通过。MySQL8与教师5.6未验、本机loopback与云端未交付继续分开披露。
 
 除上述精确增量外，第3～5节及P2范围全部保留：医院/管理员新建停用入口、资料能力、订单取消状态规则、跨医生号源时段冲突、支付唯一流水号、其他列表完整分页/按ID恢复；处方需求冲突；可选评价及四项AI；50并发性能、真实备份恢复、完整OpenAPI/运维追踪、云端和教师机器、全主要流程多浏览器；非PowerDesigner设计说明、最终报告/PPT/演示、备用环境和真实成员贡献。附件/临床局部闭环不代表全系统完成，不新增PowerDesigner图，不启动70台服务器。
 
 2026-10-17 Fix1权限契约勘误：AccountsPath/EvidenceRoot同处owned runtime内一个共同受保护的私有子边界；公开runtime允许使用私有clinical-application子目录，更深目录可继承私有边界。账号文件显式保护，边界内现有祖先/目录/目标ACL仅允许当前用户、SYSTEM、Administrators且所有者受限；每次请求/证据写入前重新校验，包含UUID子目录、新summary继承权限及现有目标，权限中途变宽即拒绝下一次操作。首审另两项JSON转义泄露及更正/完整历史正文核对缺口亦经新反例修复并窄复审关闭；原21/174和首审失败保留历史。两文档初稿已审查批准并提交`6dfe688`，本次状态/ACL窄勘误另待复审；未修改上述迁移/MySQL历史或其他未验范围。
+
+2026-10-17真实失败及日志诊断增量：已验证共享读取冲突、严格UTF-8解码失败和漏扫当前boot四captures三个问题；旧12路径不能替代含当前boot的16路径集合。根代理实际JVM均为file.encoding=GBK，实际教师catalina.jar的AccessLogValve.open默认ISO_8859_1，Portal access不能声称UTF-8；其他Portal配置UTF-8但当前没有该类文件，来源证据仍由根代理提供。新clinical-running-logpolicy-20261017-fixture.json保留前版，追加clinical.logPolicy version1：paasFiles/rootPaasCaptures/rootPortalCaptures/bootPaasCaptures/bootPortalCaptures为GBK，portalAccessFiles为ISO-8859-1，portalOtherFiles为UTF-8。Fix2须按封闭来源政策严格解码、不猜测或替换；无政策仍strict UTF-8且不漏声明boot；通过共享句柄读取并在读取中落实单文件16 MiB上限，保留100文件/归属/ACL及当前boot四captures完整扫描。诊断与政策不是正式日志门通过，Fix2仍在TDD待独立复审。
+
+首轮main/legacy已消耗，不得盲重放；根代理新私有accounts-wave2-20261017.json准备2 BOOKED/1 CANCELED，只属下轮前置。Fix2复审批准后才按指南新descriptor/wave2示例执行，不能从准备状态生成passed。Fix1文档勘误已独立窄复审批准，本次真实失败/日志契约文档增量另待独立审查；首轮失败、30个未验门、既有迁移/九项RESOURCE_LOCAL证据边界、全部系统缺口及P2范围均保留。

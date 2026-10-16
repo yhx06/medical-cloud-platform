@@ -1,8 +1,8 @@
 # 病情补充、私有草稿与病历更正：分层验收指南
 
-记录日期：2026-10-16；Fix1 状态补充：2026-10-17。课程实现已接入，Task6 完整验收尚未完成。临床驱动首审三项 Important 已修正，独立窄复审结论为 3 ADDRESSED、无新增 Critical/Important；驱动及行为测试精确提交 `2b9c835`。根代理本轮真实 HTTP 已开始，结果待定，不能写成通过或 `wholeTask6Accepted=true`。
+记录日期：2026-10-16；真实运行/日志诊断补充：2026-10-17。课程实现已接入，Task6 完整验收尚未完成。临床驱动首审三项 Important 已修正，独立窄复审结论为 3 ADDRESSED、无新增 Critical/Important；驱动及行为测试精确提交 `2b9c835`。首轮真实 HTTP session31295 已退出1，容器日志门失败、30门未验；日志 Fix2 正在 TDD，尚未获复审批准，不能写成 `wholeTask6Accepted=true`。
 
-本指南与范围清单初稿已独立审查批准并提交 `6dfe688`；本次 Fix1 状态/权限契约勘误另待原审查者窄复审。历史首审、失败及后续修正保留，实际结果由根代理追加；驱动级批准不等于 Task6 或全系统验收批准。
+本指南与范围清单初稿已独立审查批准并提交 `6dfe688`，Fix1 状态/权限契约勘误亦已独立窄复审批准。本次真实运行/日志政策文档增量尚待别人独立审查。历史首审、失败及后续修正保留；驱动级批准不等于 Task6 或全系统验收批准。
 
 范围依据为[已批准设计](../superpowers/specs/2026-10-16-medical-cloud-clinical-supplements-design.md)及[实施计划](../superpowers/plans/2026-10-16-medical-cloud-clinical-supplements.md)。完整系统剩余范围见[范围清单](2026-10-04-full-scope-inventory.md)，附件状态另见[附件专项](2026-10-12-attachments-acceptance.md)。本切片补充 FR-APT-05、FR-CON-05 和此前约定的接诊草稿，不包含处方、订单取消、机构账号开通、AI/评价或真实医疗支付。
 
@@ -36,24 +36,25 @@ MinIO 是既有附件依赖；补充/草稿/更正事务设计上不依赖对象
 | 驱动行为 | 历史初轮 PS5.1 为 21/174；Fix1 新增反例后为 **40 场景、303 断言、0 失败**，根代理新鲜复跑 exit 0；三项 Important 窄复审已解决，精确提交 `2b9c835` | AST 边界测试及驱动 scoped 批准不是实际 HTTP、数据库、JTA、浏览器或 wholeTask6 通过 |
 | 真实迁移 | 根代理新专属 MySQL 8.0.45 六项观察：十表基线、全备份、旧病历/已付订单逐行摘要不变、旧预约 NULL/NULL/0、只读重复、空库/升级后元数据一致 | 仅这六项；真实部分 DDL/备份失败/外来拒绝等仍需补齐，不能填满迁移矩阵 |
 | 真实业务 SQL | 根代理 mandatory MySQL 专项 9 项执行、0 失败/错误/跳过；实际锁观察及 RESOURCE_LOCAL 审计故障回滚有记录 | 不是 EJB/JTA、双容器 API 授权/审计故障或完整临床验收 |
-| 当前实机准备/运行 | 根代理已用真实 API 准备主流程、旧 complete、取消、浏览器四个独立未来预约；私有账号 ACL 已核对；Fix1 批准后已开始真实 HTTP 驱动 | 截至本次勘误，真实运行结果待定；准备或启动不是成功，本节没有实机通过声明 |
+| 首轮真实 HTTP | session31295：111请求，22 passed / 1 failed（container-log-redaction）/ 30 unverified，exit1；originalUnchanged/orderUnchanged/retryRecovered/historyChainValid 均 true | completeDriverRun=false、wholeTask6Accepted=false；四个事实只支持本轮对应观察，不能替代失败日志门或30个外部门 |
+| 日志诊断/下一轮准备 | 已验证共享读取冲突、编码不一致及漏扫当前boot四captures；根代理准备新日志政策descriptor与wave2新目标 | Fix2正在TDD尚未批准；诊断扫描、metadata及新目标准备不等于正式门通过 |
 | 浏览器/故障 | 当前临床 Chrome/Edge、禁 JS、键盘、CSRF/转义、医院冻结竞态、停止 MinIO 及 WildFly JTA/独立失败审计门仍未验 | 旧审计浏览器/旧附件观察不能迁移为当前临床门通过 |
 
 本地原始证据在 Git 忽略目录 `.superpowers/sdd/2026-10-16-medical-cloud-clinical-supplements/`，主要为 `task-2-report.md` 的根代理实机增量、`task-6-mysql-report.md` 的 mandatory 九项增量、`task-6-driver-report.md` 和 RED/GREEN 日志。它们不随公开文档携带；换机需由运行负责人提供脱敏证据。初次失败、后续修正与可选跳过均保留，不追溯改写。
 
 ## 4. 三参数真实 HTTP 驱动
 
-[驱动](../../course/deploy/scripts/verify-clinical-supplements.ps1)的 Fix1 已获 scoped 窄复审批准并提交，是增量验收入口，仍只有三个必需参数：`-FixturePath`、`-EvidenceRoot`、`-AccountsPath`。下面是待替换占位值的调用格式，不会替用户选择目标：
+[驱动](../../course/deploy/scripts/verify-clinical-supplements.ps1)的 Fix1 已获 scoped 窄复审批准并提交，日志 Fix2 正在 TDD 尚未批准；仍只有三个必需参数：`-FixturePath`、`-EvidenceRoot`、`-AccountsPath`。下面是**Fix2修复复审批准后再执行**的占位格式，还需根代理确认新descriptor来源证据、私有ACL和目标初始状态，不代表已经执行：
 
 ```powershell
 powershell.exe -NoProfile -File .\course\deploy\scripts\verify-clinical-supplements.ps1 `
-    -FixturePath 'E:\<本轮SDD路径>\clinical-running-20261016-fixture.json' `
+    -FixturePath 'E:\<本轮SDD路径>\clinical-running-logpolicy-20261017-fixture.json' `
     -EvidenceRoot 'E:\<本轮owned运行根>\clinical-application\clinical-evidence' `
-    -AccountsPath 'E:\<本轮owned运行根>\clinical-application\private-accounts.json'
+    -AccountsPath 'E:\<本轮owned运行根>\clinical-application\accounts-wave2-20261017.json'
 $clinicalVerificationExit = $LASTEXITCODE
 ```
 
-当前新运行身份是附件 SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-20261016-fixture.json`，这是根代理准备的当前清单；同目录旧 `fixture.json` 的两个容器 PID 已过期。描述文件不证明服务仍在运行。每次实际请求及证据目录/文件写入前，驱动均重新核对清单内容和共享 MySQL/PaaS 归属：owner marker、PID/创建时间、可执行文件/运行目录、保护端口、监听、静态及实时 MySQL UUID/端口/datadir。读取容器日志还检查 Portal 归属。调用不能改成任意 URL，也没有跳过、强制通过、导入历史结果或生产 mock 参数。
+首轮使用附件 SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-20261016-fixture.json`；新日志政策版本为同目录 `clinical-running-logpolicy-20261017-fixture.json`，保留前版不覆盖。最早旧 `fixture.json` 的两个容器 PID 已过期。描述文件不证明服务仍在运行。每次实际请求及证据目录/文件写入前，驱动均重新核对清单内容和共享 MySQL/PaaS 归属：owner marker、PID/创建时间、可执行文件/运行目录、保护端口、监听、静态及实时 MySQL UUID/端口/datadir。读取容器日志还检查 Portal 归属。调用不能改成任意 URL，也没有跳过、强制通过、导入历史结果或生产 mock 参数。
 
 描述文件允许位于既有 SDD 目录，但必须是绝对路径、普通文件、大小不超过 64 KiB、所有祖先无 reparse，并在运行中保持内容不变。`AccountsPath` 和 `EvidenceRoot` 必须是 `fixture.runtimeRoot` 内的绝对后代路径，所有祖先无 reparse，并同处一个受保护的私有目录边界。运行根本身可以是公开目录，例如只将其 `clinical-application` 子目录设为私有；更深层目录可继承该私有边界，不要求把整个 runtime 改权限。
 
@@ -72,6 +73,8 @@ $clinicalVerificationExit = $LASTEXITCODE
 全部账号 ID、非空 tenantId 及预约 ID 使用规范小写 UUID；账号 ID/用户名各不重复。用户名匹配 `^[A-Za-z0-9_.-]{1,100}$`，密码非空且最多 1000 字符。doctor/otherDoctor/hospital 为同医院，crossDoctor 属于另一医院；患者/平台租户字段可为 null。登录返回的 username/role 必须分别匹配 PATIENT、DOCTOR、HOSPITAL_ADMIN、PLATFORM_ADMIN；登录 DTO 不返回 id/tenantId，不能虚构字段或解码 JWT 当作数据库归属证明。浏览器另留的预约不由这三个参数驱动自动消耗。
 
 脚本会实际修改显式提供的新虚构预约：补充、开始、保存、完成、追加六次更正及幂等恢复。每次新运行必须由根代理准备新的完整初始目标，不能重跑已完成目标并称作新的 BOOKED 场景，不能选择种子历史预约或随意替换对象。缺少必需前置会失败或保持未验证，不会自动创建/猜测账号和资源。原始正文、订单逐字段比较只留内存，HTTP 固定本机 `/paas/api` 路径，禁止重定向/代理，UTF-8 请求响应上限 1 MiB，单次超时 15 秒。
+
+首轮 main/legacy 已消耗，不能盲重放。根代理新准备的私有 `accounts-wave2-20261017.json` 对应两个独立 BOOKED 目标及一个 CANCELED 目标，仅是下轮前置；文件内容和凭据不公开，新准备不能自动填入 passed。
 
 ## 5. 53 个必需门与摘要解释
 
@@ -101,11 +104,11 @@ $clinicalVerificationExit = $LASTEXITCODE
 
 任何必需门缺失、failed、skipped 或 unverified 均不能成功。没有最终摘要或中断运行不能验收；归属丢失后连失败摘要也禁止写。驱动没有历史 JSON/日志导入接口，不允许手工把独立报告转成 passed、缩小必需表、把默认可选 skip 当通过或用测试替身填实机门。
 
-容器脱敏门需要 WildFly `log/server.log`、非空 Portal `logs/` 及运行根四个 launcher captures：`paas.out.log/paas.err.log/portal.out.log/portal.err.log`；还扫描两日志目录全部文件及本轮根目录额外 paas/portal `.log` captures。缺少整套可读位置不叫干净；当前最多 100 文件、单文件 16 MiB，超过范围、读取失败或发现 canary 均不能通过。
+Fix1 容器脱敏门选取 WildFly `log/server.log`、非空 Portal `logs/`、运行根四个 launcher captures：`paas.out.log/paas.err.log/portal.out.log/portal.err.log`，以及两日志目录全部文件和运行根额外 paas/portal `.log` captures。真实诊断确认它漏掉了 `clinical.bootEvidence` 的当前四个 captures，且默认整文件读取发生共享冲突，统一严格UTF-8也在部分文件失败；该版本的失败摘要保留。Fix2拟按第8节同时修复三项，不能只解决共享冲突就宣告日志干净。最多100文件、单文件16 MiB边界及泄露检查仍保留。
 
 ## 6. 继续验收与交付
 
-根代理已完成本次驱动 scoped 审查、Fix1 与窄复审，并已在新 owned 环境开始真实链；本次文档勘误不预判运行结果，仍须保留每次失败和本轮独立摘要。后续驱动修复也须先复审再实机运行。迁移失败保护、锁观察、医院冻结竞态和故障注入串行协调，不能同时占用旧附件故障窗口。审计故障必须证明真实成功事务整笔回滚、失败审计在业务事务结束后独立记录，以及恢复后可继续；不要只看 HTTP 500。
+根代理已完成驱动 Fix1 审查并执行首轮真实链，结果为日志门失败，详见第8节。先完成日志 Fix2 的 TDD及独立复审，再用新descriptor和wave2新目标执行，保留首轮失败与后续每轮独立摘要。迁移失败保护、锁观察、医院冻结竞态和故障注入串行协调，不能同时占用旧附件故障窗口。审计故障必须证明真实成功事务整笔回滚、失败审计在业务事务结束后独立记录，以及恢复后可继续；不要只看 HTTP 500。
 
 真实浏览器仍须分别在 Chrome/Edge、正常/禁 JS 下操作患者补充、医生保存/重开/完成/更正和患者历史，观察 401/403/409/冻结、中文/转义、原生表单、键盘和陈旧输入保留。工具不能连接或某步骤未完成时逐项未验，不能用 DOM/HTTP/JSP 测试顶替。先前审计无 JS GET 或附件列表观察只证明其原范围。
 
@@ -116,3 +119,21 @@ $clinicalVerificationExit = $LASTEXITCODE
 ## 7. 2026-10-17 Fix1 审查增量
 
 历史首审三项 Important 分别为证据私有祖先/目标 ACL 缺口、JSON 转义文本绕过原始比较、更正及中间历史正文核对不足。Fix1 新增反例并修复为逐次私有边界检查、递归 decoded string leaf 脱敏检查、由本次请求建立内存期望并逐条核对六条持久化历史；原失败记录保留。最终 PS5.1 行为测试 40/303/0，根代理独立复跑及源码 SHA 匹配，原审查者窄复审 3 ADDRESSED，无新增 Critical/Important，精确两文件提交 `2b9c835`。三参数、53 门和未验非零规则未变；这项审查批准仅覆盖驱动修复，不是本轮真实 HTTP 结果或 wholeTask6 通过。
+
+## 8. 首轮真实失败与待批准日志 Fix2
+
+session31295 的原摘要为53必需门、23 executed、22 passed、1 failed（`container-log-redaction`）、0 skipped、30 unverified、111请求，退出1；`completeDriverRun=false`、`wholeTask6Accepted=false`。`originalUnchanged`、`orderUnchanged`、`retryRecovered`、`historyChainValid` 四个事实均true。它们是首轮真实临床链的有限证据，失败摘要不改写；30个未验门及第5节迁移、并发、冻结/JTA、双容器、浏览器和全量交付要求仍完整保留。
+
+只读诊断验证三个独立问题：活动日志以原整文件方式读取发生Windows共享冲突；部分所选日志严格UTF-8解码失败；所选12路径漏掉当前boot四captures，诊断所需集合为16。共享读取成功或严格GBK解码成功不等于来源编码证明，也不是正式脱敏门通过。
+
+根代理提供的来源证据为：当前两个JVM `file.encoding=GBK`；实际教师 `catalina.jar` 的 `AccessLogValve.open` 字节码默认 `ISO_8859_1`，当前Valve未显式配置encoding，因此Portal access不能按UTF-8声明。其他Portal日志配置为UTF-8，但本次当前集合没有这类文件，配置存在本身不证明实际加载。历史producer和来源绑定证据仍由根代理在私有准备记录提供，文档不公开日志正文、密码或canary。
+
+新descriptor追加 `clinical.logPolicy`（version1）的明确来源政策如下；这是待批准Fix2的输入契约，不是实现或验收通过声明：
+
+```json
+{"version":1,"encodings":{"paasFiles":"GBK","portalAccessFiles":"ISO-8859-1","portalOtherFiles":"UTF-8","rootPaasCaptures":"GBK","rootPortalCaptures":"GBK","bootPaasCaptures":"GBK","bootPortalCaptures":"GBK"}}
+```
+
+七个角色必须完整、版本和键值封闭；ISO-8859-1仅允许portalAccessFiles，其他角色只允许UTF-8/GBK。按明确来源严格解码，不使用猜测式fallback、替换字符或丢弃无效字节；无政策时仍默认strict UTF-8，声明了boot也必须扫描，不能因缺政策漏掉当前文件。已有日志和旧根captures继续扫描，另从既有 `clinical.bootEvidence` 推导精确 `paas.stdout.log/paas.stderr.log/portal.stdout.log/portal.stderr.log`，不得接受任意路径列表；缺失、外来、reparse或非私有当前boot不能通过。
+
+Fix2要求通过一个经归属校验的共享读写读取句柄获得有界快照，读取过程中落实单文件16 MiB上限，保留100文件上限、完整来源集合、路径/ACL检查和严格解码后的完整秘密检查；增长超限、轮转/读取失败或不完整必须非零，不能静默截断。只输出闭合状态、数量和布尔值。Fix2当前正在TDD、尚未独立复审批准，三参数/53必需门不变；后续真实源证据和正式门结果仍需根代理提供，不能由诊断或本政策自动生成passed。
