@@ -2,6 +2,14 @@
 
 本文件是 `AI-HANDOFF-2026-10-16.md` 的增量接续，不替代原附件与部署交接。全系统目标仍在进行中；本批代码尚未完成独立审查及真实环境验收，不能宣布系统完成、推送或合并。
 
+最新SQL检查点（优先于下面所有历史快照）：新增九项临床MySQL测试及共享测试夹具两钩子/有效号源种子已独立审查并提交 `55752fa`，不是整个Task6完成。初次真实运行78631有九个setup错误：旧H2夹具两个号源同医生/同日/同开始时间，被真实SQL唯一约束正确拒绝。只将slot2改为10–11点，slot1仍9–10点，未削弱生产/SQL约束；经窄复审后root重试32411退出0、测得Maven0、九项实际执行、零失败/错误/跳过。四个实际请求者→持有者InnoDB锁等待均已观察，之后才释放首事务；覆盖草稿/完成/病情/更正竞争、幂等与审计失败回滚。root另跑20项原H2临床回归，11855退出0、无失败/跳过。
+
+成功证据私有目录为 `E:/medical-cloud-platform-runtime/attachments-6910fd2545ca4cf6ae88e94fb1203785/clinical-mysql-1d87087732d14554b18dcf27ee43b2a6/run-9311f686659f461a8cb4aed0445261e1`；其summary.json complete=true只表示九项RESOURCE_LOCAL测试，不表示EJB/JTA/浏览器。专属库 `course_clinical_test_1d87087732d14554b18dcf27ee43b2a6`、UUID `f7bdcdae-c951-11f1-bda6-005056c00001`，十二表，非root逐表DML和独立两表只读observer；凭据仅在ACL私有文件和进程环境，不输出/提交。指针为临床SDD的current-clinical-mysql-credentials-path.txt及current-clinical-mysql-run-path.txt。失败/成功数据、用户、快照和日志均保留。root最后重新核验6910四组件归属均通过；只有原EAM未跟踪，未动其他脏树。
+
+所有本轮实现/审查代理均已完成，可按需要复用；没有待接续的源码写入。原MySQL作者报告中的基线误写已纠正：ZIP comment证实其最初默认单测快照为43db3d1，排除了后续API14项；默认418通过/64skip不能称含API的完整回归。root独立API全构建616/561/55与真实九项SQL、20项H2证据分别记录，不混成一次运行。
+
+下一步继续完整Task6：严格验收驱动 `verify-clinical-supplements.ps1` 与行为测试尚未实现；新产品WAR尚未部署到6910，门户不算可用。需在专属环境配置正确数据库/JNDI/私有启动环境，完成实际WildFly EJB/JTA、双容器/真实JSON/API/Portal、Chrome/Edge/禁JS/键盘/中文及emoji/冻结401403409、实物故障及恢复、严格missing/skip/unverified非零门、验收指南和范围清单、全切片审查。6910是从旧私有WildFly副本复制的配置，不能假定其数据源或启动环境已指向新库；先只读核实，必要时仅复制/修改新的专属安装与base，保护旧f429副本/原教师安装，不放宽configure-wildfly保护检查。全系统其他功能及附件开放门仍保留，不推送/合并或宣称全部完成。
+
 19:15最新增量：Task4接口已独立审查通过（无Critical/Important），六文件提交 `2c07c60`；新增第六文件只维护旧审计测试的complete重载代理，两行修改保留全部原断言。root独立E盘冻结快照 clean verify 会话39721退出0：616发现/561实际执行/55可选跳过/0失败/0错误，六个源文件SHA仍匹配；真实JTA/浏览器未验。附件MySQL Fix2已提交 `43db3d1` 并复审通过，root真实重试58264退出0、测得Maven退出0、两套12项SQL测试无失败/跳过，旧wave4未知退出码不改写为成功。
 
 当前新专属环境为 `.superpowers/sdd/2026-10-12-medical-cloud-course-attachments/fixtures/6910fd2545ca4cf6ae88e94fb1203785/fixture.json`，运行目录 `E:/medical-cloud-platform-runtime/attachments-6910fd2545ca4cf6ae88e94fb1203785`。归属核对后的组件为MySQL27892:55607、MinIO8916:55611、Tomcat23488:55613、WildFly24680:55615；其他端口见manifest。仅基础容器已启动，尚未部署新产品WAR，不是可用门户。当前fixture指针已更新；每次使用仍须重新核验PID/启动时间/路径/监听/UUID。创建会话21160因子服务管道保持，不应凭观察超时终止/重启。新附件测试库 `course_attachment_test_81dc255d7f9a45e0a0f14748ddc35c69` 及数据、独立用户保留，真实证据在其runtime的mysql-evidence-fix2目录；仅RESOURCE_LOCAL，不是EJB/JTA。
