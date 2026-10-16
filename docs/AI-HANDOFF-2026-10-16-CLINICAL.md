@@ -2,6 +2,12 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+后续最新进度（尚无新的真实验收结果）：Fix2 已授权原作者，仅修改driver/test；四组实际PS5 RED→GREEN（共享读1/14、编码12/80、boot12/80、增长1/6），完整66场景回归仍在原作者执行。没有冻结/最终报告前不运行新实机。源码基线为2b9c835（HEAD至0884a8e仅文档），根代理sole Git/runtime。另一作者补充两文档，经独立窄审与root13链接/SHA验证后提交 `29f03ce`，不代表Fix2代码批准。
+
+新准备资料均已实跑成功：39435退出0，私有clinical-application/accounts-wave2-20261017.json明确保护ACL，含两个新BOOKED及一个新CANCELED，保留旧browser预约ID；87406退出0，新描述文件为附件SDD fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-logpolicy-20261017-fixture.json。它保留旧进程身份及clinical.bootEvidence，追加clinical.logPolicy.version1与7固定来源编码：paasFiles/rootPaasCaptures/rootPortalCaptures/bootPaasCaptures/bootPortalCaptures为GBK，portalOtherFiles为UTF-8，**portalAccessFiles为ISO-8859-1**。最后一项由root对实际catalina.jar的AccessLogValve.open字节码（默认ISO_8859_1、server.xml无override）确认，不得继续假定UTF8。私有log-source-provenance-20261017.json保存来源元数据，旧描述/日志/失败摘要保留。新descriptor尚未设为当前指针，待Fix2复审批准后显式使用；不能据准备资料标PASS。
+
+原作者 `clinical_task6_driver` 做Fix2，`clinical_task6_driver_review` 可接续窄复审；`deployment_utf8_review` 刚完成本次两文档实现，不能自己审本次改动（已由前者审）。另在原全系统缺口上启动医院/管理员开通的架构讨论，已异步询问“一次性原子开通医院与首管理员（推荐）或分步开通”。仅讨论未写新功能；答复也只确认当前思路，不是不存在的设计/计划审批。现有已批准诊疗任务继续，不以此问题阻塞。
+
 16日志补充诊断49911已退出0，不再live：旧rotation/root portal.err及当前boot paas.stdout、portal.stderr均严格UTF8失败/严格GBK成功；所有16份日志未匹配本次ASCIIcanary或有效UTF8/GBK解码中的七虚构账号原始密码。这个元数据诊断未检查运行时令牌，不能外推成正式日志红线门通过。原日志/源文件/描述文件没有改写。候选修复为共享只读有界读取、按实际来源显式严格编码（GBK/UTF8，不能replacement或猜测）、显式纳入当前boot四captures；原作者还在只读报告阶段，等待root裁决及新的TDD授权。保留原fixture及失败summary，后续必须另建未来独立预约，不能重用已完成main/legacy或篡改此次失败证据。
 
 真实HTTP会话31295现已终止，**退出1，不通过**，不是仍live。本次私有证据为clinical-application/clinical-evidence/a2aa992d-8284-4cf2-8d7a-a78588a2ba3d/clinical-supplements-summary.json：111请求，53必需项中22通过、1失败（container-log-redaction）、30未验证；completeDriverRun/wholeTask6Accepted均false。原病历不变、订单不变、丢响应重试恢复、六条完整历史链四facts均true。22通过覆盖补充/版本/无变化/409、草稿私有不生订单、401/越权403、旧无草稿完成、有草稿完成冲突、完成后删草稿、六次更正及两页完整历史、幂等变体409、完成/取消后只读、安全错误与审计。不能把这次退出1改写成整体通过，也不能重跑已消耗main/legacy目标。browser目标仍BOOKED独立保留。
