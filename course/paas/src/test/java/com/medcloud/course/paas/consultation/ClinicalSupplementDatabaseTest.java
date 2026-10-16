@@ -22,9 +22,8 @@ abstract class ClinicalSupplementFixture {
     static final CurrentActor DOCTOR=new CurrentActor("doctor",Role.DOCTOR,"tenant");
     EntityManagerFactory factory;
     @BeforeEach void open() {
-        Map<String,Object> settings=new HashMap<>();
-        settings.put("javax.persistence.jdbc.url","jdbc:h2:mem:clinical_"+UUID.randomUUID()+";MODE=MySQL;LOCK_TIMEOUT=10000");
-        factory=Persistence.createEntityManagerFactory("medicalCloudCourseTest",settings);
+        factory=Persistence.createEntityManagerFactory("medicalCloudCourseTest",settings());
+        beforeSeed();
         tx(em -> {
             em.persist(new Tenant("tenant","Demo"));
             for(String id:Arrays.asList("doctor","doctor2")) em.persist(new Account(id,id,"unused",Role.DOCTOR,"tenant"));
@@ -33,11 +32,17 @@ abstract class ClinicalSupplementFixture {
             em.persist(new Department("department","tenant","Demo"));
             em.persist(new DoctorProfile("doctor","tenant","department","Demo"));
             for(int i=1;i<=2;i++) {
-                em.persist(new ScheduleSlot("slot"+i,"tenant","department","doctor",Date.valueOf("2030-01-02"),Time.valueOf("09:00:00"),Time.valueOf("10:00:00"),10,BigDecimal.TEN));
+                em.persist(new ScheduleSlot("slot"+i,"tenant","department","doctor",Date.valueOf("2030-01-02"),Time.valueOf(i==1?"09:00:00":"10:00:00"),Time.valueOf(i==1?"10:00:00":"11:00:00"),10,BigDecimal.TEN));
                 em.persist(new Appointment("appointment"+i,"patient","slot"+i,"tenant","doctor",BigDecimal.TEN,Date.valueOf("2030-01-01"),NOW));
             } return null;
         });
     }
+    protected Map<String,Object> settings() {
+        Map<String,Object> settings=new HashMap<>();
+        settings.put("javax.persistence.jdbc.url","jdbc:h2:mem:clinical_"+UUID.randomUUID()+";MODE=MySQL;LOCK_TIMEOUT=10000");
+        return settings;
+    }
+    protected void beforeSeed() { }
     @AfterEach void close() { if(factory!=null) factory.close(); }
     <T>T tx(Function<EntityManager,T> work) {
         EntityManager em=factory.createEntityManager();
