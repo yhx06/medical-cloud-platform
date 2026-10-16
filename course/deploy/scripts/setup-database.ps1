@@ -11,8 +11,11 @@ if ([string]::IsNullOrWhiteSpace($env:MEDICAL_COURSE_DB_USER) -or
     throw 'Set MEDICAL_COURSE_DB_USER and MEDICAL_COURSE_DB_PASSWORD in this terminal first'
 }
 $originalMysqlPassword = $env:MYSQL_PWD
+$originalOutputEncoding = $global:OutputEncoding
 $env:MYSQL_PWD = $env:MEDICAL_COURSE_DB_PASSWORD
 try {
+    # Windows PowerShell 5.1 reads native stdin encoding from global scope.
+    $global:OutputEncoding = New-Object System.Text.UTF8Encoding($false)
     $scripts = @((Join-Path $PSScriptRoot '..\schema.sql'))
     if ($WithDemoData) { $scripts += (Join-Path $PSScriptRoot '..\seed-demo.sql') }
     foreach ($script in $scripts) {
@@ -23,5 +26,6 @@ try {
         Write-Output "Applied $script to medical_cloud_course"
     }
 } finally {
+    $global:OutputEncoding = $originalOutputEncoding
     $env:MYSQL_PWD = $originalMysqlPassword
 }
