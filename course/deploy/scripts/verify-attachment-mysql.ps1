@@ -42,10 +42,24 @@ function Invoke-AttachmentMysqlBoundary($Fixture,[string]$OptionsPath,[string]$S
     if ($LASTEXITCODE -ne 0) { throw 'MySQL operation failed' }
     return $rows
 }
-function Invoke-AttachmentMavenBoundary([string]$Executable,[string]$Pom) {
-    # Suppress raw diagnostics: drivers may include credential-bearing details.
-    & $Executable -o -B -f $Pom -pl paas -am '-Dtest=MySqlAttachmentConcurrencyTest,MySqlAttachmentTransactionTest' '-Dsurefire.failIfNoSpecifiedTests=false' test 2>&1 | Out-Null
-    return $LASTEXITCODE
+function Invoke-AttachmentMavenBoundary([string]$Executable,[string]$Pom,[string]$PrivateDirectory) {
+    # The caller has already restricted this unique directory's ACL. Fixed log
+    # names keep credential-bearing diagnostics off public output/summary.
+    $stdout = Join-Path $PrivateDirectory 'maven.stdout.log'
+    $stderr = Join-Path $PrivateDirectory 'maven.stderr.log'
+    [IO.File]::WriteAllText($stdout,'')
+    [IO.File]::WriteAllText($stderr,'')
+    $priorPreference = $ErrorActionPreference
+    try {
+        # PS5.1 converts native stderr into ErrorRecords. Continue applies only
+        # to this invocation; neither stderr nor a stale status can decide pass.
+        $ErrorActionPreference = 'Continue'
+        $global:LASTEXITCODE = $null
+        & $Executable -o -B -f $Pom -pl paas -am '-Dtest=MySqlAttachmentConcurrencyTest,MySqlAttachmentTransactionTest' '-Dsurefire.failIfNoSpecifiedTests=false' test 1>$stdout 2>$stderr
+        $nativeExit = $global:LASTEXITCODE
+    } finally { $ErrorActionPreference = $priorPreference }
+    if ($nativeExit -isnot [int]) { throw 'Native process exit status unavailable' }
+    return $nativeExit
 }
 function Invoke-AttachmentMysqlVerification {
     [CmdletBinding()]
@@ -139,7 +153,9 @@ function Invoke-AttachmentMysqlVerification {
         $env:COURSE_MYSQL_OBSERVER_USER = $observerUser; $env:COURSE_MYSQL_OBSERVER_PASSWORD = $observerPassword
         Assert-OwnedAttachmentsFixture $fixture 'mysql'
         $summary.stage = 'maven'
-        $mavenExit = Invoke-AttachmentMavenBoundary $MavenExecutable $pom
+        $summary.mavenLogs = [ordered]@{stdout='private/maven.stdout.log';stderr='private/maven.stderr.log'}
+        $mavenExit = Invoke-AttachmentMavenBoundary $MavenExecutable $pom $private
+        if ($mavenExit -is [int]) { $summary.mavenExitCode = $mavenExit }
         if ($null -eq $mavenExit -or $mavenExit -ne 0) { throw 'Maven failed' }
         $summary.stage = 'reports'
         $reports = Join-Path $course 'paas\target\surefire-reports'

@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 $runner = Join-Path $PSScriptRoot '..\scripts\verify-attachment-mysql.ps1'
 if (-not (Test-Path -LiteralPath $runner)) { throw 'RED: guarded MySQL runner is missing' }
 . $runner
-$scratchParent = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..\..\..'))
+$scratchParent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\','/')
+if ($scratchParent -notmatch '^E:\\') { throw 'Harness requires caller supplied unique E: TEMP' }
 $scratch = Join-Path $scratchParent ('attachments-' + [guid]::NewGuid().ToString('N'))
 $owner = [guid]::NewGuid().ToString('N')
 $uuid = '12345678-1234-1234-1234-123456789abc'
@@ -16,6 +17,32 @@ $options = Join-Path $scratch 'mysql-client.cnf'
 foreach ($file in @($client,$server,$options)) { [IO.File]::WriteAllText($file,'fake') }
 $fixture = @{ownerId=$owner;runtimeRoot=$scratch;mysql=@{pid=23456;created=$created.ToString('o');executable=$server;host='127.0.0.1';port=45678;serverUuid=$uuid;dataDirectory=(Join-Path $scratch 'mysql-data');clientExecutable=$client;credentialFile=$options}}
 $fixturePath = Join-Path $scratch 'fixture.json'
+$script:nativeMavenBoundary = (Get-Command Invoke-AttachmentMavenBoundary).ScriptBlock
+# Real native CMD processes, not Maven: warnings must preserve measured exit status
+# and both streams without becoming terminating PS5.1 NativeCommandError records.
+$nativeRoot = Join-Path $scratch 'native boundary space'
+[IO.Directory]::CreateDirectory($nativeRoot) | Out-Null
+foreach ($expectedExit in @(0,7)) {
+    $nativeCmd = Join-Path $nativeRoot ("warning-$expectedExit.cmd")
+    [IO.File]::WriteAllText($nativeCmd,"@echo off`r`nif not `"%~1`"==`"-o`" exit /b 31`r`nif not `"%~4`"==`"fictional pom with spaces.xml`" exit /b 32`r`necho native-stdout-private-marker`r`necho native-stderr-private-marker 1>&2`r`nexit /b $expectedExit`r`n")
+    $nativeLogs = Join-Path $nativeRoot ("logs-$expectedExit")
+    [IO.Directory]::CreateDirectory($nativeLogs) | Out-Null
+    $preference = $ErrorActionPreference
+    try { $nativeResult = & $script:nativeMavenBoundary $nativeCmd 'fictional pom with spaces.xml' $nativeLogs }
+    catch { throw ('RED: real native warning prevented exit-code observation [' + $_.Exception.GetType().Name + ';' + $_.FullyQualifiedErrorId + ']') }
+    if ($nativeResult -ne $expectedExit -or @($nativeResult).Count -ne 1) { throw 'Native status was missing, changed, or polluted by output' }
+    if ($ErrorActionPreference -cne $preference) { throw 'Native boundary changed caller error preference' }
+    if ([IO.File]::ReadAllText((Join-Path $nativeLogs 'maven.stdout.log')) -notmatch 'native-stdout-private-marker' -or
+        [IO.File]::ReadAllText((Join-Path $nativeLogs 'maven.stderr.log')) -notmatch 'native-stderr-private-marker') { throw 'Native logs lost a stream' }
+}
+Write-Output 'PASS: real native warning processes returned exact 0 and 7; both streams private'
+$missingLogs = Join-Path $nativeRoot 'logs-missing'
+[IO.Directory]::CreateDirectory($missingLogs) | Out-Null
+$global:LASTEXITCODE = 0
+$missingRefused = $false
+try { $null = & $script:nativeMavenBoundary (Join-Path $nativeRoot 'absent.cmd') 'fictional pom with spaces.xml' $missingLogs }
+catch { $missingRefused = $true }
+if (-not $missingRefused -or $ErrorActionPreference -ne 'Stop') { throw 'Unavailable native executable accepted stale success or changed preference' }
 function Get-CimInstance { [pscustomobject]@{ProcessId=23456;CreationDate=$created;ExecutablePath=$server;CommandLine="mysqld --datadir=`"$(Join-Path $scratch 'mysql-data')`" --port=45678 --bind-address=127.0.0.1"} }
 function Get-NetTCPConnection { [pscustomobject]@{OwningProcess=23456} }
 function Get-AttachmentsSqlIdentity { "$uuid`t45678`t$(Join-Path $scratch 'mysql-data')" }
@@ -26,7 +53,7 @@ function Invoke-AttachmentMysqlBoundary {
     if ($script:case -eq 'sql-failure') { throw 'sensitive-fake-password-never-output' }
 }
 function Invoke-AttachmentMavenBoundary {
-    param($Executable,$Pom)
+    param($Executable,$Pom,$PrivateDirectory)
     if ($env:COURSE_MYSQL_TEST_USER -eq 'root' -or $env:COURSE_MYSQL_OBSERVER_USER -eq $env:COURSE_MYSQL_TEST_USER) { throw 'Unsafe test identities' }
     if ($script:case -eq 'missing') { return 0 }
     $reports = Join-Path (Split-Path $Pom -Parent) 'paas\target\surefire-reports'
@@ -40,11 +67,17 @@ function Invoke-AttachmentMavenBoundary {
         $child = if ($tests -gt 0) { '<testcase name="proof" />' } else { '' }
         [IO.File]::WriteAllText((Join-Path $reports ("TEST-$suite.xml")),"<testsuite name=`"$name`" tests=`"$tests`" failures=`"$failures`" errors=`"0`" skipped=`"$skipped`">$child</testsuite>")
     }
+    if ($script:case -in @('native-warning','native-nonzero')) {
+        $nativeCmd = Join-Path $scratch ($script:case + '.cmd')
+        $exit = if ($script:case -eq 'native-nonzero') { 7 } else { 0 }
+        [IO.File]::WriteAllText($nativeCmd,"@echo off`r`necho native-stdout-private-marker`r`necho native-stderr-private-marker 1>&2`r`nexit /b $exit`r`n")
+        return (& $script:nativeMavenBoundary $nativeCmd $Pom $PrivateDirectory)
+    }
     if ($script:case -eq 'maven') { return 7 }; return 0
 }
 function Get-AttachmentJavaBoundary { 'java version "1.8.0_402"' }
 $count = 0
-foreach ($script:case in @('owner','remote','stale','unsafe-schema','schema-delete','schema-qualified','snapshot-junction','evidence-junction','existing','sql-failure','wrong','missing','skipped','failed','zero','maven','good')) {
+foreach ($script:case in @('owner','remote','stale','unsafe-schema','schema-delete','schema-qualified','snapshot-junction','evidence-junction','existing','sql-failure','wrong','missing','skipped','failed','zero','maven','native-warning','native-nonzero','good')) {
     $snapshot = Join-Path $scratch ('mysql-source-' + [guid]::NewGuid().ToString('N'))
     $external = Join-Path $scratchParent ('mysql-external-' + [guid]::NewGuid().ToString('N'))
     $physicalSnapshot = if ($script:case -eq 'snapshot-junction') { $external } else { $snapshot }
@@ -52,7 +85,7 @@ foreach ($script:case in @('owner','remote','stale','unsafe-schema','schema-dele
     foreach ($directory in @('deploy','paas\src\test\java\com\medcloud\course\paas\attachment')) { [IO.Directory]::CreateDirectory((Join-Path $course $directory)) | Out-Null }
     [IO.File]::WriteAllText((Join-Path $physicalSnapshot 'owner.id'),$owner)
     [IO.File]::WriteAllText((Join-Path $course 'pom.xml'),'<project />')
-    [IO.File]::WriteAllText((Join-Path $course 'deploy\schema.sql'),[IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\schema.sql')))
+    [IO.File]::WriteAllText((Join-Path $course 'deploy\schema.sql'),[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'fixtures\attachments-schema-003.sql')))
     [IO.File]::WriteAllText((Join-Path $course 'paas\src\test\java\com\medcloud\course\paas\attachment\MySqlAttachmentConcurrencyTest.java'),'map.put("hibernate.hbm2ddl.auto","validate");')
     if ($script:case -eq 'stale') { [IO.Directory]::CreateDirectory((Join-Path $course 'paas\target')) | Out-Null }
     if ($script:case -eq 'unsafe-schema') { [IO.File]::AppendAllText((Join-Path $course 'deploy\schema.sql'),'DROP DATABASE unsafe;') }
@@ -77,8 +110,8 @@ foreach ($script:case in @('owner','remote','stale','unsafe-schema','schema-dele
     foreach ($name in @('JAVA_HOME','MYSQL_PWD','COURSE_MYSQL_TEST_URL','COURSE_MYSQL_TEST_USER','COURSE_MYSQL_TEST_PASSWORD','COURSE_MYSQL_OBSERVER_URL','COURSE_MYSQL_OBSERVER_USER','COURSE_MYSQL_OBSERVER_PASSWORD')) { $prior[$name] = [Environment]::GetEnvironmentVariable($name,'Process') }
     $result = Invoke-AttachmentMysqlVerification -FixturePath $fixturePath -EvidenceRoot $evidence -MavenExecutable $client -JavaHome $scratch -CoursePom (Join-Path $course 'pom.xml')
     if ($script:case -eq 'evidence-junction' -and (Test-Path -LiteralPath (Join-Path $external 'new-child'))) { throw 'Evidence created outside runtime before ancestor validation' }
-    if (($result.exitCode -eq 0) -ne ($script:case -eq 'good')) { throw "Case $script:case had wrong exit at $($result.stage)" }
-    $stages = @{owner='fixture';remote='fixture';stale='snapshot';'unsafe-schema'='schema';'schema-delete'='schema';'schema-qualified'='schema';'snapshot-junction'='snapshot';'evidence-junction'='evidence';existing='new-database';'sql-failure'='new-database';wrong='reports';missing='reports';skipped='reports';failed='reports';zero='reports';maven='maven';good='reports'}
+    if (($result.exitCode -eq 0) -ne ($script:case -in @('good','native-warning'))) { throw "Case $script:case had wrong exit at $($result.stage)" }
+    $stages = @{owner='fixture';remote='fixture';stale='snapshot';'unsafe-schema'='schema';'schema-delete'='schema';'schema-qualified'='schema';'snapshot-junction'='snapshot';'evidence-junction'='evidence';existing='new-database';'sql-failure'='new-database';wrong='reports';missing='reports';skipped='reports';failed='reports';zero='reports';maven='maven';'native-warning'='reports';'native-nonzero'='maven';good='reports'}
     if ($result.stage -ne $stages[$script:case]) { throw "Case $script:case did not reach intended validation" }
     if ($script:case -in @('owner','remote','stale','unsafe-schema','schema-delete','schema-qualified','snapshot-junction','evidence-junction') -and $script:sql.Count -ne 0) { throw 'Invalid target/source reached SQL' }
     if ($script:case -eq 'existing' -and @($script:sql | Where-Object { $_ -match 'CREATE|GRANT' }).Count -gt 0) { throw 'Existing database reached mutation' }
@@ -89,6 +122,19 @@ foreach ($script:case in @('owner','remote','stale','unsafe-schema','schema-dele
         if ($grants -match '\.\*' -or $grants -notmatch 'ON `course_attachment_test_[a-f0-9]{32}`\.`[a-z_]+` TO') { throw 'Test DML grants must target exact individual tables, never database patterns' }
     }
     if (($result | ConvertTo-Json) -match 'sensitive-fake-password-never-output') { throw 'Exception leaked' }
+    if ($script:case -in @('native-warning','native-nonzero')) {
+        $expected = if ($script:case -eq 'native-nonzero') { 7 } else { 0 }
+        if ($result.mavenExitCode -ne $expected) { throw 'Summary lost measured native status' }
+        if (($result | ConvertTo-Json -Depth 4) -match 'native-stdout-private-marker|native-stderr-private-marker') { throw 'Native content leaked to summary' }
+        $runId = $result.database.Substring('course_attachment_test_'.Length)
+        $privateLogs = Join-Path $evidence ("mysql-verification-$runId\private")
+        foreach ($stream in @('stdout','stderr')) {
+            $log = Join-Path $privateLogs ("maven.$stream.log")
+            if ([IO.File]::ReadAllText($log) -notmatch ("native-$stream-private-marker")) { throw 'Runner did not retain private native stream' }
+            $access = Get-Acl -LiteralPath $log
+            if (@($access.Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -ne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value }).Count -ne 0) { throw 'Native log is readable by another identity' }
+        }
+    }
     $count++
 }
 Write-Output "PASS: $count behavioral fake-boundary cases (not real MySQL acceptance); scratch retained"
