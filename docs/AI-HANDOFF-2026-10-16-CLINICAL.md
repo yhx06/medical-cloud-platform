@@ -1,5 +1,19 @@
 # 医疗云开发接续：2026-10-16 诊疗增强检查点
 
+## 最新部署检查点（优先于以下历史快照）
+
+2026-10-17增量：UTF8窄修复独立审查规格通过/质量批准，无发现；root新鲜PS5五项原生行为测试全部通过，精确两文件提交 `2c4a125`。独立实测通过真实API创建四个未来虚构预约：appointmentId、legacyAppointmentId、browserAppointmentId为BOOKED，canceledAppointmentId为CANCELED；ID已写入原私有accounts.json，过程证明位于clinical-application/http-prerequisites-20261017.json。无需重新建号源或重跑一次性准备脚本；该脚本遇到既有证明会拒绝重放。未完成任何临床业务。驱动作者已冻结两文件并提交报告：21场景174断言，外部必需门保持unverified且非零；现由clinical_task6_driver_review独立审查。报告及差异为task-6-driver-report.md、review-driver-20261017.diff、review-driver-tests-20261017.diff。此前额度限制已恢复，不再视为阻塞。
+
+root独立复跑驱动行为套件：第一次因非E盘TEMP被正确拒绝，未执行业务；改为全新E盘测试目录并finally恢复环境后，会话9081退出0，21场景174断言零失败。仅行为边界测试，尚未运行真实临床驱动。私有accounts.json原继承ACL虽仅本用户可读，AreAccessRulesProtected为false；root在验证专属实例后将现有允许规则转为显式保护（未增加主体），现为true，符合驱动契约。原驱动作者已接续仅两文档的Task6指南/范围清单证据增量任务，不写驱动或其他源码；尚待独立文档审查。
+
+用户再次确认更正历史每页最多5条；设计、计划、后端、门户及尺寸/超限测试已一致，其他列表与1MiB安全上限不变，无需重复审批。
+
+新产品WAR已部署至专属6910环境，并非下文所说的“尚未部署”。运行目录为 `E:/medical-cloud-platform-runtime/attachments-6910fd2545ca4cf6ae88e94fb1203785`。当前必须使用 `.superpowers/sdd/2026-10-12-medical-cloud-course-attachments/fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-20261016-fixture.json`；原fixture.json保留但Tomcat/WildFly进程身份已过期。新私有WildFly安装位于runtime下wildfly-home-clinical，教师安装未改。2026-10-16本次只读复核四组件归属均通过，门户登录页HTTP200。门户地址为 http://127.0.0.1:55613/portal/login，API为 http://127.0.0.1:55615/paas/api 。之前启动验证确认部署标记及七个虚构角色账号登录；这些不等于临床业务或浏览器验收通过。
+
+应用库medical_cloud_course已初始化十二表与虚构种子，应用用户仅逐表DML。私有账号位于runtime下clinical-application/accounts.json，不输出或提交密码/token。尚需通过真实API创建未来号源及独立预约，补充验收所需appointmentId；不要复用2030年种子号源。新的原生管道编码问题已定位：PS5全局OutputEncoding导致中文种子损坏；只修复本次专属新库六个虚构显示字段，未改历史诊疗数据。setup-database.ps1及新增setup-database-encoding.Tests.ps1的窄修复已有root五项行为验证，但独立复审因代理使用额度中断，尚未批准/提交。
+
+严格临床验收脚本及其行为测试目前是未提交WIP，原作者clinical_task6_driver额度中断；不得按已实现/已审查执行或算通过。deployment_utf8_review同样没有最终结论。复用原句柄，不能切换模型规避额度或重派重复实现。两类源码以及未跟踪EAM均须保护。下一步先完成冻结报告、独立审查，再继续真实EJB/JTA、临床HTTP、浏览器、故障和完整回归门。既有九项SQL只证明RESOURCE_LOCAL，不能代替这些门。
+
 本文件是 `AI-HANDOFF-2026-10-16.md` 的增量接续，不替代原附件与部署交接。全系统目标仍在进行中；本批代码尚未完成独立审查及真实环境验收，不能宣布系统完成、推送或合并。
 
 最新SQL检查点（优先于下面所有历史快照）：新增九项临床MySQL测试及共享测试夹具两钩子/有效号源种子已独立审查并提交 `55752fa`，不是整个Task6完成。初次真实运行78631有九个setup错误：旧H2夹具两个号源同医生/同日/同开始时间，被真实SQL唯一约束正确拒绝。只将slot2改为10–11点，slot1仍9–10点，未削弱生产/SQL约束；经窄复审后root重试32411退出0、测得Maven0、九项实际执行、零失败/错误/跳过。四个实际请求者→持有者InnoDB锁等待均已观察，之后才释放首事务；覆盖草稿/完成/病情/更正竞争、幂等与审计失败回滚。root另跑20项原H2临床回归，11855退出0、无失败/跳过。
