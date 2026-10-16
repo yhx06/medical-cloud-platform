@@ -1,6 +1,8 @@
 # 病情补充、私有草稿与病历更正：分层验收指南
 
-记录日期：2026-10-16；状态补充：2026-10-17。课程实现已接入，Task6 完整验收尚未完成。新的临床验收驱动首审提出待修复项，尚未修复复审批准或提交；本指南也需独立审查。后续实际执行结果由根代理追加，不以本指南或代码存在宣告通过。
+记录日期：2026-10-16；Fix1 状态补充：2026-10-17。课程实现已接入，Task6 完整验收尚未完成。临床驱动首审三项 Important 已修正，独立窄复审结论为 3 ADDRESSED、无新增 Critical/Important；驱动及行为测试精确提交 `2b9c835`。根代理本轮真实 HTTP 已开始，结果待定，不能写成通过或 `wholeTask6Accepted=true`。
+
+本指南与范围清单初稿已独立审查批准并提交 `6dfe688`；本次 Fix1 状态/权限契约勘误另待原审查者窄复审。历史首审、失败及后续修正保留，实际结果由根代理追加；驱动级批准不等于 Task6 或全系统验收批准。
 
 范围依据为[已批准设计](../superpowers/specs/2026-10-16-medical-cloud-clinical-supplements-design.md)及[实施计划](../superpowers/plans/2026-10-16-medical-cloud-clinical-supplements.md)。完整系统剩余范围见[范围清单](2026-10-04-full-scope-inventory.md)，附件状态另见[附件专项](2026-10-12-attachments-acceptance.md)。本切片补充 FR-APT-05、FR-CON-05 和此前约定的接诊草稿，不包含处方、订单取消、机构账号开通、AI/评价或真实医疗支付。
 
@@ -31,29 +33,31 @@ MinIO 是既有附件依赖；补充/草稿/更正事务设计上不依赖对象
 | 层级 | 已有记录 | 不可外推的结论 |
 | --- | --- | --- |
 | 实现 | 契约/内容规则、保护迁移、实体/服务、API/审计、Portal 已实现；原始/有效/草稿分离 | 不等于当前双容器、浏览器或全系统验收完成 |
-| 驱动行为 | Windows PowerShell 5.1：21 场景、174 断言、0 失败；根代理独立复跑 exit 0；驱动首审仍有待修复项，尚未批准 | AST 边界测试不是实际 HTTP、数据库、JTA 或浏览器证据；后续修复需新增反例并复审 |
+| 驱动行为 | 历史初轮 PS5.1 为 21/174；Fix1 新增反例后为 **40 场景、303 断言、0 失败**，根代理新鲜复跑 exit 0；三项 Important 窄复审已解决，精确提交 `2b9c835` | AST 边界测试及驱动 scoped 批准不是实际 HTTP、数据库、JTA、浏览器或 wholeTask6 通过 |
 | 真实迁移 | 根代理新专属 MySQL 8.0.45 六项观察：十表基线、全备份、旧病历/已付订单逐行摘要不变、旧预约 NULL/NULL/0、只读重复、空库/升级后元数据一致 | 仅这六项；真实部分 DDL/备份失败/外来拒绝等仍需补齐，不能填满迁移矩阵 |
 | 真实业务 SQL | 根代理 mandatory MySQL 专项 9 项执行、0 失败/错误/跳过；实际锁观察及 RESOURCE_LOCAL 审计故障回滚有记录 | 不是 EJB/JTA、双容器 API 授权/审计故障或完整临床验收 |
-| 当前实机准备 | 根代理已用真实 API 准备主流程、旧 complete、取消、浏览器四个独立未来预约；私有账号 ACL 已核对 | 准备目标不是驱动实际执行成功；当前尚无已批准的完整临床 HTTP 摘要 |
+| 当前实机准备/运行 | 根代理已用真实 API 准备主流程、旧 complete、取消、浏览器四个独立未来预约；私有账号 ACL 已核对；Fix1 批准后已开始真实 HTTP 驱动 | 截至本次勘误，真实运行结果待定；准备或启动不是成功，本节没有实机通过声明 |
 | 浏览器/故障 | 当前临床 Chrome/Edge、禁 JS、键盘、CSRF/转义、医院冻结竞态、停止 MinIO 及 WildFly JTA/独立失败审计门仍未验 | 旧审计浏览器/旧附件观察不能迁移为当前临床门通过 |
 
 本地原始证据在 Git 忽略目录 `.superpowers/sdd/2026-10-16-medical-cloud-clinical-supplements/`，主要为 `task-2-report.md` 的根代理实机增量、`task-6-mysql-report.md` 的 mandatory 九项增量、`task-6-driver-report.md` 和 RED/GREEN 日志。它们不随公开文档携带；换机需由运行负责人提供脱敏证据。初次失败、后续修正与可选跳过均保留，不追溯改写。
 
 ## 4. 三参数真实 HTTP 驱动
 
-[驱动](../../course/deploy/scripts/verify-clinical-supplements.ps1)当前是待审的增量验收入口，只有三个必需参数：`-FixturePath`、`-EvidenceRoot`、`-AccountsPath`。下面是待替换占位值的调用格式，不会替用户选择目标：
+[驱动](../../course/deploy/scripts/verify-clinical-supplements.ps1)的 Fix1 已获 scoped 窄复审批准并提交，是增量验收入口，仍只有三个必需参数：`-FixturePath`、`-EvidenceRoot`、`-AccountsPath`。下面是待替换占位值的调用格式，不会替用户选择目标：
 
 ```powershell
 powershell.exe -NoProfile -File .\course\deploy\scripts\verify-clinical-supplements.ps1 `
     -FixturePath 'E:\<本轮SDD路径>\clinical-running-20261016-fixture.json' `
-    -EvidenceRoot 'E:\<本轮owned运行根>\clinical-evidence' `
-    -AccountsPath 'E:\<本轮owned运行根>\private-accounts.json'
+    -EvidenceRoot 'E:\<本轮owned运行根>\clinical-application\clinical-evidence' `
+    -AccountsPath 'E:\<本轮owned运行根>\clinical-application\private-accounts.json'
 $clinicalVerificationExit = $LASTEXITCODE
 ```
 
 当前新运行身份是附件 SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-20261016-fixture.json`，这是根代理准备的当前清单；同目录旧 `fixture.json` 的两个容器 PID 已过期。描述文件不证明服务仍在运行。每次实际请求及证据目录/文件写入前，驱动均重新核对清单内容和共享 MySQL/PaaS 归属：owner marker、PID/创建时间、可执行文件/运行目录、保护端口、监听、静态及实时 MySQL UUID/端口/datadir。读取容器日志还检查 Portal 归属。调用不能改成任意 URL，也没有跳过、强制通过、导入历史结果或生产 mock 参数。
 
-描述文件允许位于既有 SDD 目录，但必须是绝对路径、普通文件、大小不超过 64 KiB、所有祖先无 reparse，并在运行中保持内容不变。`AccountsPath` 和 `EvidenceRoot` 必须是 `fixture.runtimeRoot` 内的绝对后代路径，所有祖先无 reparse。账号文件为最多 64 KiB 的普通文件，ACL 必须显式保护，只允许当前用户、SYSTEM、Administrators。证据父目录下每次新建 UUID 子目录，不能用旧结果目录覆盖本轮记录。
+描述文件允许位于既有 SDD 目录，但必须是绝对路径、普通文件、大小不超过 64 KiB、所有祖先无 reparse，并在运行中保持内容不变。`AccountsPath` 和 `EvidenceRoot` 必须是 `fixture.runtimeRoot` 内的绝对后代路径，所有祖先无 reparse，并同处一个受保护的私有目录边界。运行根本身可以是公开目录，例如只将其 `clinical-application` 子目录设为私有；更深层目录可继承该私有边界，不要求把整个 runtime 改权限。
+
+私有边界及边界内所有现有祖先、目录和目标的 ACL 仅允许当前用户、SYSTEM、Administrators，所有者也须属于这些主体。账号文件仍必须是最多 64 KiB 的普通文件且 ACL **显式保护**。每次 HTTP 请求、每次证据目录/文件写入前重新核对账号、证据祖先和现有目标权限；UUID 子目录及新文件的继承 ACL 同样检查，不能只在预检时看一次。summary 以 CreateNew 独占打开，再核对归属及新文件权限后写入。运行中权限变宽会阻止下一次请求或写证据。证据父目录下每次新建 UUID 子目录，不能覆盖本轮或历史结果。
 
 账号 JSON 契约如下；**不要把真实文件内容贴入文档、命令行、聊天或 Git**：
 
@@ -71,7 +75,7 @@ $clinicalVerificationExit = $LASTEXITCODE
 
 ## 5. 53 个必需门与摘要解释
 
-当前冻结待审注册表有 **53 门**；以下分类仅用于阅读，不改变门名或执行要求：
+当前 Fix1 注册表仍有 **53 门**；以下分类仅用于阅读，不改变门名或执行要求：
 
 | 分组 | 门数 | 当前驱动的能力/限制 |
 | --- | --- | --- |
@@ -101,10 +105,14 @@ $clinicalVerificationExit = $LASTEXITCODE
 
 ## 6. 继续验收与交付
 
-根代理先完成驱动 scoped 独立审查及修复，再在新 owned 环境运行真实链，保留每次失败和本轮独立摘要。迁移失败保护、锁观察、医院冻结竞态和故障注入串行协调，不能同时占用旧附件故障窗口。审计故障必须证明真实成功事务整笔回滚、失败审计在业务事务结束后独立记录，以及恢复后可继续；不要只看 HTTP 500。
+根代理已完成本次驱动 scoped 审查、Fix1 与窄复审，并已在新 owned 环境开始真实链；本次文档勘误不预判运行结果，仍须保留每次失败和本轮独立摘要。后续驱动修复也须先复审再实机运行。迁移失败保护、锁观察、医院冻结竞态和故障注入串行协调，不能同时占用旧附件故障窗口。审计故障必须证明真实成功事务整笔回滚、失败审计在业务事务结束后独立记录，以及恢复后可继续；不要只看 HTTP 500。
 
 真实浏览器仍须分别在 Chrome/Edge、正常/禁 JS 下操作患者补充、医生保存/重开/完成/更正和患者历史，观察 401/403/409/冻结、中文/转义、原生表单、键盘和陈旧输入保留。工具不能连接或某步骤未完成时逐项未验，不能用 DOM/HTTP/JSP 测试顶替。先前审计无 JS GET 或附件列表观察只证明其原范围。
 
 最后执行当前源全量 `clean verify` 并披露所有可选跳过，完成独立全切片审查及修复；通过每个必需门后才汇报 Task6 阶段完成。推送/合并前另核整分支审查与目标树保护。停止服务仅对本轮精确 owned 进程正常关闭，保留数据、备份、失败和成功证据。MySQL 8 实测与教师 5.6 未验分别披露；本机 loopback 不代表云端部署。
 
 本阶段不宣告全项目完成。跨号源时段冲突、订单取消规则、医院/管理员开通、完整资料/支付流水号/其他列表分页、性能与恢复、云端、最终报告/PPT/演示和真实成员贡献继续保留；处方范围冲突与 P2 可选 AI/评价仍按原清单，不默默删除或纳入。70 台服务器仅模型，不再新增 PowerDesigner 图。
+
+## 7. 2026-10-17 Fix1 审查增量
+
+历史首审三项 Important 分别为证据私有祖先/目标 ACL 缺口、JSON 转义文本绕过原始比较、更正及中间历史正文核对不足。Fix1 新增反例并修复为逐次私有边界检查、递归 decoded string leaf 脱敏检查、由本次请求建立内存期望并逐条核对六条持久化历史；原失败记录保留。最终 PS5.1 行为测试 40/303/0，根代理独立复跑及源码 SHA 匹配，原审查者窄复审 3 ADDRESSED，无新增 Critical/Important，精确两文件提交 `2b9c835`。三参数、53 门和未验非零规则未变；这项审查批准仅覆盖驱动修复，不是本轮真实 HTTP 结果或 wholeTask6 通过。
