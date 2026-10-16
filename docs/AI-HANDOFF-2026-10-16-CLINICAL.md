@@ -2,6 +2,12 @@
 
 本文件是 `AI-HANDOFF-2026-10-16.md` 的增量接续，不替代原附件与部署交接。全系统目标仍在进行中；本批代码尚未完成独立审查及真实环境验收，不能宣布系统完成、推送或合并。
 
+19:15最新增量：Task4接口已独立审查通过（无Critical/Important），六文件提交 `2c07c60`；新增第六文件只维护旧审计测试的complete重载代理，两行修改保留全部原断言。root独立E盘冻结快照 clean verify 会话39721退出0：616发现/561实际执行/55可选跳过/0失败/0错误，六个源文件SHA仍匹配；真实JTA/浏览器未验。附件MySQL Fix2已提交 `43db3d1` 并复审通过，root真实重试58264退出0、测得Maven退出0、两套12项SQL测试无失败/跳过，旧wave4未知退出码不改写为成功。
+
+当前新专属环境为 `.superpowers/sdd/2026-10-12-medical-cloud-course-attachments/fixtures/6910fd2545ca4cf6ae88e94fb1203785/fixture.json`，运行目录 `E:/medical-cloud-platform-runtime/attachments-6910fd2545ca4cf6ae88e94fb1203785`。归属核对后的组件为MySQL27892:55607、MinIO8916:55611、Tomcat23488:55613、WildFly24680:55615；其他端口见manifest。仅基础容器已启动，尚未部署新产品WAR，不是可用门户。当前fixture指针已更新；每次使用仍须重新核验PID/启动时间/路径/监听/UUID。创建会话21160因子服务管道保持，不应凭观察超时终止/重启。新附件测试库 `course_attachment_test_81dc255d7f9a45e0a0f14748ddc35c69` 及数据、独立用户保留，真实证据在其runtime的mysql-evidence-fix2目录；仅RESOURCE_LOCAL，不是EJB/JTA。
+
+唯一进行中的实现代理为 `clinical_task6_mysql`：独占新增MySqlClinicalSupplementTest.java及旧ClinicalSupplementFixture的settings()/beforeSeed()两处小钩子（H2默认和种子不变）。拟运行九个新MySQL验收测试；初次本地定向18个旧H2测试通过、九个新测试因无外部夹具明确跳过；REQUIRED=true且缺配置实测九项失败/零跳过，未访问JDBC。默认完整PaaS回归还在原代理跟踪，需复用句柄、等待报告冻结后独立审查。实际临床SQL尚未执行，不把可选skip当通过。新测试使用 `-Pmysql-integration`，环境前缀COURSE_CLINICAL_MYSQL_*、REQUIRED=true；URL只接受唯一loopback库course_clinical_test_GUID，非root精确逐表DML、单独observer仅performance_schema两表SELECT。root仍须安全创建专属12表库和私有凭据/环境、运行并验证真实锁等待，再完成其余Task6验收脚本/双容器/浏览器/故障/全切片审查。README已补充004顺序及真实提供器测试参数，勿重复开发已提交接口。
+
 19:00最新增量（优先于所有下文快照）：Task5 Fix1后独立审查通过，root完整门户129项+契约12项无失败/跳过，14文件已提交 `d76af77`。Task2独立审查通过，并在全新专属MySQL8.0.45实跑六项检查：十表基线、完整备份、旧病历/已支付订单逐行摘要不变、预约NULL/NULL/0默认值、重复执行无新备份、新建与迁移真实结构一致；四文件提交 `280b825`。实例已正常关闭，数据/备份保留于 `E:/medical-cloud-platform-runtime/clinical-migration-c2c80638f7f741cc936e4c29179d7b55`，对应日志 `root-migration-live-fix1-20261016.log`；JPA/真实并发/JTA/实物故障/教师5.6仍未验。Task4原代理正在独立E盘快照实施/验证，五文件所有权勘误为 ClinicalResource（旧complete实际位置），不是 AppointmentResource。附件MySQL原代理正在Fix2边界及历史schema测试修复，尚无实际重跑。不要重派已完成业务/门户/迁移实现；接续两名原代理及后续独立审查/真实验收。
 
 最新增量（优先于下文中断时的快照）：Task3审查代理已恢复并写入完整报告，规格通过、质量批准，无Critical/Important；root已精确提交12文件为 `9a6a5a6`。只有预期负向审计测试/继承构建警告的非阻断日志清理建议，留到最终审查。Task4已派发 `clinical_task4_api`，以该提交为冻结后端基线，仅独占简报五文件，使用E盘独立源码快照/target。Task5原实现者仍负责Fix1及共享Maven槽；Task2尚无最终审查结论。真实MySQL/JTA和浏览器验收仍未完成。

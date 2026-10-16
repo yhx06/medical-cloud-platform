@@ -10,6 +10,16 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 
 持久化脱敏审计、13 个事件入口、保护性加表迁移及本地 MySQL/EJB/门户证据见 [审计专项验收（2026-10-08/09）](../../docs/course-labs/2026-10-04-audit-acceptance.md)。这是后续独立切片，新增 `audit_event`；已有课程库须先完成下述审计升级，不能沿用上一段“无结构变更”的部署结论。医院及平台浏览器筛选分页/布局/键盘、真实故障与登录恢复、停用本人已有历史已观察；真正禁JavaScript的Edge/headless/减少动画/原生键盘审计GET筛选及第二页已执行，失败尝试、交互范围与正常关闭边界详见专项记录。
 
+## 诊疗增强：结构与测试前置条件
+
+已加入患者病情补充、原医生私有草稿、追加式病历更正及受限历史接口。更正历史默认/最多每页5条，保留完整前后正文，其他列表不变。原始病历、订单、诊费和完成时间不随更正改变。实现和本地回归通过不等于真实容器、事务或浏览器已验收。
+
+新建专属库使用当前 `schema.sql`。既有库的顺序为001/002/003→004，使用 `scripts/upgrade-clinical-database.ps1`，明确传入 MySqlCli、MySqlDumpCli、HostName、Port、Database、ExpectedServerUuid、BackupPath；凭据仅由 MEDICAL_COURSE_DB_USER/PASSWORD 环境变量提供。只接受 `medical_cloud_course` 的精确十表003基线或完整004结构，备份成功后才执行增量DDL；部分/异构结构拒绝。已有运行库迁移须另行确认目标和维护窗口，不直接套用新建库初始化或重跑种子。
+
+004之后使用最新临床升级器只读核验；旧003脚本因预约新增三列而拒绝，是预期保护行为，不应放宽其基线。JPA继续 `validate`，部署新WAR前必须先满足新结构。
+
+临床接口派发测试会使用本机 WildFly 的真实 RESTEasy/Jackson 提供器模块。构建时提供 `-Dcourse.test.wildfly.home=<WildFly10目录>`；缺失提供器会失败，不以测试专用 JSON 读取器或跳过替代。该测试仍是本地派发/H2，不能代替实际部署的 WildFly/JTA 和浏览器验收。
+
 ## 附件验收驱动
 
 部署并导入 schema/种子/附件迁移后，对一个已归属的夹具运行：
@@ -35,7 +45,7 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 ```powershell
 $env:JAVA_HOME = '<JDK 8 路径>'
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
-mvn -f course/pom.xml clean verify
+mvn -f course/pom.xml "-Dcourse.test.wildfly.home=<WildFly10目录>" clean verify
 
 $env:MEDICAL_COURSE_DB_USER = '<初始化账号>'
 $env:MEDICAL_COURSE_DB_PASSWORD = '<初始化密码>'
