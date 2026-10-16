@@ -2,6 +2,12 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+16日志补充诊断49911已退出0，不再live：旧rotation/root portal.err及当前boot paas.stdout、portal.stderr均严格UTF8失败/严格GBK成功；所有16份日志未匹配本次ASCIIcanary或有效UTF8/GBK解码中的七虚构账号原始密码。这个元数据诊断未检查运行时令牌，不能外推成正式日志红线门通过。原日志/源文件/描述文件没有改写。候选修复为共享只读有界读取、按实际来源显式严格编码（GBK/UTF8，不能replacement或猜测）、显式纳入当前boot四captures；原作者还在只读报告阶段，等待root裁决及新的TDD授权。保留原fixture及失败summary，后续必须另建未来独立预约，不能重用已完成main/legacy或篡改此次失败证据。
+
+真实HTTP会话31295现已终止，**退出1，不通过**，不是仍live。本次私有证据为clinical-application/clinical-evidence/a2aa992d-8284-4cf2-8d7a-a78588a2ba3d/clinical-supplements-summary.json：111请求，53必需项中22通过、1失败（container-log-redaction）、30未验证；completeDriverRun/wholeTask6Accepted均false。原病历不变、订单不变、丢响应重试恢复、六条完整历史链四facts均true。22通过覆盖补充/版本/无变化/409、草稿私有不生订单、401/越权403、旧无草稿完成、有草稿完成冲突、完成后删草稿、六次更正及两页完整历史、幂等变体409、完成/取消后只读、安全错误与审计。不能把这次退出1改写成整体通过，也不能重跑已消耗main/legacy目标。browser目标仍BOOKED独立保留。
+
+日志失败正在根因分析，尚未修改产品/驱动：默认ReadAllBytes/ReadAllText读取当前server.log报共享冲突；root用FileStream Read+FileShare.ReadWrite成功读取。严格UTF8另发现旧轮转server.log.2026-10-16与旧root portal.err.log不合法；root守护后jcmd只读确认两个JVM file.encoding=GBK，WildFly FILE/CONSOLE未显式编码，而当前Tomcat JULI/Console配置UTF8。还有覆盖缺口：实际当前captures在clinical-application/boot-UUID/paas.stdout.log等四文件，原工具只扫描runtime根旧captures。原作者clinical_task6_driver已接续只读诊断task-6-driver-live-diagnosis.md，未获源码修改授权；不得跳过旧日志、替换非法字符或删日志以拿绿色。root诊断脚本diagnose-owned-log-gate-20261017.ps1仅内存读虚构canary/凭据、输出封闭元数据，不打印正文。最新扩展16日志严格UTF8/GBK分类诊断会话49911仍需轮询直到终端；它不写数据库或原日志，不能算正式日志门通过。
+
 最新优先状态：验收驱动三项Important已由原作者Fix1修复并经原reviewer正式窄复审3 ADDRESSED/无新增Critical或Important；根代理独立全行为复跑会话10816退出0，40场景303断言零失败，两SHA匹配。精确驱动/测试两文件提交 `2b9c835`；权限契约及证据分层的两文档勘误另经窄审批准，提交 `09946cc`。原始失败及21/174历史保留，不代表完整Task6通过。原驱动作者及两审查者目前已完成，不重派实现。
 
 根代理真实HTTP验收会话 **31295** 正在运行（本检查点最后一次观察确认仍live，尚未取得最终摘要）。命令使用当前clinical-running-20261016-fixture.json、clinical-application/accounts.json及同目录clinical-evidence私有证据父目录；全部源码冻结，不能同时部署/故障注入、修改driver或重新准备预约。请首先轮询同一会话，不因观察超时重跑。当前真实只读SQL进度曾见两条COMPLETED、一条BOOKED、一条CANCELED、草稿0；这些只是阶段观察，不是整条业务链或更正验收通过。此运行会消耗main/legacy目标；browser目标仍独立。结束后读取本次新UUID证据目录的clinical-supplements-summary.json及实际退出值。未验证外部门应非零；缺失最终摘要不算通过。不能盲重跑已经接诊/更正过的目标。
