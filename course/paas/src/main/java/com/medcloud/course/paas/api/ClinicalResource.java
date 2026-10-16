@@ -71,7 +71,8 @@ public class ClinicalResource {
             CurrentActor actor=auth.authenticate(BearerTokens.require(authorization)); c.attachActor(actor);
             return clinical.complete(actor,appointmentId,request==null ? null : request.getComplaint(),
                     request==null ? null : request.getDiagnosis(),request==null ? null : request.getAdvice(),
-                    request==null ? null : request.getNotes(),Instant.now(),c);
+                    request==null ? null : request.getNotes(),Instant.now(),c,
+                    request==null ? null : request.getExpectedDraftRevision());
         });
         return ApiResponse.success("consultation completed", view(record));
     }

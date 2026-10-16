@@ -76,8 +76,8 @@ class AuditFailureScopeTest extends AuditClinicalFixture {
             String bearer="Bearer " + AuditLocalTransactions.login(manager,auth,new LoginRequest(stage.equals("clinicalView") ? "doctor_a" : "patient_a",PASSWORD)).getAccessToken();
             if(stage.equals("clinicalView")) {
                 ClinicalService clinical=new ClinicalService(manager) {
-                    @Override public ClinicalRecord complete(CurrentActor a,String id,String complaint,String diagnosis,String advice,String notes,java.time.Instant at,AuditContext c) {
-                        ClinicalRecord committed=tx(() -> super.complete(a,id,complaint,diagnosis,advice,notes,at,c));
+                    @Override public ClinicalRecord complete(CurrentActor a,String id,String complaint,String diagnosis,String advice,String notes,java.time.Instant at,AuditContext c,Long expectedDraftRevision) {
+                        ClinicalRecord committed=tx(() -> super.complete(a,id,complaint,diagnosis,advice,notes,at,c,expectedDraftRevision));
                         return new ClinicalRecord(committed.getId(),id,"tenant-a","doctor-a","patient-a",null,CLINICAL,"fictional advice",null,at) {
                             @Override public String getDiagnosis() { throw new IllegalStateException(CLINICAL); }
                         };

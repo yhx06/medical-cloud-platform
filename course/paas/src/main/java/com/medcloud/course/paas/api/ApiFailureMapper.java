@@ -40,6 +40,10 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
 
     public static AuditReasonCode reasonFor(RuntimeException failure) {
         failure = unwrap(failure);
+        if (failure instanceof com.medcloud.course.paas.consultation.ClinicalSupplementException) {
+            return ((com.medcloud.course.paas.consultation.ClinicalSupplementException) failure).getStatus() == 400
+                    ? AuditReasonCode.BAD_REQUEST : AuditReasonCode.CONFLICT;
+        }
         if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
             int status = ((com.medcloud.course.paas.attachment.AttachmentException) failure).getStatus();
             if (status == 401) return AuditReasonCode.UNAUTHORIZED;
@@ -105,7 +109,13 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         int status;
         String code;
         String message;
-        if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
+        if (failure instanceof com.medcloud.course.paas.consultation.ClinicalSupplementException) {
+            com.medcloud.course.paas.consultation.ClinicalSupplementException clinical =
+                    (com.medcloud.course.paas.consultation.ClinicalSupplementException) failure;
+            status = clinical.getStatus();
+            code = clinical.getCode();
+            message = status == 400 ? "Invalid clinical input" : "Clinical operation conflicts with current state";
+        } else if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
             com.medcloud.course.paas.attachment.AttachmentException attachment = (com.medcloud.course.paas.attachment.AttachmentException) failure;
             status = attachment.getStatus();
             code = attachment.getCode();
