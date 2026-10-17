@@ -31,6 +31,7 @@ $facts=[ordered]@{originalUnchanged=$false;orderUnchanged=$false;retryRecovered=
 $script:activeGate='fixture-and-private-accounts';$script:requestCount=0;$script:errorCount=0
 $script:errorsSafe=$true;$script:secrets=@();$script:tokens=@{}
 $completeDriverRun=$false;$summaryWritten=$false;$script:evidenceChild=$null
+$script:logPolicyInitialized=$false;$script:hasDeclaredBoot=$false
 
 function Require([bool]$Condition){if(-not $Condition){throw 'CLINICAL_CHECK_FAILED'}}
 function Is-CanonicalUuid($Value){return ($Value -is [string] -and $Value -cmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')}
@@ -65,6 +66,7 @@ function Assert-ClinicalInstance {
     [void](Assert-ClinicalPath $script:evidenceParent $false)
     Assert-PrivateAccounts
     Assert-ClinicalPrivacy
+    if($script:logPolicyInitialized){Assert-ClinicalLogSources}
 }
 function Assert-ClinicalDescriptor([string]$Path){
     # Existing creators keep their read-only descriptor in the SDD directory.
@@ -114,6 +116,41 @@ function Assert-ClinicalPrivacy {
     Assert-ClinicalPrivatePath $script:accountsFull
     Assert-ClinicalPrivatePath $script:evidenceParent
     if(Test-Path -LiteralPath $script:evidenceParent){Require (Test-Path -LiteralPath $script:evidenceParent -PathType Container)}
+}
+function Initialize-ClinicalLogPolicy {
+    $roles=@('paasFiles','portalAccessFiles','portalOtherFiles','rootPaasCaptures','rootPortalCaptures','bootPaasCaptures','bootPortalCaptures')
+    $script:logEncodings=@{};foreach($role in $roles){$script:logEncodings[$role]='UTF-8'}
+    $policyProperties=@($script:fixture.clinical.PSObject.Properties|Where-Object{$_.Name -ceq 'logPolicy'})
+    $bootProperties=@($script:fixture.clinical.PSObject.Properties|Where-Object{$_.Name -ceq 'bootEvidence'})
+    $script:hasDeclaredBoot=($bootProperties.Count -eq 1)
+    if($policyProperties.Count){
+        $policy=$script:fixture.clinical.logPolicy
+        Require ($policy -is [pscustomobject] -and $policy.encodings -is [pscustomobject])
+        Require ((($policy.version -is [int]) -or ($policy.version -is [long])) -and $policy.version -eq 1)
+        $policyKeys=@($policy.PSObject.Properties.Name)
+        Require ($policyKeys.Count -eq 2 -and @($policyKeys|Where-Object{$_ -cnotin @('version','encodings')}).Count -eq 0)
+        $keys=@($policy.encodings.PSObject.Properties.Name)
+        Require ($keys.Count -eq 7 -and @($keys|Where-Object{$_ -cnotin $roles}).Count -eq 0)
+        foreach($role in $roles){
+            $encoding=$policy.encodings.$role
+            Require ($encoding -is [string] -and ($encoding -cin @('UTF-8','GBK') -or ($role -ceq 'portalAccessFiles' -and $encoding -ceq 'ISO-8859-1')))
+            $script:logEncodings[$role]=$encoding
+        }
+        Require $script:hasDeclaredBoot
+    }
+    Assert-ClinicalLogSources
+    $script:logPolicyInitialized=$true
+}
+function Assert-ClinicalLogSources {
+    if(-not $script:hasDeclaredBoot){return}
+    $boot=$script:fixture.clinical.bootEvidence
+    Require ($boot -is [string] -and (Test-Path -LiteralPath $boot -PathType Container))
+    [void](Assert-ClinicalPath $boot);Assert-ClinicalPrivatePath $boot
+    foreach($name in @('paas.stdout.log','paas.stderr.log','portal.stdout.log','portal.stderr.log')){
+        $path=Join-Path $boot $name
+        Require ((Test-Path -LiteralPath $path -PathType Leaf) -and (Get-Item -LiteralPath $path -Force) -is [IO.FileInfo])
+        [void](Assert-ClinicalPath $path);Assert-ClinicalPrivatePath $path
+    }
 }
 function Invoke-ClinicalTransport($Uri,$Method,$Token,$Json){
     # Bounded .NET transport works in Windows PowerShell 5.1, denies redirects,
@@ -168,6 +205,32 @@ function Assert-NoSecretValue($Value,[int]$Depth=0){
     foreach($property in $Value.PSObject.Properties){
         Assert-NoSecret $property.Name;Assert-NoSecretValue $property.Value ($Depth+1)
     }
+}
+function Open-ClinicalLogRead([string]$Path){
+    return [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+}
+function Read-ClinicalLogText([string]$Path,[string]$EncodingName='UTF-8',[string]$Role='paasFiles'){
+    $stream=$null;$memory=$null
+    try{
+        $stream=Open-ClinicalLogRead $Path
+        $initialLength=$stream.Length;Require ($initialLength -le 16777216)
+        $memory=New-Object IO.MemoryStream;$buffer=New-Object byte[] 8192
+        while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){
+            Require ($memory.Length+$read -le 16777216);$memory.Write($buffer,0,$read)
+        }
+        $finalLength=$stream.Length
+        Require ($finalLength -le 16777216 -and $finalLength -eq $memory.Length -and $finalLength -ge $initialLength)
+        $bytes=$memory.ToArray()
+        $encoding=switch -CaseSensitive($EncodingName){
+            'UTF-8'{New-Object Text.UTF8Encoding($false,$true)}
+            'GBK'{[Text.Encoding]::GetEncoding(936,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback)}
+            'ISO-8859-1'{Require ($Role -ceq 'portalAccessFiles');[Text.Encoding]::GetEncoding(28591,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback)}
+            default{throw 'LOG_ENCODING_INVALID'}
+        }
+        $decoded=$encoding.GetString($bytes);$roundtrip=$encoding.GetBytes($decoded)
+        Require ([Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($bytes,$roundtrip))
+        return $decoded
+    }finally{if($memory){$memory.Dispose()};if($stream){$stream.Dispose()}}
 }
 function Invoke-Clinical([string]$Method,[string]$Path,[string]$Account,$Body,[int]$Expected=200){
     Require ($Path -cmatch '^(auth/login|patient/appointments(?:/[0-9a-f-]{36}(?:/(?:complaint|record(?:/(?:details|corrections))?|order))?)?|doctor/(?:appointments(?:/[0-9a-f-]{36}/(?:clinical-workspace|draft|start|complete))?|records/[0-9a-f-]{36}(?:/corrections)?)|platform/audit-events)(?:\?[A-Za-z0-9=&-]+)?$')
@@ -292,6 +355,7 @@ try{
             if($script:accounts.$optional){Require ((Is-CanonicalUuid $script:accounts.$optional) -and $script:accounts.$optional -cne $script:apt)}
         }
         Require (-not $script:accounts.legacyAppointmentId -or $script:accounts.legacyAppointmentId -cne $script:accounts.canceledAppointmentId)
+        Initialize-ClinicalLogPolicy
     }
     Invoke-Gate 'login-identities' {
         foreach($name in @('patient','otherPatient','doctor','otherDoctor','crossDoctor','hospital','platform')){
@@ -496,14 +560,36 @@ try{
             Invoke-Gate 'container-log-redaction' {
                 Assert-ClinicalInstance;Assert-OwnedAttachmentsFixture $script:fixture 'portal'
                 [void](Assert-ClinicalPath $portalLogs)
-                $paths=@(@($paasLogFiles)+@($portalLogFiles)+@($captureFiles)|ForEach-Object{$_.FullName}|Select-Object -Unique)
-                Require ($paths.Count -le 100)
-                foreach($logPath in $paths){
+                $sources=New-Object Collections.ArrayList
+                foreach($file in $paasLogFiles){[void]$sources.Add(@{path=$file.FullName;role='paasFiles'})}
+                foreach($file in $portalLogFiles){
+                    $role=if($file.Name -cmatch '^localhost_access_log\..+\.txt$'){'portalAccessFiles'}else{'portalOtherFiles'}
+                    [void]$sources.Add(@{path=$file.FullName;role=$role})
+                }
+                foreach($file in $captureFiles){
+                    $isPaas=$file.Name -match '(?i)paas';$isPortal=$file.Name -match '(?i)portal'
+                    Require ($isPaas -xor $isPortal)
+                    $role=if($isPaas){'rootPaasCaptures'}else{'rootPortalCaptures'}
+                    [void]$sources.Add(@{path=$file.FullName;role=$role})
+                }
+                if($script:hasDeclaredBoot){
+                    foreach($component in @('paas','portal')){
+                        foreach($streamName in @('stdout','stderr')){
+                            $role=if($component -ceq 'paas'){'bootPaasCaptures'}else{'bootPortalCaptures'}
+                            [void]$sources.Add(@{path=(Join-Path $script:fixture.clinical.bootEvidence ($component+'.'+$streamName+'.log'));role=$role})
+                        }
+                    }
+                }
+                Require ($sources.Count -le 100)
+                $seenPaths=@{}
+                foreach($source in $sources){
+                    $logPath=$source.path;Require (-not $seenPaths.ContainsKey($logPath));$seenPaths[$logPath]=$true
                     Assert-ClinicalInstance
                     Assert-OwnedAttachmentsFixture $script:fixture 'portal'
                     [void](Assert-ClinicalPath $logPath)
                     Require ((Get-Item -LiteralPath $logPath).Length -le 16777216)
-                    Assert-NoSecret ([IO.File]::ReadAllText($logPath,(New-Object Text.UTF8Encoding($false,$true))))
+                    Assert-NoSecret (Read-ClinicalLogText $logPath $script:logEncodings[$source.role] $source.role)
+                    Assert-ClinicalInstance
                 }
             }
         }

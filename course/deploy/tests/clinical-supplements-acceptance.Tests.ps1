@@ -12,6 +12,7 @@ if (-not ('ClinicalAcceptanceHost' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.Globalization;
+using System.IO;
 using System.Management.Automation.Host;
 public sealed class ClinicalAcceptanceHost : PSHost {
     public int ExitCode = -1;
@@ -27,6 +28,51 @@ public sealed class ClinicalAcceptanceHost : PSHost {
     public override void ExitNestedPrompt() { }
     public override void NotifyBeginApplication() { }
     public override void NotifyEndApplication() { }
+}
+// Deterministic external-stream boundary: length is small at open, then reads
+// grow one byte over16MiB. The production bounded reader/decoder remain real.
+public sealed class ClinicalGrowingLogStream : Stream {
+    private long position;
+    private const long total = 16777217;
+    public override bool CanRead { get { return true; } }
+    public override bool CanSeek { get { return false; } }
+    public override bool CanWrite { get { return false; } }
+    public override long Length { get { return Math.Max(1, position); } }
+    public override long Position { get { return position; } set { throw new NotSupportedException(); } }
+    public override int Read(byte[] buffer, int offset, int count) {
+        int take = (int)Math.Min(count, total-position);
+        for (int i=0; i<take; i++) buffer[offset+i]=65;
+        position += take; return take;
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) { throw new NotSupportedException(); }
+    public override void SetLength(long value) { throw new NotSupportedException(); }
+    public override void Write(byte[] buffer,int offset,int count) { throw new NotSupportedException(); }
+}
+// Model append after the zero-byte Read: Length then proves bytes that the
+// completed snapshot did not contain. Keep the production reader/gate real.
+public sealed class ClinicalEofAppendLogStream : Stream {
+    private bool delivered;
+    private bool eof;
+    private readonly byte[] appendedSecret;
+    private readonly bool overLimit;
+    public ClinicalEofAppendLogStream(string secret, bool overLimit) {
+        appendedSecret = System.Text.Encoding.UTF8.GetBytes(secret);
+        this.overLimit = overLimit;
+    }
+    public override bool CanRead { get { return true; } }
+    public override bool CanSeek { get { return false; } }
+    public override bool CanWrite { get { return false; } }
+    public override long Length { get { return !eof ? 1 : (overLimit ? 16777217 : 1 + appendedSecret.Length); } }
+    public override long Position { get { return delivered ? 1 : 0; } set { throw new NotSupportedException(); } }
+    public override int Read(byte[] buffer, int offset, int count) {
+        if (!delivered) { buffer[offset] = 65; delivered = true; return 1; }
+        eof = true; return 0;
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) { throw new NotSupportedException(); }
+    public override void SetLength(long value) { throw new NotSupportedException(); }
+    public override void Write(byte[] buffer,int offset,int count) { throw new NotSupportedException(); }
 }
 '@
 }
@@ -84,9 +130,58 @@ $harness = {
         [IO.File]::WriteAllText((Join-Path $portalData 'logs\catalina.log'),'Safe portal log')
         foreach($capture in @('paas.out.log','paas.err.log','portal.out.log','portal.err.log')){[IO.File]::WriteAllText((Join-Path $Root $capture),'Safe launcher capture')}
     }
+    $global:liveLogWriter=$null
+    if($Case -in @('live-writer-sharing','unreadable-log')){
+        $share=if($Case -eq 'unreadable-log'){[IO.FileShare]::None}else{[IO.FileShare]::Read}
+        $global:liveLogWriter=[IO.File]::Open((Join-Path $data 'log\server.log'),[IO.FileMode]::Open,[IO.FileAccess]::Write,$share)
+    }
+    $encodingCases=@('declared-encodings-clean','gbk-password-log','latin1-password-access-log','invalid-utf8-without-policy','invalid-declared-gbk','bad-policy-version','missing-policy-role','unknown-policy-role','invalid-policy-encoding','latin1-wrong-role','wrong-policy-shape','policy-no-boot')
+    $bootCases=@('boot-no-policy-clean','boot-only-canary','boot-no-policy-leak','boot-missing-file','boot-no-policy-missing','boot-foreign','boot-reparse-directory','boot-nonprivate','boot-file-directory','boot-public-file','boot-empty-source','boot-source-changed')
+    if($Case -in ($encodingCases+$bootCases)){
+        $global:bootLogRoot=Join-Path $global:privateRoot 'boot-encoding'
+        if($Case -eq 'boot-foreign'){$global:bootLogRoot=Join-Path (Split-Path $Root -Parent) ('foreign-boot-'+[guid]::NewGuid().ToString('N'))}
+        if($Case -eq 'boot-reparse-directory'){
+            $actualBoot=Join-Path $global:privateRoot 'boot-real';[void][IO.Directory]::CreateDirectory($actualBoot)
+            [void](New-Item -ItemType Junction -Path $global:bootLogRoot -Target $actualBoot)
+        }else{[void][IO.Directory]::CreateDirectory($global:bootLogRoot)}
+        foreach($capture in @('paas.stdout.log','paas.stderr.log','portal.stdout.log','portal.stderr.log')){
+            if($capture -eq 'portal.stderr.log' -and $Case -in @('boot-missing-file','boot-no-policy-missing')){continue}
+            $capturePath=Join-Path $global:bootLogRoot $capture
+            if($capture -eq 'portal.stderr.log' -and $Case -eq 'boot-file-directory'){[void][IO.Directory]::CreateDirectory($capturePath)}
+            else{[IO.File]::WriteAllText($capturePath,'Safe current capture')}
+        }
+        $policy=@{version=1;encodings=@{paasFiles='GBK';portalAccessFiles='ISO-8859-1';portalOtherFiles='UTF-8';rootPaasCaptures='GBK';rootPortalCaptures='GBK';bootPaasCaptures='GBK';bootPortalCaptures='GBK'}}
+        $fixture.clinical=@{bootEvidence=$global:bootLogRoot;logPolicy=$policy}
+        if($Case -in @('boot-no-policy-clean','boot-no-policy-leak','boot-no-policy-missing')){$fixture.clinical.Remove('logPolicy')}
+        if($Case -eq 'boot-nonprivate'){Set-ClinicalTestPublicAcl $global:bootLogRoot}
+        if($Case -eq 'boot-public-file'){Set-ClinicalTestPublicAcl (Join-Path $global:bootLogRoot 'portal.stderr.log')}
+        if($Case -eq 'boot-empty-source'){$fixture.clinical.bootEvidence=''}
+        switch($Case){
+            'bad-policy-version'{$policy.version=2}
+            'missing-policy-role'{$policy.encodings.Remove('portalOtherFiles')}
+            'unknown-policy-role'{$policy.encodings.extraSource='UTF-8'}
+            'invalid-policy-encoding'{$policy.encodings.bootPaasCaptures='UTF-16'}
+            'latin1-wrong-role'{$policy.encodings.paasFiles='ISO-8859-1'}
+            'wrong-policy-shape'{$fixture.clinical.logPolicy='invalid'}
+            'policy-no-boot'{$fixture.clinical.Remove('bootEvidence')}
+            'invalid-utf8-without-policy'{$fixture.clinical.Remove('logPolicy')}
+        }
+        $global:strictGbk=[Text.Encoding]::GetEncoding(936,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback)
+        $global:strictLatin1=[Text.Encoding]::GetEncoding(28591,[Text.EncoderFallback]::ExceptionFallback,[Text.DecoderFallback]::ExceptionFallback)
+        if($Case -in @('declared-encodings-clean','gbk-password-log','latin1-password-access-log','invalid-utf8-without-policy')){
+            $safeNonAscii='Safe '+[char]0x533b+[char]0x9662
+            [IO.File]::WriteAllText((Join-Path $data 'log\server.log'),$safeNonAscii,$global:strictGbk)
+            [IO.File]::WriteAllText((Join-Path $portalData 'logs\catalina.log'),$safeNonAscii,(New-Object Text.UTF8Encoding($false,$true)))
+            [IO.File]::WriteAllText((Join-Path $portalData 'logs\localhost_access_log.2030-01-01.txt'),('Safe caf'+[char]0x00e9),$global:strictLatin1)
+            foreach($capture in @('paas.out.log','paas.err.log','portal.out.log','portal.err.log')){[IO.File]::WriteAllText((Join-Path $Root $capture),$safeNonAscii,$global:strictGbk)}
+            foreach($capture in @('paas.stdout.log','paas.stderr.log','portal.stdout.log','portal.stderr.log')){[IO.File]::WriteAllText((Join-Path $global:bootLogRoot $capture),$safeNonAscii,$global:strictGbk)}
+        }
+        if($Case -eq 'invalid-declared-gbk'){[IO.File]::WriteAllBytes((Join-Path $data 'log\server.log'),[byte[]]@(0x81))}
+    }
     if ($Case -eq 'foreign-fixture') { $fixture.ownerId='ffffffffffffffffffffffffffffffff' }
     if ($Case -eq 'protected-port') { $fixture.paas.port=8180 }
     $fixturePath=Join-Path $Root 'fixture.json'; [IO.File]::WriteAllText($fixturePath,($fixture|ConvertTo-Json -Depth 8))
+    $global:descriptorPath=$fixturePath
     if($Case -eq 'outside-descriptor'){
         $fixturePath=Join-Path (Split-Path $Root -Parent) ('descriptor-'+[guid]::NewGuid().ToString('N')+'.json')
         [IO.File]::WriteAllText($fixturePath,($fixture|ConvertTo-Json -Depth 8))
@@ -104,6 +199,8 @@ $harness = {
         $index++; $tenant=if ($name -eq 'crossDoctor') {'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'} elseif ($name -in @('patient','otherPatient','platform')) {$null} else {'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}
         $accounts[$name]=@{username=$name;password='SYNTHETIC-PASSWORD';id=('00000000-0000-4000-8000-'+$index.ToString('000000000000'));tenantId=$tenant}
         if($Case -in @('escaped-password-error','escaped-password-audit')){$accounts[$name].password='synth"42\quoted'}
+        if($Case -eq 'gbk-password-log'){$accounts[$name].password='synth'+[char]0x533b+[char]0x9662+'42'}
+        if($Case -eq 'latin1-password-access-log'){$accounts[$name].password='synth'+[char]0x00e9+'42'}
         $global:accountMap[$name]=$accounts[$name]
     }
     $accountsDirectory=$global:privateRoot
@@ -151,6 +248,11 @@ $harness = {
             if ($global:testCase -eq 'wrong-login-role') {$result.role='PLATFORM_ADMIN'}
             if ($global:testCase -eq 'revoke-private-boundary') {Set-ClinicalTestPublicAcl $global:privateRoot}
             if ($global:testCase -eq 'revoke-private-accounts') {Set-ClinicalTestPublicAcl $global:accountsPath}
+            if ($global:testCase -eq 'boot-source-changed') {
+                $changedFixture=[IO.File]::ReadAllText($global:descriptorPath)|ConvertFrom-Json
+                $changedFixture.clinical.logPolicy.encodings.bootPaasCaptures='UTF-8'
+                [IO.File]::WriteAllText($global:descriptorPath,($changedFixture|ConvertTo-Json -Depth 12))
+            }
         } elseif (-not $Token) {$status=401
             if($global:testCase -eq 'unauth-bypass' -and $path -match '/complaint$'){$status=200;$result=@{revision=0}}
         } elseif ($path -eq 'platform/audit-events') {
@@ -258,6 +360,9 @@ $harness = {
         if ($global:testCase -eq 'revoke-evidence-privacy' -and $path -eq 'platform/audit-events') {Set-ClinicalTestPublicAcl $global:evidencePath}
         if ($global:testCase -eq 'log-leak' -and $path -eq 'platform/audit-events') {[IO.File]::WriteAllText((Join-Path $Root 'paas-data\log\server.log'),$global:clinicalCanary)}
         if ($global:testCase -eq 'stdout-leak' -and $path -eq 'platform/audit-events') {[IO.File]::WriteAllText((Join-Path $Root 'paas.out.log'),$global:clinicalCanary)}
+        if ($global:testCase -eq 'gbk-password-log' -and $path -eq 'platform/audit-events') {[IO.File]::WriteAllText((Join-Path $Root 'paas-data\log\server.log'),$global:accountMap.patient.password,$global:strictGbk)}
+        if ($global:testCase -eq 'latin1-password-access-log' -and $path -eq 'platform/audit-events') {[IO.File]::WriteAllText((Join-Path $Root 'portal-data\logs\localhost_access_log.2030-01-01.txt'),$global:accountMap.patient.password,$global:strictLatin1)}
+        if ($global:testCase -in @('boot-only-canary','boot-no-policy-leak') -and $path -eq 'platform/audit-events') {[IO.File]::WriteAllText((Join-Path $global:bootLogRoot 'portal.stderr.log'),$global:clinicalCanary)}
         return @{Status=$status;Text=$raw}
     }
     $tokens=$null;$errors=$null
@@ -287,14 +392,35 @@ function Get-AttachmentsSqlIdentity($Fixture) {
         $summaryFunction=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Write-ClinicalSummary'},$true)
         $source=$source.Insert($summaryFunction.Body.Extent.StartOffset+1,"`n    `$gates.Remove('migration-empty-schema')`n")
     }
-    & ([scriptblock]::Create($source)) -FixturePath $fixturePath -EvidenceRoot $global:evidencePath -AccountsPath $global:accountsPath
+    if($Case -in @('log-grows-over-limit','log-eof-appends-secret','log-eof-appends-over-limit')){
+        $ast=[Management.Automation.Language.Parser]::ParseInput($source,[ref]$tokens,[ref]$errors)
+        $open=$ast.Find({param($n)$n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Open-ClinicalLogRead'},$true)
+        if(-not $open){throw 'Log stream boundary missing'}
+        $openDouble=@'
+function Open-ClinicalLogRead([string]$Path) {
+    if([IO.Path]::GetFileName($Path) -ceq 'server.log'){
+        if($global:testCase -eq 'log-grows-over-limit'){return (New-Object ClinicalGrowingLogStream)}
+        return (New-Object ClinicalEofAppendLogStream -ArgumentList $global:clinicalCanary,($global:testCase -eq 'log-eof-appends-over-limit'))
+    }
+    return [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+}
+'@
+        $source=$source.Remove($open.Extent.StartOffset,$open.Extent.EndOffset-$open.Extent.StartOffset).Insert($open.Extent.StartOffset,$openDouble)
+    }
+    try{& ([scriptblock]::Create($source)) -FixturePath $fixturePath -EvidenceRoot $global:evidencePath -AccountsPath $global:accountsPath}
+    finally{if($global:liveLogWriter){$global:liveLogWriter.Dispose()}}
 }
 $failures=0;$assertions=0
 function Check([bool]$Value,[string]$Name) {$script:assertions++;if(-not $Value){$script:failures++;Write-Output "FAIL: $Name"}}
 $privacyCases=@('public-evidence-outside-boundary','public-evidence-ancestor','public-evidence-target','public-accounts-target','revoke-private-boundary','revoke-private-accounts','revoke-evidence-privacy')
 $decodedCases=@('escaped-password-error','escaped-password-audit','escaped-canary-error')
 $correctionCases=@('ignored-correction-after','ignored-correction-reason','ignored-later-after','ignored-later-reason','middle-history-before','middle-history-after','middle-history-reason','middle-history-identity')
-$cases=if($Scenario -eq 'all'){@('success','nested-private-boundary','missing-gate','outside-descriptor','legacy-prerequisite','legacy-wrong-record','canceled-prerequisite','foreign-fixture','protected-port','reparse-descriptor','foreign-live-uuid','revoke-next-request','revoke-mysql-next-request','revoke-evidence','transport-secret-error','audit-leak','empty-audit','log-leak','stdout-leak','logs-unavailable','wrong-login-role','unauth-bypass')+$privacyCases+$decodedCases+$correctionCases}elseif($Scenario -eq 'privacy'){$privacyCases}elseif($Scenario -eq 'decoded'){$decodedCases}elseif($Scenario -eq 'corrections'){$correctionCases}else{@($Scenario)}
+$encodingCases=@('declared-encodings-clean','gbk-password-log','latin1-password-access-log','invalid-utf8-without-policy','invalid-declared-gbk','bad-policy-version','missing-policy-role','unknown-policy-role','invalid-policy-encoding','latin1-wrong-role','wrong-policy-shape','policy-no-boot')
+$policyPreflightCases=@('bad-policy-version','missing-policy-role','unknown-policy-role','invalid-policy-encoding','latin1-wrong-role','wrong-policy-shape','policy-no-boot')
+$bootCases=@('boot-no-policy-clean','boot-only-canary','boot-no-policy-leak','boot-missing-file','boot-no-policy-missing','boot-foreign','boot-reparse-directory','boot-nonprivate','boot-file-directory','boot-public-file','boot-empty-source','boot-source-changed')
+$bootPreflightCases=@('boot-missing-file','boot-no-policy-missing','boot-foreign','boot-reparse-directory','boot-nonprivate','boot-file-directory','boot-public-file','boot-empty-source')
+$eofCases=@('log-eof-appends-secret','log-eof-appends-over-limit')
+$cases=if($Scenario -eq 'all'){@('success','live-writer-sharing','unreadable-log','log-grows-over-limit','nested-private-boundary','missing-gate','outside-descriptor','legacy-prerequisite','legacy-wrong-record','canceled-prerequisite','foreign-fixture','protected-port','reparse-descriptor','foreign-live-uuid','revoke-next-request','revoke-mysql-next-request','revoke-evidence','transport-secret-error','audit-leak','empty-audit','log-leak','stdout-leak','logs-unavailable','wrong-login-role','unauth-bypass')+$privacyCases+$decodedCases+$correctionCases+$encodingCases+$bootCases+$eofCases}elseif($Scenario -eq 'privacy'){$privacyCases}elseif($Scenario -eq 'decoded'){$decodedCases}elseif($Scenario -eq 'corrections'){$correctionCases}elseif($Scenario -eq 'encoding'){$encodingCases}elseif($Scenario -eq 'boot'){$bootCases}elseif($Scenario -eq 'eof'){$eofCases}else{@($Scenario)}
 foreach($case in $cases){
     $root=Join-Path $env:TEMP ('attachments-'+[guid]::NewGuid().ToString('N'))
     if ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($root)) -ine 'E:\') {throw 'Tests require unique E: TEMP'}
@@ -309,15 +435,19 @@ foreach($case in $cases){
         $summary=if($files.Count -eq 1){$text|ConvertFrom-Json}else{$null}
         Check ($testHost.ExitCode -gt 0) "${case}: missingRequiredGateCannotPass"
         Check (-not [bool]$runspace.SessionStateProxy.GetVariable('requestUnguarded')) "${case}: every HTTP request freshly guarded"
-        if($case -in (@('foreign-fixture','protected-port','reparse-descriptor','foreign-live-uuid','revoke-next-request','revoke-mysql-next-request','revoke-evidence')+$privacyCases)){
+        if($case -in (@('foreign-fixture','protected-port','reparse-descriptor','foreign-live-uuid','revoke-next-request','revoke-mysql-next-request','revoke-evidence','boot-source-changed')+$privacyCases)){
             Check ($files.Count -eq 0) "${case}: foreignFixtureBeforeEveryWrite prevents final evidence"
             if($case -in @('foreign-fixture','protected-port','reparse-descriptor','foreign-live-uuid')){Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 0) 'foreign/protected/reparse fixture refuses first HTTP'}
             if($case -in @('revoke-next-request','revoke-mysql-next-request')){Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 1) 'revocation aborts next request'}
             if($case -in @('public-evidence-outside-boundary','public-evidence-ancestor','public-evidence-target','public-accounts-target')){Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 0) 'nonprivate ancestry/target refuses first HTTP'}
             if($case -in @('revoke-private-boundary','revoke-private-accounts')){Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 1) 'midrun privacy loss aborts next request'}
+            if($case -eq 'boot-source-changed'){Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 1) 'source metadata change aborts next request'}
+        }elseif($case -in ($policyPreflightCases+$bootPreflightCases)){
+            Check ([int]$runspace.SessionStateProxy.GetVariable('requests') -eq 0) "${case}: invalid source contract refused before HTTP"
+            Check (-not $summary -or (@($summary.failed) -contains 'fixture-and-private-accounts')) "${case}: policy never marked clean"
         }else{
             Check ($null -ne $summary) "${case}: final scalar summary exists"
-            if($case -in @('success','nested-private-boundary','missing-gate','outside-descriptor','legacy-prerequisite','canceled-prerequisite','logs-unavailable')){
+            if($case -in @('success','live-writer-sharing','declared-encodings-clean','boot-no-policy-clean','nested-private-boundary','missing-gate','outside-descriptor','legacy-prerequisite','canceled-prerequisite','logs-unavailable')){
                 $expectedPassed=if($case -in @('legacy-prerequisite','canceled-prerequisite')){22}elseif($case -eq 'logs-unavailable'){20}else{21}
                 Check ($summary.completeDriverRun -eq $true -and $summary.wholeTask6Accepted -eq $false) 'HTTP green distinguishes driver completion from Task6 acceptance'
                 Check (@($summary.required).Count -eq 53 -and @($summary.failed).Count -eq 0 -and @($summary.passed).Count -eq $expectedPassed) 'HTTP chain passed with complete required gate registry'
@@ -331,6 +461,11 @@ foreach($case in $cases){
                 Check (@($summary.required).Count -eq (@($summary.passed).Count+@($summary.failed).Count+@($summary.skipped).Count+@($summary.unverified).Count)) 'every required gate accounted exactly once'
             }else{
                 Check (@($summary.failed).Count -gt 0) "${case}: observed fault produces failed gate"
+                if($case -eq 'unreadable-log'){Check (@($summary.failed) -contains 'container-log-redaction') 'unreadable source is failed, never clean'}
+                if($case -in $eofCases){
+                    Check (@($summary.failed) -contains 'container-log-redaction' -and @($summary.passed) -notcontains 'container-log-redaction') "${case}: incomplete EOF snapshot cannot pass log gate"
+                    Check ($summary.completeDriverRun -eq $false -and $summary.wholeTask6Accepted -eq $false) "${case}: incomplete EOF snapshot cannot claim completion"
+                }
                 if($case -in $correctionCases){Check ($summary.facts.historyChainValid -eq $false) "${case}: corrupted chain cannot be claimed valid"}
             }
         }
