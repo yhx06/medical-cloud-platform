@@ -8,18 +8,69 @@ function Assert-AttachmentsOwnedPath([string]$Path,[string]$Root,[string]$Kind) 
     return $full
 }
 
+function Get-AttachmentsWindowsAnsiCodePage {
+    if (-not ('MedCloudOwnershipNative.WindowsCodePage' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+namespace MedCloudOwnershipNative {
+    public static class WindowsCodePage {
+        [DllImport("kernel32.dll")] public static extern uint GetACP();
+    }
+}
+'@
+    }
+    $codePage = [int][MedCloudOwnershipNative.WindowsCodePage]::GetACP()
+    if ($codePage -lt 1) { throw 'Windows ANSI code page unavailable' }
+    return $codePage
+}
+
 function Get-AttachmentsSqlIdentity($Fixture) {
     $client = $Fixture.mysql.clientExecutable
     if (-not $client -or -not (Test-Path -LiteralPath $client)) { throw 'MySQL identity client unavailable' }
+    $client = [IO.Path]::GetFullPath($client)
     $root = [IO.Path]::GetFullPath($Fixture.runtimeRoot).TrimEnd('\','/')
     $options = Assert-AttachmentsOwnedPath $Fixture.mysql.credentialFile $root 'MySQL credentials'
+    $optionsLeaf = [IO.Path]::GetFileName($options)
+    if ($optionsLeaf -cnotmatch '^[A-Za-z0-9_.-]+$') { throw 'MySQL credential filename must be ASCII' }
     $saved = $env:MYSQL_PWD
+    $locationPushed = $false
     try {
         $env:MYSQL_PWD = ''
-        $value = @(& $client "--defaults-extra-file=$options" --protocol=TCP --connect-timeout=2 --host=127.0.0.1 "--port=$($Fixture.mysql.port)" --batch --skip-column-names --execute='SELECT @@server_uuid,@@port,@@datadir' 2>$null)
+        # The Windows native option-file parser also mishandles absolute Unicode
+        # argv paths. Use an ASCII leaf in the validated owned directory instead.
+        Push-Location -LiteralPath ([IO.Path]::GetDirectoryName($options)) -ErrorAction Stop
+        $locationPushed = $true
+        $value = @(& $client "--defaults-extra-file=./$optionsLeaf" --protocol=TCP --connect-timeout=2 --host=127.0.0.1 "--port=$($Fixture.mysql.port)" --batch --skip-column-names --execute='SELECT @@server_uuid,@@port,HEX(@@datadir),@@version_compile_os' 2>$null)
         if ($LASTEXITCODE -ne 0 -or $value.Count -ne 1) { throw 'MySQL identity unavailable' }
-        return $value[0]
-    } finally { $env:MYSQL_PWD = $saved }
+        $parts = $value[0] -split [char]9
+        if ($parts.Count -ne 4 -or $parts[0] -notmatch '^[0-9a-fA-F-]{36}$' -or
+            $parts[0] -ine $Fixture.mysql.serverUuid -or $parts[1] -cne [string]$Fixture.mysql.port -or
+            $parts[2] -cnotmatch '^(?:[0-9A-F]{2})+$' -or $parts[3] -cnotin @('Win32','Win64')) {
+            throw 'MySQL identity fields invalid'
+        }
+        $bytes = New-Object byte[] ($parts[2].Length / 2)
+        for ($i = 0; $i -lt $bytes.Length; $i++) { $bytes[$i] = [Convert]::ToByte($parts[2].Substring($i * 2, 2), 16) }
+        $expected = [IO.Path]::GetFullPath($Fixture.mysql.dataDirectory).TrimEnd('\','/')
+        # Only the two actual Windows source encodings are considered, losslessly,
+        # and neither can authorize a directory other than the expected fixture.
+        foreach ($codePage in @(65001, (Get-AttachmentsWindowsAnsiCodePage))) {
+            try {
+                $encoding = [Text.Encoding]::GetEncoding($codePage, [Text.EncoderFallback]::ExceptionFallback, [Text.DecoderFallback]::ExceptionFallback)
+                $decoded = $encoding.GetString($bytes)
+                if (-not [IO.Path]::IsPathRooted($decoded) -or $decoded -match '[\x00-\x1F]') { continue }
+                if (-not [Collections.StructuralComparisons]::StructuralEqualityComparer.Equals($bytes, $encoding.GetBytes($decoded))) { continue }
+                if ([IO.Path]::GetFullPath($decoded).TrimEnd('\','/') -ine $expected) { continue }
+                return "$($parts[0])`t$($parts[1])`t$expected"
+            } catch [Text.DecoderFallbackException] {
+            } catch [Text.EncoderFallbackException] {
+            } catch [ArgumentException] {
+            }
+        }
+        throw 'MySQL data directory identity mismatch'
+    } finally {
+        try { if ($locationPushed) { Pop-Location -ErrorAction Stop } }
+        finally { $env:MYSQL_PWD = $saved }
+    }
 }
 
 function Assert-AttachmentsOwnedListener([int]$Port,[int]$ProcessId) {

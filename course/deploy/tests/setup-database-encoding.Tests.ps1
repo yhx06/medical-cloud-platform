@@ -8,7 +8,11 @@ function Assert-True([bool]$condition, [string]$message) {
     if (-not $condition) { throw $message }
 }
 
-$scratch = 'E:\medical-cloud-encoding-tests-' + [guid]::NewGuid().ToString('N')
+$projectRoot = [IO.DirectoryInfo]$PSScriptRoot
+while ($projectRoot -and -not (Test-Path -LiteralPath (Join-Path $projectRoot.FullName '.local/tests') -PathType Container)) { $projectRoot = $projectRoot.Parent }
+if (-not $projectRoot) { throw 'Existing private project tests parent required' }
+$scratch = Join-Path $projectRoot.FullName ('.local/tests/e' + [guid]::NewGuid().ToString('N').Substring(0,8))
+if (Test-Path -LiteralPath $scratch) { throw 'Unique encoding test scratch already exists' }
 [void][IO.Directory]::CreateDirectory($scratch)
 $utf8 = New-Object Text.UTF8Encoding($false)
 $saved = @{}
