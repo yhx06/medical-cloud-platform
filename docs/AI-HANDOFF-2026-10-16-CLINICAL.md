@@ -2,6 +2,16 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+2026-10-17 最新接续：EOF 修复完成，原 reviewer 的 `task-6-driver-eof-fix-review.md` 判定唯一 Important ADDRESSED、窄范围规格/质量 Approved，无新增 Critical/Important。root 独立原生 PS5 会话4851退出0：69场景、506断言、0失败；两源码 SHA 与作者报告一致（driver `11B949F24B508038F88C15681A0F5DD453E33680D98F342F310E6BE2447D6648`，tests `EFA07881EBD40684673E63DC8684D020F2DEB4CE7CC5D869E08884A160D41DF8`）。精确两源码提交 `7ea5652`。这是验收工具修复通过，不是诊疗实机或全系统通过。作者如实披露中间精确 host exit1 断言观察到3，最终契约为非零，未改产品退出逻辑。
+
+**运行环境最新已失效**：root 对新版 logpolicy descriptor 执行正式归属检查，mysql 首项报 Process identity mismatch；随后只读 CIM 查询确认 manifest 的 mysql27892/storage8916/portal584/paas9908 四个 PID 均不存在，55607/55611/55613/55615 四端口均无监听。因此不能运行 wave2、不能把旧指针称作活环境，也不能直接访问下文地址认为系统已启动。未停止其他进程、未写数据库、未重启或修改旧 descriptor。曾有一次嵌套 shell 引号错误，仅解析失败，未执行归属或其他操作；随后改为直接调用并得到上述真实结果。
+
+下一步先恢复专属环境并生成新的进程身份版本；先确认路径/owner.id/无重解析点、数据库离线 UUID、所有主/管理/控制台/shutdown 端口空闲且无同目录存活进程，保留旧描述、旧日志与失败记录。现有 `start-owned-clinical-containers-once.ps1` 是**已消费的一次性初始化脚本**（要求旧四进程仍活、复制新 home、部署目标不存在），不得删除 guard、覆盖文件或盲目重放。恢复须另做审慎的保留数据启动流程，配置只在本任务 E 盘目录中，凭据不输出。重新核实新启动四进程及数据库 UUID/数据目录/ACL/启动捕获来源之后，才用私有 accounts-wave2-20261017.json；先只读检查其目标仍未消费。wave2 本轮尚未运行。每页默认/最多5条再次得到用户确认，现实现不变。
+
+当前优先接续：原Fix2作者clinical_task6_driver额度错误terminal（提示4:55AM重置），没有最终Fix2报告，不能继续视为running或自称已冻结完成。root恢复检查点task-6-driver-fix2-controller-checkpoint.md真实记录；独立完整PS5会话51691退出0，67场景490断言，源码SHA8DD3FFD.../测试4BC1FD...。但原reviewer正式Fix2报告NeedsFixes：唯一新增Important为EOF后已观察到增长仍可接受不完整/超16MiB快照，另外共享读/编码/boot覆盖均已解决。Fix2未提交、不跑wave2。
+
+根代理已将两文件唯一实现权交给现有同模型代理deployment_utf8_review，只做EOF一次finalLength与bytecount/上限闭合、界内追加及超限追加两个entry-point RED/GREEN反例，保留全部67用例；无Git/runtime/HTTP/SQL权限。旧作者不得同时恢复写入。新报告task-6-driver-eof-fix-report.md待出；原clinical_task6_driver_review随后窄复审。精确被审源码副本在fix2-reviewed-recovered-baseline，SHA匹配8DD3FFD.../4BC1FD...，可生成真正小delta。若接续代理也额度错误，不切模型或反复换人；保留源码及已备私有wave2，root可继续其他已批准验收工作。
+
 后续最新进度（尚无新的真实验收结果）：Fix2 已授权原作者，仅修改driver/test；四组实际PS5 RED→GREEN（共享读1/14、编码12/80、boot12/80、增长1/6），完整66场景回归仍在原作者执行。没有冻结/最终报告前不运行新实机。源码基线为2b9c835（HEAD至0884a8e仅文档），根代理sole Git/runtime。另一作者补充两文档，经独立窄审与root13链接/SHA验证后提交 `29f03ce`，不代表Fix2代码批准。
 
 新准备资料均已实跑成功：39435退出0，私有clinical-application/accounts-wave2-20261017.json明确保护ACL，含两个新BOOKED及一个新CANCELED，保留旧browser预约ID；87406退出0，新描述文件为附件SDD fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-running-logpolicy-20261017-fixture.json。它保留旧进程身份及clinical.bootEvidence，追加clinical.logPolicy.version1与7固定来源编码：paasFiles/rootPaasCaptures/rootPortalCaptures/bootPaasCaptures/bootPortalCaptures为GBK，portalOtherFiles为UTF-8，**portalAccessFiles为ISO-8859-1**。最后一项由root对实际catalina.jar的AccessLogValve.open字节码（默认ISO_8859_1、server.xml无override）确认，不得继续假定UTF8。私有log-source-provenance-20261017.json保存来源元数据，旧描述/日志/失败摘要保留。新descriptor尚未设为当前指针，待Fix2复审批准后显式使用；不能据准备资料标PASS。
