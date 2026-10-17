@@ -2,6 +2,12 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+2026-10-17 恢复接续最新：四组件现已恢复，不再是下文的全停止状态。root 原恢复脚本经三项预审修复和实际只读预检65822退出0后执行57522，因 MinIO 同PID同时监听127.0.0.1/::1，过严的 Ready 总计数检查退出1，保留该失败；MySQL7512及MinIO38728当时已恢复并通过正式归属检查。没有重放原脚本或重启这两者。新 Java-only 接续脚本经只读独立预审无阻断项后执行83534退出0，完成WildFly14680和Tomcat24944。两操作脚本、预审、partial journal均保留，任何后续接续不得盲重放。
+
+新权威身份为附件SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-restored-20261017-fixture.json`，两个current指针已更新。root新鲜全部四组件完整guard通过、MySQL UUID/port/datadir一致、两个实际JVM仍GBK、当前boot捕获ACL验证通过；登录页和MinIO健康HTTP均200。数据库只读汇总仍12表，预约2CANCELED/3BOOKED/2COMPLETED（启动后、正式驱动前的快照，不是现在状态）。旧数据/日志/配置/部署WAR均保留，未初始化/播种/覆盖部署，教师安装及其他进程未动。当前boot来源为私有 `clinical-application/boot-restore-20261017`。
+
+**实际诊疗wave2驱动79686正在运行，未取得最终结果**：提交7ea5652已批准驱动，使用新restored descriptor、私有 `accounts-wave2-20261017.json`、同一private clinical-evidence父目录。不得重跑/重新准备已可能消费的目标，不得同时故障注入、部署/SQL写入或改驱动/descriptor。下一步轮询同一会话，检查新UUID summary及实测退出码；30外部门仍必须保持未验证，HTTP完成不等于Task6完成。没有最终summary不能宣称通过。
+
 2026-10-17 最新接续：EOF 修复完成，原 reviewer 的 `task-6-driver-eof-fix-review.md` 判定唯一 Important ADDRESSED、窄范围规格/质量 Approved，无新增 Critical/Important。root 独立原生 PS5 会话4851退出0：69场景、506断言、0失败；两源码 SHA 与作者报告一致（driver `11B949F24B508038F88C15681A0F5DD453E33680D98F342F310E6BE2447D6648`，tests `EFA07881EBD40684673E63DC8684D020F2DEB4CE7CC5D869E08884A160D41DF8`）。精确两源码提交 `7ea5652`。这是验收工具修复通过，不是诊疗实机或全系统通过。作者如实披露中间精确 host exit1 断言观察到3，最终契约为非零，未改产品退出逻辑。
 
 **运行环境最新已失效**：root 对新版 logpolicy descriptor 执行正式归属检查，mysql 首项报 Process identity mismatch；随后只读 CIM 查询确认 manifest 的 mysql27892/storage8916/portal584/paas9908 四个 PID 均不存在，55607/55611/55613/55615 四端口均无监听。因此不能运行 wave2、不能把旧指针称作活环境，也不能直接访问下文地址认为系统已启动。未停止其他进程、未写数据库、未重启或修改旧 descriptor。曾有一次嵌套 shell 引号错误，仅解析失败，未执行归属或其他操作；随后改为直接调用并得到上述真实结果。
