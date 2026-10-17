@@ -4,6 +4,8 @@
 
 ## 当前用户要求
 
+最新状态：课程源码修复已提交 `117ca3f`；主 runtime 已实际迁至项目 `.local/runtime` 并从新目录恢复。下面新增的“第三轮”优先于此前未迁移/未审查快照。旧 C 源码、Task8 等其余备份仍待整理，不能宣称所有历史项目资料都已归拢或系统已开发完成。
+
 - 所有项目产物必须最终集中在 `E:/云服务工程/云服务项目-医疗云` 内，不是仅放在 E 盘。
 - 尽量将项目代码和文档上传既有私有 GitHub 仓库，减少本地重复副本。暂停新增大体积全量归档副本。
 - 旧 C 盘副本仅在完整校验一致且确认完全停机后才可移除。该条件批准不等于已经完成校验，也不允许绕过自动安全审查。
@@ -55,26 +57,48 @@ root 实际会话 **84198 退出 0**，移除了以下五份旧 C 盘附件测�
 
 新脚本 `.local/evidence/audit-existing-c-attachment-backups-20261017.ps1` 与 `remove-verified-c-attachment-duplicates-20261017.ps1` 均已消费，源已移除，**不可重放**。初始只读失败记录保留：C 源既有 sandbox SID 只读授权与错误的复合 Modify 掩码、以及 E 备份 284 字符路径的 ADS 枚举限制，均先只读定位再修正检查；未改 ACL，未跳过任何流。E 备份保持私有。限制如实保留：句柄逐文件关闭而非全程目录锁，ACL检查只覆盖根；两个受保护 mysqld 的命令行仍不可读取，不能声称已查明它们的归属或已停止它们。实际可见四组件均属于当前 E 根 runtime，本轮没有操作任何服务。文件内容恢复副本已经核验，未做数据库启动恢复演练。
 
+### 第三轮：主 runtime 同卷迁移并恢复
+
+原 `E:/medical-cloud-platform-runtime` **已不存在**，全部内容现在位于 `E:/云服务工程/云服务项目-医疗云/.local/runtime`，没有再复制一份展开目录。移动前只读检查发现原四 PID 已消失且七端口无监听；本轮没有先停止它们，也没有证明此前是干净关闭，不能推断退出原因。
+
+执行分三段，保留失败证据，不盲重放：
+
+- **69018 退出 1**：整目录同卷改名成功，9,144 文件、4,394 目录的全部普通/附加流及结构前后核验一致；随后 `Set-Acl` 收紧权限遇到 `SeSecurityPrivilege` 错误。原 journal 保持 `RENAMED_ALL_STREAMS_VERIFIED` / `complete=false`，不能伪改为全程成功。
+- **19472 退出 0**：独立审查的窄接续，用经过小目录验证的 DACL-only API 设置目标根仅当前用户可访问，不写审计 SACL/owner/group；保留既有受保护凭据/app ACL。新建 candidate 和独立 continuation journal，未重新搬数据。
+- 新恢复脚本 `start-relocated-clinical-20261017.ps1` 的 `-PreflightOnly` 通过，**87381 退出 0**：同版本 MySQL/MinIO/WildFly/Tomcat 从新根启动；新 boot 在 `clinical-application/boot-relocated-20261017`，记录新 PID/创建时间，TEMP/TMP/MySQL tmpdir 均在项目内。没有初始化、播种、数据库升级或更新 WAR。
+
+新权威描述文件为附件 SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-relocated-20261017-fixture.json`，两个 current 指针均已更新。root 新鲜完整四组件 guard 通过，当前 PID：MySQL 2972、MinIO 23448、WildFly 26032、Tomcat 27984；只能作本检查点快照，之后操作仍须重新验证身份。
+
+独立实际 HTTP 复验：登录页 `http://127.0.0.1:55613/portal/login`、MinIO health 与 `http://127.0.0.1:55615/paas/api/catalog/hospitals` 均 200，后者 `code=OK`、两条目录记录，证明实际后端/EJB/数据库可读，不是仅端口存活。只读 SQL 汇总：12 表、预约 4 COMPLETED / 2 CANCELED / 1 BOOKED、病历 4、订单 4。没有进行临床操作或重放已消费的预约。一次初始 HTTP 检查因 PowerShell 数组拼接优先级构造了错误 URI，404 不代表产品故障；修正检查后如上。普通 `ReadAllBytes` 读取活动 MySQL 日志发生共享冲突，产生的假 false 诊断不作启动或 crash-recovery 结论，完整 guard/HTTP/SQL 是实际依据。
+
+三份旧 E 根 build 目录实际已在项目根内，其 E 根原路径不存在；本轮只核实项目内 `clinical-root-task4-3e773f093e8e` 的两个 WAR 与部署 SHA 一致，并在新描述文件校正过时的 `verifiedBuild` 引用，未声称本轮重新搬了三份 build。旧描述/证据中的绝对路径保留原样。
+
+本轮五个全新空 Unicode 探针已正常关闭，随后经独立审查清理其 `mysql-data`，回收 **938,092,983 字节（0.874 GiB）临时占用**；fixture/summary/日志保留。journal 为项目 `.local/evidence/probe-cleanup-fcd82f94f6b345bd9efa9f0c3fa6ce21.json`，5/5 移除且复核无残留。这是本轮测试创建后回收的临时空间，不叠加成第一、二轮净释放量。所有已执行的 Move/接续/Start/清理脚本均已消费，失败或进程丢失后必须读新 journal 制定接续，不能重放。
+
 ## 仍需处理的空间与路径问题
 
 首轮只读盘点（不跟随 junction）显示：指定 E 盘项目根约 8.824 GiB，旧 E 根 runtime 约 2.350 GiB，已知 C 盘旧源码/Task8/附件副本合计约 5.28 GiB。均为清理前普通文件字节统计，不等于 NTFS 实际分配空间，也不是全磁盘统计。不要用这些旧数值声称当前精确剩余占用。
 
-1. **当前运行环境仍在 `E:/medical-cloud-platform-runtime`，尚未迁入指定项目根。** 最新目标是项目内 `.local/runtime`，不能再次以英文 E 根作为最终方案。应完成 Unicode 身份修复真实门，再受控停机、同卷迁移和恢复；不能移动正在运行的 MySQL。
+1. 主运行环境已完成上述迁移和实际恢复，旧 E 根路径已不存在。未来仅使用新 current 描述文件；不要为规避中文路径问题重新建立英文 E 根 runtime，也不要移动正在运行的 MySQL。
 2. 旧 C 盘源码、Task8、截图和审计临时资料仍未移除；五份附件原副本已按上节完成移除，不能再列为待处理。旧十目录全量归档后删除请求仍未执行。其余目录的离线/完整恢复证明仍待完成，没有新增约 5.28 GiB 的全量副本。优先核对已经存在的备份或采用经验证的紧凑归档，避免再保存一份完整展开目录。
 3. `.superpowers` 内仍有历史源码快照、工具和重要验收证据；仅此次白名单编译包已清理，不能整体删除该目录。三个工作树存在用户或尚待审查的改动，不能直接移除工作树。
-4. 此前 45 个普通离线测试目录和 20 个含 28 个 junction 的历史测试归档已同卷迁入项目 `.local/tests`；两份执行 journal 均记录 VERIFIED。junction 元数据保持原样，不代表那些历史夹具仍能启动。3 份 E 根 build、主 runtime 与一个未证归属空目录仍待处理。
+4. 此前 45 个普通离线测试目录和 20 个含 28 个 junction 的历史测试归档已同卷迁入项目 `.local/tests`；两份执行 journal 均记录 VERIFIED。junction 元数据保持原样，不代表历史夹具仍能启动。主 runtime 已完成，3 份 build 已在项目内，未证归属的空目录仍不能按名字直接删除。
 
 ## 开发与验收接续点
 
 权威代码树：`E:/云服务工程/云服务项目-医疗云/.worktrees/course-environment`，分支 `codex/course-environment`。项目顶层为旧 Spring/Vue 路线，不在那里继续课程版开发。
 
-未提交、必须保留且尚不能标完成的 Unicode Fix2：
+Unicode Fix2 三文件已独立审查并精确提交为 `117ca3f`：
 
 - `course/deploy/tests/attachments-fixture-ownership.ps1`
 - `course/deploy/tests/attachments-mysql-path-identity.Tests.ps1`（新文件）
 - `course/deploy/tests/setup-database-encoding.Tests.ps1`
 
-初版严格 HEX/UTF-8/真实 Windows ACP 路径修复已独立审查且 root 七套原生测试通过，但真实探针仍失败。进一步实测显示 MySQL 不能可靠读取绝对 Unicode 路径的 options 文件；同目录相对 ASCII 路径成功。因此 root Fix2 改为归一化 client 绝对路径、在已验证 options 目录使用相对 ASCII 文件名，并在 finally 恢复位置及 MYSQL_PWD。定向实测 RED 17 场景/106 断言/34 失败，GREEN 同 17/106 零失败。**Fix2 仍缺独立复审、完整七套回归及新的真实 Unicode canary，不得凭初版审查放行主 runtime 迁移。** 已销毁的三个空探针不能重放。
+初版严格 HEX/UTF-8/真实 Windows ACP 路径修复已独立审查且 root 七套原生测试通过，但真实探针仍失败。进一步实测显示本机 mysql.exe 不能可靠读取绝对 Unicode 路径的 options 文件；同目录相对 ASCII 路径成功。因此 root Fix2 改为归一化 client 绝对路径、在已验证 options 目录使用相对 ASCII 文件名，并在 finally 恢复位置及 MYSQL_PWD。定向实测 RED 17 场景/106 断言/34 失败，GREEN 同 17/106 零失败；新鲜七套原生回归 **34239 退出 0**，真实中文物理目录 canary **72987 退出 0**、完整身份 guard 与正常关闭均通过。
+
+关闭命令没有盲改：审查曾推测 mysqladmin 也必然受绝对 Unicode options 影响，但新实例实测成功；最终 **68893 退出 0** 在专属空实例锁定 root、确认零未锁定无密码账号，使用需随机密码且仅有 SHUTDOWN 权限的临时虚构账号完成原共享 Stop。认证信息仅走 stdin/私有 cnf，不出 argv/输出。独立审查据此撤销旧阻断，原 Stop 实现不变；人为要求相对参数的 fake-client 4/28/10 红例不证明产品错误，已移出产品套件并归档本地诊断。
+
+完整 Java8 离线 Maven **70265 退出 0 / BUILD SUCCESS**：625 项发现、561 实际执行、64 可选环境跳过、0 失败/错误。初跑 30670 的 10 项 loopback 沙箱错误和 13 项未配置真实 WildFly provider 路径失败已保留小型报告；重跑提供 `-Dcourse.test.wildfly.home=D:/wildfly-10.0.0.Final` 并允许测试自身 loopback，未跳过失败项或改源码拿绿色。64 可选跳过不代表实机验收通过，具体外部门仍按诊疗/附件验收清单继续。
 
 保护未跟踪 `docs/course-architecture/Medical Cloud API Probe.eam`、其他脏树、教师 D 盘安装与原保护端口。原实现者 `deployment_utf8_review` 和 `clinical_task6_driver` 曾报告额度错误，不要反复重派或切模型绕过；可复用已完成审查者 `clinical_task6_driver_review` 做明确范围的只读审查。
 
