@@ -27,3 +27,6 @@ __pycache__/
 # Local worktrees
 .worktrees/
 .superpowers/
+
+# Project-local runtime, test and build artifacts
+.local/
