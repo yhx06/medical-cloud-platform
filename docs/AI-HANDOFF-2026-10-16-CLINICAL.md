@@ -2,6 +2,14 @@
 
 ## 最新部署检查点（优先于以下历史快照）
 
+2026-10-17 最新用户硬约束：**所有本项目文件必须在 `E:/云服务工程/云服务项目-医疗云` 目录内**，不仅是放在E盘。已创建私有 `.local/tests|builds|runtime|evidence`；两Git树追加.local忽略规则并实际check-ignore通过，课程树 `.gitignore`+新AGENTS提交 `077d2ed`。顶层Git的原README及其他不相关未跟踪内容未动，顶层.gitignore本次追加尚未提交；不能把它误当用户旧改动或直接提交整个脏树。所有后续TEMP/TMP、构建、运行/下载等必须项目内，finally恢复，不再生成E根/C项目目录。
+
+实际诊疗wave2会话79686已终止：工具边界exit1，输出 `CLINICAL VERIFICATION INCOMPLETE: required gates remain unverified`。本次调用未显式把子PowerShell LASTEXITCODE传给外壳，因此不声称独立测得native exit4；仅确定非零及真实闭合摘要。新私有summary为clinical-evidence/88e9c9c2-f080-4b2d-aa80-501d9467cb7e/clinical-supplements-summary.json：112请求、53必需项中23通过/0失败/0跳过/30未验证；completeDriverRun=true、wholeTask6Accepted=false，四facts均true。这次正式日志红线门通过，旧31295失败保留。wave2 main/legacy已消费，不重放。运行环境仍是下文restored身份，尚未搬动。
+
+迁移进度：两独立盘点 `relocation-e-root-inventory-20261017.md/json`、`relocation-references-inventory-20261017.md` 已完整列出E根70项、指定C旧源码/运行备份/截图/审计Temp资料与当前引用/历史证据区别。root经独立预审后执行move-offline-tests-20261017.ps1，会话53896退出0：45个无reparse离线test目录全部源消失/目标存在、结构与逐文件内存SHA一致；journal全部VERIFIED，位置为项目.local/tests。没有删除数据。20个含28junction的测试归档、3build、主runtime及1归属未证空目录仍未移。新同卷Directory.Move小样本实际验证junction元数据及独立target不变；20档迁移脚本已写待独立预审，不得当已移。
+
+中文物理根兼容是当前必要修复，不得再次以英文E根作为最终方案：GetShortPathName真实读取无ASCII8.3别名。root新空实例探针20780退出0，全部产物在项目.local/tests/mysql-unicode-probe-d525c6eb583d4f07975c69d62d82e729/attachments-d525c6eb583d4f07975c69d62d82e729，已正常shutdown。实测initialized/started/liveOfflineUuidMatch=true，currentGuardPassed=false，严格UTF8路径不匹配、GBK精确匹配，serverCompileOs=Win64。原数据未接触。唯一实现者deployment_utf8_review获准最小TDD修复ownership.ps1及新attachments-mysql-path-identity.Tests.ps1：ASCII UUID/port/HEX目录/OS查询、严格lossless UTF8或真实WindowsACP并精确expected物理目录，返回原三字段；不放宽任何目录/PID/UUID/端口/祖先约束。尚未冻结/复审/实机复验，不可迁移启动主数据。C旧task8原保护继续，迁移要核实实例离线及完整校验，不能删备份或改历史证据路径冒充新通过。
+
 2026-10-17 恢复接续最新：四组件现已恢复，不再是下文的全停止状态。root 原恢复脚本经三项预审修复和实际只读预检65822退出0后执行57522，因 MinIO 同PID同时监听127.0.0.1/::1，过严的 Ready 总计数检查退出1，保留该失败；MySQL7512及MinIO38728当时已恢复并通过正式归属检查。没有重放原脚本或重启这两者。新 Java-only 接续脚本经只读独立预审无阻断项后执行83534退出0，完成WildFly14680和Tomcat24944。两操作脚本、预审、partial journal均保留，任何后续接续不得盲重放。
 
 新权威身份为附件SDD `fixtures/6910fd2545ca4cf6ae88e94fb1203785/clinical-restored-20261017-fixture.json`，两个current指针已更新。root新鲜全部四组件完整guard通过、MySQL UUID/port/datadir一致、两个实际JVM仍GBK、当前boot捕获ACL验证通过；登录页和MinIO健康HTTP均200。数据库只读汇总仍12表，预约2CANCELED/3BOOKED/2COMPLETED（启动后、正式驱动前的快照，不是现在状态）。旧数据/日志/配置/部署WAR均保留，未初始化/播种/覆盖部署，教师安装及其他进程未动。当前boot来源为私有 `clinical-application/boot-restore-20261017`。
