@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 8、Tomcat 9 Servlet/JSP、WildFly 10 JAX-RS/EJB/JPA、MySQL、现有 BCrypt/Jackson/JUnit；不升级依赖。
 
-**Spec:** [2026-10-18-medical-cloud-hospital-onboarding-design.md](../specs/2026-10-18-medical-cloud-hospital-onboarding-design.md)，设计提交 `309b6757584697f57e37889ff26b7858099ca66a`；用户已确认书面设计。本计划尚待确认，不能据此开始实现。
+**Spec:** [2026-10-18-medical-cloud-hospital-onboarding-design.md](../specs/2026-10-18-medical-cloud-hospital-onboarding-design.md)，设计提交 `309b6757584697f57e37889ff26b7858099ca66a`；用户已确认书面设计，并于2026-10-18回复“确认”批准本实施计划，开始按既定多智能体方式实施。此审批状态更新不改变业务规则，也不批准另一个临床预检重构。
 
 ## Global Constraints
 

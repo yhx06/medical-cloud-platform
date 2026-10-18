@@ -2,6 +2,9 @@ package com.medcloud.course.contract;
 
 public enum AuditEventType {
     LOGIN(AuditObjectType.ACCOUNT),
+    TENANT_OPEN(AuditObjectType.TENANT),
+    HOSPITAL_ADMIN_CREATE(AuditObjectType.HOSPITAL_ADMIN_ACCOUNT),
+    HOSPITAL_ADMIN_STATUS_CHANGE(AuditObjectType.HOSPITAL_ADMIN_ACCOUNT),
     TENANT_STATUS_CHANGE(AuditObjectType.TENANT),
     DEPARTMENT_CREATE(AuditObjectType.DEPARTMENT),
     DEPARTMENT_UPDATE(AuditObjectType.DEPARTMENT),
