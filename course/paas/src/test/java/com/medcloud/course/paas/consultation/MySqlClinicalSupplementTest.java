@@ -152,6 +152,28 @@ public class MySqlClinicalSupplementTest extends ClinicalSupplementFixture {
         assertCompleted(); assertEquals(0,count("ClinicalDraft")); assertEquals(3,count("AuditEvent"));
     }
 
+    // Skipping post-lock draft revision validation would accept stale completion and delete the newer draft/create record/order.
+    @Test void draftWinsBeforeStaleCompletion() throws Exception {
+        start(); save(0,"draft");
+        List<Object> initial=draftSnapshot();
+        ordered("draft before stale complete",
+                em -> new ClinicalSupplementService(em).saveDraft(DOCTOR,"appointment1",draft(1,"updated"),NOW.plusSeconds(20),context(AuditEventType.CONSULTATION_DRAFT_SAVE)),
+                this::finishMatchingDraft,"CLINICAL_REVISION_CONFLICT");
+        assertEquals("IN_PROGRESS",tx(em -> em.find(Appointment.class,"appointment1").getStatus()));
+        assertEquals(1,count("ClinicalDraft"));
+        assertEquals(Arrays.asList(initial.get(0),"appointment1","tenant","doctor","patient",
+                Timestamp.from(NOW.plusSeconds(20)),2L,"draft complaint","updated","draft advice","draft notes"),draftSnapshot());
+        assertEquals(initial.subList(0,5),draftSnapshot().subList(0,5));
+        assertEquals(0,count("ClinicalRecord")); assertEquals(0,count("PaymentOrder"));
+        assertEquals(3,count("AuditEvent"));
+        assertEquals(3L,(long)tx(em -> em.createQuery("select count(e) from AuditEvent e where e.result=:result",Long.class).setParameter("result",AuditResult.SUCCESS).getSingleResult()));
+        assertEquals(1L,(long)tx(em -> em.createQuery("select count(e) from AuditEvent e where e.result=:result and e.eventType=:type",Long.class).setParameter("result",AuditResult.SUCCESS).setParameter("type",AuditEventType.CONSULTATION_START).getSingleResult()));
+        assertEquals(2L,(long)tx(em -> em.createQuery("select count(e) from AuditEvent e where e.result=:result and e.eventType=:type",Long.class).setParameter("result",AuditResult.SUCCESS).setParameter("type",AuditEventType.CONSULTATION_DRAFT_SAVE).getSingleResult()));
+        assertEquals(0L,(long)tx(em -> em.createQuery("select count(e) from AuditEvent e where e.result=:result and e.eventType=:type",Long.class).setParameter("result",AuditResult.SUCCESS).setParameter("type",AuditEventType.CONSULTATION_COMPLETE).getSingleResult()));
+        PatientComplaintView complaint=tx(em -> new ClinicalSupplementService(em).complaint(PATIENT,"appointment1"));
+        assertNull(complaint.getDescription()); assertEquals(0,complaint.getRevision()); assertNull(complaint.getUpdatedAt());
+    }
+
     // Removing state rechecking under the parent lock would allow a late patient edit.
     @Test void completeVsDescriptionStateRechecked() throws Exception {
         start(); save(0,"draft");
