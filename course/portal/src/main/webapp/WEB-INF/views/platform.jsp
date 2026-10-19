@@ -1,9 +1,11 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="com.fasterxml.jackson.databind.JsonNode" %>
+<%@ page import="com.medcloud.course.portal.web.PlatformAdministrationWorkspace" %>
 <% String workspace = "platform", workspaceLabel = "平台概览", workspaceDescription = "管理医院业务状态，查看跨院脱敏汇总与课程平台架构。"; %>
 <%@ include file="header.jspf" %>
 <section class="card" id="tenant-management">
   <div class="section-heading"><div><p class="section-kicker">01 / HOSPITALS</p><h2>医院管理</h2></div></div>
+  <a class="button" href="<%= context %>/platform/hospital/open">开通医院及首管理员</a>
   <p class="subtle">停用医院将暂停预约、取消、接诊、缴费和资源维护，历史可查。医院账号与资源原有状态保留，重新启用后仍按原业务规则办理。</p>
   <%= sectionError(request, "tenantListError") %>
   <% JsonNode tenants = (JsonNode) request.getAttribute("tenants");
@@ -19,6 +21,7 @@
          boolean knownTenantStatus = "ACTIVE".equals(tenantStatus) || "DISABLED".equals(tenantStatus); %>
     <tr><td class="identifier"><%= WebEscaper.html(tenant.path("id").asText()) %></td><td><strong><%= tenantName %></strong></td><td><%= stateBadge(tenantStatus) %></td>
       <td><% if (knownTenantStatus) { String targetStatus = "ACTIVE".equals(tenantStatus) ? "DISABLED" : "ACTIVE"; %>
+        <a href="<%= context %>/platform/hospital/administrators?tenantId=<%= WebEscaper.html(PlatformAdministrationWorkspace.query(tenant.path("id").asText())) %>">管理医院管理员</a>
         <form method="post" action="<%= context %>/platform/tenant/status" class="tenant-status-form">
           <input type="hidden" name="id" value="<%= WebEscaper.html(tenant.path("id").asText()) %>">
           <input type="hidden" name="status" value="<%= targetStatus %>">

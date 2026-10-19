@@ -98,6 +98,12 @@ class PlatformPortalTest {
             assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("view-overview"));
             assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("manage-tenants"));
             assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("view-statistics"));
+            assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("open-hospital"));
+            assertTrue(factory.forRole(Role.PLATFORM_ADMIN).allows("manage-hospital-administrators"));
+            for (Role role : new Role[]{Role.HOSPITAL_ADMIN, Role.DOCTOR, Role.PATIENT}) {
+                assertFalse(factory.forRole(role).allows("open-hospital"));
+                assertFalse(factory.forRole(role).allows("manage-hospital-administrators"));
+            }
             assertTrue(factory.forRole(Role.HOSPITAL_ADMIN).allows("view-slots"));
             assertTrue(factory.forRole(Role.HOSPITAL_ADMIN).allows("view-statistics"));
         }

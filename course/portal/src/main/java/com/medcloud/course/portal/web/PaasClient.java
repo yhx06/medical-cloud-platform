@@ -2,6 +2,8 @@ package com.medcloud.course.portal.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.medcloud.course.contract.LoginRequest;
 import com.medcloud.course.contract.LoginResponse;
 import com.medcloud.course.contract.Role;
@@ -19,6 +21,8 @@ import java.util.concurrent.*;
 
 public final class PaasClient {
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ObjectReader ERROR_JSON = JSON.readerFor(JsonNode.class)
+            .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private static final ScheduledThreadPoolExecutor DEADLINES = deadlines();
     private final String baseUrl;
 
@@ -102,13 +106,15 @@ public final class PaasClient {
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
                 byte[] body = request == null ? "{}".getBytes(StandardCharsets.UTF_8)
                         : JSON.writeValueAsBytes(request);
+                // Streaming disables HttpURLConnection's silent replay of a buffered POST after a lost response.
+                connection.setFixedLengthStreamingMode(body.length);
                 try (OutputStream output = connection.getOutputStream()) {
                     output.write(body);
                 }
             }
             int status = connection.getResponseCode();
             // HTTP authorization status is authoritative even when a proxy returns HTML or no body.
-            if (status < 200 || status >= 300) throw new PaasRejectedException(status, publicError(status));
+            if (status < 200 || status >= 300) throw rejection(connection, status);
             InputStream stream = connection.getInputStream();
             JsonNode envelope = JSON.readTree(readLimited(stream));
             if (envelope == null || !"OK".equals(envelope.path("code").asText())) {
@@ -141,6 +147,31 @@ public final class PaasClient {
             }
             return output.toByteArray();
         }
+    }
+
+    private static PaasRejectedException rejection(HttpURLConnection connection, int status) {
+        // Authorization is determined by HTTP status alone; never parse a proxy's authorization body.
+        if (status == 400 || status == 409) {
+            try {
+                JsonNode error = ERROR_JSON.readValue(readLimited(connection.getErrorStream()));
+                if (error != null && error.isObject() && error.path("code").isTextual()) {
+                    String code = error.path("code").textValue();
+                    String message = safeBusinessMessage(status, code);
+                    if (message != null) return new PaasRejectedException(status, message, code);
+                }
+            } catch (IOException ignored) { /* Bounded, malformed errors retain the original safe public error. */ }
+        }
+        return new PaasRejectedException(status, publicError(status));
+    }
+
+    private static String safeBusinessMessage(int status, String code) {
+        if (status == 400 && "HOSPITAL_ONBOARDING_INVALID".equals(code)) return "开通信息无效，请检查医院名称、用户名、密码和操作编号";
+        if (status != 409) return null;
+        if ("USERNAME_EXISTS".equals(code)) return "用户名已被使用，请核对账号后再提交";
+        if ("OPERATION_KEY_CONFLICT".equals(code)) return "操作编号与原提交内容冲突，请复核原信息，不要直接换编号重发";
+        if ("ADMIN_STATUS_CONFLICT".equals(code)) return "管理员状态已变化，请另开列表复核，不要直接覆盖当前状态";
+        if ("LAST_ACTIVE_HOSPITAL_ADMIN".equals(code)) return "不能停用最后一位启用的医院管理员，请先增补或启用另一位管理员后复核";
+        return null;
     }
 
     private static String publicError(int status) {
