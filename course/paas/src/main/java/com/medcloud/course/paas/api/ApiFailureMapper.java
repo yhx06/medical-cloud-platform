@@ -40,6 +40,10 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
 
     public static AuditReasonCode reasonFor(RuntimeException failure) {
         failure = unwrap(failure);
+        if (failure instanceof com.medcloud.course.paas.tenant.HospitalAdministrationException) {
+            return ((com.medcloud.course.paas.tenant.HospitalAdministrationException) failure).getStatus() == 400
+                    ? AuditReasonCode.BAD_REQUEST : AuditReasonCode.CONFLICT;
+        }
         if (failure instanceof com.medcloud.course.paas.consultation.ClinicalSupplementException) {
             return ((com.medcloud.course.paas.consultation.ClinicalSupplementException) failure).getStatus() == 400
                     ? AuditReasonCode.BAD_REQUEST : AuditReasonCode.CONFLICT;
@@ -109,7 +113,13 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
         int status;
         String code;
         String message;
-        if (failure instanceof com.medcloud.course.paas.consultation.ClinicalSupplementException) {
+        if (failure instanceof com.medcloud.course.paas.tenant.HospitalAdministrationException) {
+            com.medcloud.course.paas.tenant.HospitalAdministrationException administration =
+                    (com.medcloud.course.paas.tenant.HospitalAdministrationException) failure;
+            status = administration.getStatus();
+            code = administration.getCode();
+            message = status == 400 ? "Invalid hospital administration input" : "Hospital administration conflicts with current state";
+        } else if (failure instanceof com.medcloud.course.paas.consultation.ClinicalSupplementException) {
             com.medcloud.course.paas.consultation.ClinicalSupplementException clinical =
                     (com.medcloud.course.paas.consultation.ClinicalSupplementException) failure;
             status = clinical.getStatus();

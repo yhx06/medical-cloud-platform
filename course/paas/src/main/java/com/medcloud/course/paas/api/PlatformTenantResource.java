@@ -5,10 +5,13 @@ import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.TenantPage;
 import com.medcloud.course.contract.TenantStatusRequest;
 import com.medcloud.course.contract.TenantView;
+import com.medcloud.course.contract.HospitalOpenRequest;
+import com.medcloud.course.contract.HospitalAdminCreationView;
 import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.PlatformTenantService;
+import com.medcloud.course.paas.tenant.PlatformAdministrationService;
 import com.medcloud.course.paas.audit.*;
 import com.medcloud.course.contract.AuditEventType;
 import org.jboss.resteasy.spi.HttpRequest;
@@ -19,6 +22,7 @@ import javax.ws.rs.DefaultValue;
 import javax.ws.rs.GET;
 import javax.ws.rs.HeaderParam;
 import javax.ws.rs.PUT;
+import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -31,12 +35,28 @@ import javax.ws.rs.core.MediaType;
 public class PlatformTenantResource {
     @EJB private AuthService auth;
     @EJB private PlatformTenantService tenants;
+    @EJB private PlatformAdministrationService administration;
     @EJB private AuditOperationRunner runner;
     @Context private HttpRequest requestContext;
     public PlatformTenantResource() { }
     public PlatformTenantResource(AuthService auth, PlatformTenantService tenants) { this.auth = auth; this.tenants = tenants; }
     public PlatformTenantResource(AuthService auth, PlatformTenantService tenants, AuditOperationRunner runner) {
         this(auth, tenants); this.runner = java.util.Objects.requireNonNull(runner);
+    }
+    public PlatformTenantResource(AuthService auth, PlatformTenantService tenants,
+            PlatformAdministrationService administration, AuditOperationRunner runner) {
+        this(auth, tenants, runner); this.administration = java.util.Objects.requireNonNull(administration);
+    }
+    @POST @AuditTracked
+    public ApiResponse<HospitalAdminCreationView> open(@HeaderParam("Authorization") String authorization,
+            HospitalOpenRequest request) {
+        AuditContext context = AuditContext.create(AuditEventType.TENANT_OPEN, AuditRequestIds.ensure(requestContext));
+        HospitalAdminCreationView result = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = auth.authenticate(BearerTokens.require(authorization)); c.attachActor(current);
+            if (current.getRole() != Role.PLATFORM_ADMIN) throw new AccessDeniedException();
+            return administration.openHospital(current, request, c);
+        });
+        return ApiResponse.success("hospital opened", result);
     }
     @GET
     public ApiResponse<TenantPage> list(@HeaderParam("Authorization") String authorization,
