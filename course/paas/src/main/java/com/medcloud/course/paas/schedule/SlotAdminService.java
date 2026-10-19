@@ -58,6 +58,7 @@ public class SlotAdminService {
         validate(request, false);
         requireDirectoryOwnership(tenantId, request);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         // Department disable locks the department; publication must acquire it first.
         lockDepartment(tenantId, request.getDepartmentId());
         // Booking locks doctor then slot. Keep that relative order.
@@ -84,6 +85,7 @@ public class SlotAdminService {
         if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
         requireDirectoryOwnership(tenantId, request);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         String candidateDepartmentId = candidate.getDepartmentId();
         String candidateDoctorId = candidate.getDoctorId();
         // Lock both departments, then both doctors, then the slot to serialize admin edits.

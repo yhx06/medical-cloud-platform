@@ -43,6 +43,7 @@ public class HospitalDepartmentService {
         String tenantId = tenant(actor);
         context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         String validName = name(name);
         if (duplicate(tenantId, validName, null)) throw new IllegalStateException("department name exists");
         Department department = new Department(UUID.randomUUID().toString(), tenantId, validName);
@@ -61,6 +62,7 @@ public class HospitalDepartmentService {
         Department candidate = manager.find(Department.class, id);
         if (candidate == null || !tenantId.equals(candidate.getTenantId())) throw new AccessDeniedException();
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         manager.flush();
         Department department = manager.find(Department.class, id, LockModeType.PESSIMISTIC_WRITE);
         if (department != null) manager.refresh(department, LockModeType.PESSIMISTIC_WRITE);

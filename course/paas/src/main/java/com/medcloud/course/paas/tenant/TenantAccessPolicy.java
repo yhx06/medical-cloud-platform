@@ -52,4 +52,42 @@ public final class TenantAccessPolicy {
         if (!"ACTIVE".equals(tenant.getStatus())) throw new IllegalStateException("hospital business frozen");
         return tenant;
     }
+
+    public Account lockPlatformAccount(CurrentActor actor) {
+        if (actor == null || actor.getUserId() == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.PLATFORM_ADMIN) throw new AccessDeniedException();
+        Account account = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_WRITE);
+        if (account == null) throw new SecurityException("inactive account");
+        try { manager.refresh(account, LockModeType.PESSIMISTIC_WRITE); }
+        catch (EntityNotFoundException missing) { throw new SecurityException("inactive account"); }
+        if (!"ACTIVE".equals(account.getStatus())) throw new SecurityException("inactive account");
+        if (account.getRole() != Role.PLATFORM_ADMIN || account.getTenantId() != null) throw new AccessDeniedException();
+        return account;
+    }
+
+    public Tenant lockPlatformTenant(String tenantId) {
+        if (tenantId == null) throw new AccessDeniedException();
+        Tenant tenant = manager.find(Tenant.class, tenantId, LockModeType.PESSIMISTIC_WRITE);
+        if (tenant == null) throw new AccessDeniedException();
+        try { manager.refresh(tenant, LockModeType.PESSIMISTIC_WRITE); }
+        catch (EntityNotFoundException missing) { throw new AccessDeniedException(); }
+        if (!"ACTIVE".equals(tenant.getStatus()) && !"DISABLED".equals(tenant.getStatus())) throw new AccessDeniedException();
+        return tenant;
+    }
+
+    /** Caller already owns the tenant lock; refreshes authorization after any wait. */
+    public Account recheckHospitalWriter(CurrentActor actor, String tenantId) {
+        if (actor == null || actor.getUserId() == null) throw new SecurityException("authentication required");
+        if (actor.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
+        // A locking refresh is a current read even if the earlier authorization opened an RR snapshot.
+        Account account = manager.find(Account.class, actor.getUserId(), LockModeType.PESSIMISTIC_READ);
+        if (account == null) throw new SecurityException("inactive account");
+        try { manager.refresh(account, LockModeType.PESSIMISTIC_READ); }
+        catch (EntityNotFoundException missing) { throw new SecurityException("inactive account"); }
+        if (!"ACTIVE".equals(account.getStatus())) throw new SecurityException("inactive account");
+        if (account.getRole() != Role.HOSPITAL_ADMIN) throw new AccessDeniedException();
+        if (tenantId == null || !tenantId.equals(account.getTenantId()))
+            throw new AccessDeniedException();
+        return account;
+    }
 }

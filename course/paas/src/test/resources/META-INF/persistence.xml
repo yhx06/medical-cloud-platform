@@ -5,6 +5,7 @@
   <persistence-unit name="medicalCloudCourseTest" transaction-type="RESOURCE_LOCAL">
     <provider>org.hibernate.jpa.HibernatePersistenceProvider</provider>
     <class>com.medcloud.course.paas.tenant.Tenant</class>
+    <class>com.medcloud.course.paas.tenant.HospitalAdminOperation</class>
     <class>com.medcloud.course.paas.tenant.Department</class>
     <class>com.medcloud.course.paas.tenant.DoctorProfile</class>
     <class>com.medcloud.course.paas.schedule.ScheduleSlot</class>

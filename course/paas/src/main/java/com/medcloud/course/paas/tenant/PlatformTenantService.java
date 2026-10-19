@@ -49,7 +49,7 @@ public class PlatformTenantService {
     }
 
     public TenantView changeStatus(CurrentActor actor, String id, TenantStatusRequest request, AuditContext context) {
-        com.medcloud.course.paas.auth.Account verified = new TenantAccessPolicy(manager).requireAccount(actor, Role.PLATFORM_ADMIN);
+        com.medcloud.course.paas.auth.Account verified = new TenantAccessPolicy(manager).lockPlatformAccount(actor);
         context.attachActor(new CurrentActor(verified.getId(), verified.getRole(), verified.getTenantId()));
         if (request == null) throw new IllegalArgumentException("request required");
         requireStatus(request.getStatus());

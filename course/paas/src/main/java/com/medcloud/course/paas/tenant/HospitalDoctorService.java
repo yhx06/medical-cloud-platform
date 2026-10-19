@@ -21,7 +21,6 @@ import javax.persistence.PersistenceContext;
 import javax.persistence.PersistenceException;
 import javax.persistence.LockModeType;
 import java.security.SecureRandom;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -58,6 +57,7 @@ public class HospitalDoctorService {
         context.attachActor(new CurrentActor(actor.getUserId(), Role.HOSPITAL_ADMIN, tenantId));
         department(tenantId, departmentId);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         lockDepartment(tenantId, departmentId);
         if (username == null || !username.matches("[A-Za-z0-9_]{3,64}"))
             throw new IllegalArgumentException("invalid username");
@@ -76,7 +76,7 @@ public class HospitalDoctorService {
             manager.persist(profile);
             manager.flush();
         } catch (PersistenceException failure) {
-            if (uniqueConflict(failure)) throw new IllegalStateException("username already exists", failure);
+            if (UsernameConstraint.violatedBy(failure)) throw new IllegalStateException("username already exists", failure);
             throw failure;
         }
         journal.append(context, account.getId(), AuditResult.SUCCESS, Instant.now());
@@ -97,6 +97,7 @@ public class HospitalDoctorService {
             throw new AccessDeniedException();
         department(tenantId, departmentId);
         new TenantAccessPolicy(manager).lockWritableTenant(tenantId);
+        new TenantAccessPolicy(manager).recheckHospitalWriter(actor, tenantId);
         lockDepartment(tenantId, departmentId);
         Account account = manager.find(Account.class, userId, LockModeType.PESSIMISTIC_WRITE);
         if (account != null) manager.refresh(account, LockModeType.PESSIMISTIC_WRITE);
@@ -143,13 +144,4 @@ public class HospitalDoctorService {
                 profile.getDepartmentId(), account.getStatus());
     }
 
-    private static boolean uniqueConflict(Throwable failure) {
-        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException) {
-                String state = ((SQLException) cause).getSQLState();
-                if (state != null && state.startsWith("23")) return true;
-            }
-        }
-        return false;
-    }
 }
