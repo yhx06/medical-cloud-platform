@@ -123,7 +123,10 @@ foreach ($name in @('CLINICAL_BOUNDARY_STATE','MEDICAL_COURSE_DB_USER','MEDICAL_
 $env:CLINICAL_BOUNDARY_STATE = Join-Path $scratch 'state.json'
 $env:MEDICAL_COURSE_DB_USER = 'boundary_fixture'; $env:MEDICAL_COURSE_DB_PASSWORD = 'fixture-secret'; $env:MYSQL_PWD = 'prior-secret'
 $failures = @(); $passed = 0
-$fresh = @(Invoke-ModelDdl @() (Get-Content -LiteralPath (Join-Path $deploy 'schema.sql') -Raw -Encoding UTF8))
+# Historical 004 schema, pinned verbatim from approved design commit
+# 309b6757584697f57e37889ff26b7858099ca66a:course/deploy/schema.sql.
+# The latest initializer now describes 005; keep this strict004 regression fixed.
+$fresh = @(Invoke-ModelDdl @() (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'fixtures/schema-004.sql') -Raw -Encoding UTF8))
 $baseline = @($fresh | Where-Object { $_ -notmatch '^[TCIF]:(clinical_draft|record_correction):' -and $_ -notmatch '^C:appointment:(11|12|13):' })
 
 function Reset-Fixture([string[]]$shape = $baseline) {
