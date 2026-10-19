@@ -101,6 +101,16 @@ function ConvertTo-OnboardingArgument([string]$OnboardingValue) {
 function Invoke-OnboardingNative {
     param($OnboardingExecutable,$OnboardingArguments,$OnboardingWorkingDirectory,$OnboardingInput,$OnboardingLabel,[switch]$OnboardingStart)
     if ($OnboardingStart) {
+        # Windows PS 5.1 Start-Process fails when the process environment block holds
+        # both HTTP_PROXY and http_proxy. Keep one canonical uppercase entry.
+        foreach ($OnboardingProxyName in @('http_proxy','https_proxy','no_proxy','all_proxy')) {
+            $OnboardingProxyValue=[Environment]::GetEnvironmentVariable($OnboardingProxyName,'Process')
+            if ($OnboardingProxyValue) {
+                $OnboardingProxyUpper=$OnboardingProxyName.ToUpperInvariant()
+                if (-not [Environment]::GetEnvironmentVariable($OnboardingProxyUpper,'Process')) { [Environment]::SetEnvironmentVariable($OnboardingProxyUpper,$OnboardingProxyValue,'Process') }
+                [Environment]::SetEnvironmentVariable($OnboardingProxyName,$null,'Process')
+            }
+        }
         $OnboardingQuoted=@($OnboardingArguments|ForEach-Object{ConvertTo-OnboardingArgument ([string]$_)})
         $OnboardingBackground=Start-Process -FilePath $OnboardingExecutable -ArgumentList $OnboardingQuoted -WorkingDirectory $OnboardingWorkingDirectory -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $OnboardingWorkingDirectory ($OnboardingLabel+'.out.log')) -RedirectStandardError (Join-Path $OnboardingWorkingDirectory ($OnboardingLabel+'.err.log'))
         return [pscustomobject]@{ExitCode=0;ProcessId=$OnboardingBackground.Id;Created=$OnboardingBackground.StartTime.ToUniversalTime().ToString('o');Output=''}
@@ -175,9 +185,10 @@ function Assert-OnboardingIdentity($OnboardingContext,[string]$OnboardingCompone
     $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingComponent]
     if (-not $OnboardingPart -or $OnboardingPart.pid -lt 1 -or $OnboardingPart.port -in @(3318,8180,8188,10090) -or $OnboardingPart.port -lt 1 -or $OnboardingPart.port -gt 65535) { throw 'Component identity incomplete' }
     $OnboardingProcess=@(Get-OnboardingProcess $OnboardingPart.pid)
-    if ($OnboardingProcess.Count -ne 1 -or $OnboardingProcess[0].ProcessId -ne $OnboardingPart.pid -or
-        [IO.Path]::GetFullPath($OnboardingProcess[0].ExecutablePath) -ine [IO.Path]::GetFullPath($OnboardingPart.executable) -or
-        [math]::Floor(([datetime]$OnboardingProcess[0].CreationDate).ToUniversalTime().Ticks/10) -ne [math]::Floor(([datetime]$OnboardingPart.created).ToUniversalTime().Ticks/10)) { throw 'Process identity lost' }
+    if ($OnboardingProcess.Count -ne 1 -or $OnboardingProcess[0].ProcessId -ne $OnboardingPart.pid) { throw 'Process identity lost' }
+    # .NET StartTime and WMI CreationDate differ by milliseconds; two seconds still rejects PID reuse.
+    $OnboardingCreatedDelta=[math]::Abs((([datetime]$OnboardingProcess[0].CreationDate).ToUniversalTime()-([datetime]$OnboardingPart.created).ToUniversalTime()).TotalSeconds)
+    if ([IO.Path]::GetFullPath($OnboardingProcess[0].ExecutablePath) -ine [IO.Path]::GetFullPath($OnboardingPart.executable) -or $OnboardingCreatedDelta -gt 2) { throw 'Process identity lost' }
     $OnboardingData=[IO.Path]::GetFullPath($OnboardingPart.dataDirectory)
     if (-not $OnboardingData.StartsWith($OnboardingContext.Root+'\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Component path escaped' }
     Assert-OnboardingPathChain $OnboardingData
@@ -189,7 +200,11 @@ function Assert-OnboardingIdentity($OnboardingContext,[string]$OnboardingCompone
         foreach ($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) {
             if (-not $OnboardingPort) { continue }
             $OnboardingListeners=@(Get-OnboardingListeners $OnboardingPort)
-            if ($OnboardingListeners.Count -ne 1 -or $OnboardingListeners[0].OwningProcess -ne $OnboardingPart.pid -or $OnboardingListeners[0].LocalAddress -ne '127.0.0.1') { throw 'Listener identity lost' }
+            # A loopback service may bind both 127.0.0.1 and ::1 for the same port.
+            if ($OnboardingListeners.Count -lt 1) { throw 'Listener identity lost' }
+            foreach ($OnboardingListener in $OnboardingListeners) {
+                if ($OnboardingListener.OwningProcess -ne $OnboardingPart.pid -or $OnboardingListener.LocalAddress -notin @('127.0.0.1','::1')) { throw 'Listener identity lost' }
+            }
         }
     }
     if ($OnboardingComponent -like 'mysql*') {
@@ -423,7 +438,9 @@ function Start-OnboardingComponent($OnboardingContext,[string]$OnboardingName,[s
         foreach($OnboardingCandidate in @($OnboardingPort)+$OnboardingExtraPorts) {
             $OnboardingListeners=@(Get-OnboardingListeners $OnboardingCandidate)
             if ($OnboardingListeners.Count -eq 0) { $OnboardingReady=$false; continue }
-            if ($OnboardingListeners.Count -ne 1 -or $OnboardingListeners[0].OwningProcess -ne $OnboardingPart.pid -or $OnboardingListeners[0].LocalAddress -ne '127.0.0.1') { throw 'New listener ownership mismatch' }
+            foreach ($OnboardingListener in $OnboardingListeners) {
+                if ($OnboardingListener.OwningProcess -ne $OnboardingPart.pid -or $OnboardingListener.LocalAddress -notin @('127.0.0.1','::1')) { throw 'New listener ownership mismatch' }
+            }
         }
         if ($OnboardingReady) { $OnboardingPart.status='running'; Save-OnboardingJournal $OnboardingContext; return }
         Start-Sleep -Milliseconds 250
