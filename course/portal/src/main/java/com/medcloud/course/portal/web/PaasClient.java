@@ -53,7 +53,7 @@ public final class PaasClient {
 
     /** The watchdog bounds blocked socket writes as well as slow response reads. */
     public JsonNode putBinary(String path, String token, Path file, long maxBytes, int totalTimeoutSeconds) {
-        if(path==null || !path.matches("/files/uploads/[A-Za-z0-9-]+/content") || maxBytes<1 || totalTimeoutSeconds<1)
+        if(path==null || !path.matches("/files/uploads/[A-Za-z0-9-]+/content") || maxBytes<1 || totalTimeoutSeconds<1 || totalTimeoutSeconds>600)
             throw new IllegalArgumentException("invalid binary upload");
         HttpURLConnection connection=null;ScheduledFuture<?> timer=null;
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(totalTimeoutSeconds);
@@ -74,7 +74,7 @@ public final class PaasClient {
             }
             int status=connection.getResponseCode();
             if(status<200 || status>=300)throw new PaasRejectedException(status,publicError(status));
-            JsonNode envelope=JSON.readTree(readLimited(connection.getInputStream()));
+            JsonNode envelope=JSON.readTree(readLimited(connection.getInputStream(),deadline));
             if(System.nanoTime()>deadline)throw new IOException("upload deadline");
             if(envelope==null || !"OK".equals(envelope.path("code").asText()))throw new PaasRejectedException(status,publicError(status));
             return envelope.path("data");
@@ -132,20 +132,43 @@ public final class PaasClient {
         }
     }
 
+    private static final long NO_DEADLINE = Long.MAX_VALUE;
+
     private static byte[] readLimited(InputStream stream) throws IOException {
+        return readLimited(stream, NO_DEADLINE);
+    }
+
+    /**
+     * The binary response reader owns the upload's absolute deadline instead of relying on the
+     * watchdog, so a blocked watchdog or a continuous response trickle cannot extend the read.
+     * Blocked connect/write/close paths remain bounded by the watchdog and socket timeouts.
+     */
+    private static byte[] readLimited(InputStream stream, long deadlineNanos) throws IOException {
         if (stream == null) {
             return new byte[0];
         }
         try (InputStream input = stream; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
             int count;
-            while ((count = input.read(buffer)) != -1) {
+            while (true) {
+                checkReadDeadline(deadlineNanos);
+                count = input.read(buffer);
+                checkReadDeadline(deadlineNanos);
+                if (count == -1) {
+                    break;
+                }
                 if (output.size() + count > 1024 * 1024) {
                     throw new IOException("response too large");
                 }
                 output.write(buffer, 0, count);
             }
             return output.toByteArray();
+        }
+    }
+
+    private static void checkReadDeadline(long deadlineNanos) throws IOException {
+        if (deadlineNanos != NO_DEADLINE && System.nanoTime() - deadlineNanos >= 0) {
+            throw new IOException("response deadline");
         }
     }
 

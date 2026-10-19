@@ -133,25 +133,91 @@ class PrivateObjectStoreTest {
             assertEquals(0,fake.unexpected.get());
         } finally {fake.stop();}
     }
-    @Test void concurrentCallsShareDeadlineAndStopAfterExpiry() throws Exception {
+    /**
+     * Caller-side cancel and drain: each caller owns its deadline and cancels at expiry. Holding the
+     * real preflight monitor parks all three attempts until after expiry; after release every attempt
+     * must drain without issuing HTTP or object work. This does not by itself prove the deadline guard
+     * (caller cancellation also stops work); the waiter tests below cover that separately.
+     */
+    @Test void cancelledLockWaitersDrainWithoutStorageCalls() throws Exception {
         FakeS3 fake=new FakeS3("SlowPreflight");fake.start();
         try(MinioPrivateObjectStore store=store(fake.server,1)) {
+            Object preflightLock=field(store,"preflightLock");
+            java.util.concurrent.ThreadPoolExecutor pool=(java.util.concurrent.ThreadPoolExecutor)field(store,"calls");
             List<Thread> callers=new ArrayList<>();
-            final AtomicInteger errors=new AtomicInteger();
+            final java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
             final CountDownLatch start=new CountDownLatch(1);
-            for(int i=0;i<3;i++) {
-                Thread t=new Thread(()->{
-                    try{start.await();assertEquals(503,assertThrows(AttachmentException.class,()->store.head("course-attachments/abc")).getStatus());}
-                    catch(Throwable ex){errors.incrementAndGet();}
-                });
-                t.start();callers.add(t);
-            }
-            start.countDown();
-            for(Thread t:callers)t.join(5000);
-            assertEquals(0,errors.get());
-            Thread.sleep(1500);
-            assertEquals(1,fake.requests.get(),"cancelled attempts must not issue further preflight requests after the deadline");
+            try {
+                synchronized(preflightLock) {
+                    for(int i=0;i<3;i++) {
+                        Thread t=new Thread(()->{
+                            try{start.await();assertEquals(503,assertThrows(AttachmentException.class,()->store.head("course-attachments/abc")).getStatus());}
+                            catch(Throwable ex){failure.compareAndSet(null,ex);}
+                        },"expired-waiter");
+                        t.start();callers.add(t);
+                    }
+                    start.countDown();
+                    for(Thread t:callers){t.join(5000);assertFalse(t.isAlive(),"each caller must receive its own bounded deadline error");}
+                    assertNull(failure.get(),()->"caller failed unexpectedly: "+failure.get());
+                    long activeUntil=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
+                    while(pool.getActiveCount()<3&&System.nanoTime()<activeUntil)Thread.sleep(10);
+                    assertEquals(3,pool.getActiveCount(),"all three attempts must still be inside the held preflight section");
+                    assertEquals(0,fake.requests.get(),"no attempt may reach HTTP while the monitor is held");
+                }
+            } finally {start.countDown();}
+            // Release the monitor, then use the whole pool as a barrier: every canceled waiter must finish.
+            CountDownLatch drained=new CountDownLatch(pool.getMaximumPoolSize());
+            for(int i=0;i<pool.getMaximumPoolSize();i++)pool.execute(drained::countDown);
+            assertTrue(drained.await(5,TimeUnit.SECONDS),"expired attempts must drain from the pool");
+            assertEquals(0,fake.requests.get(),"a canceled waiter must not start preflight or object work after the monitor is released");
+            assertEquals(0,fake.lock.get());
+            assertEquals(0,fake.policy.get());
             assertEquals(0,fake.deletes.get());
+            assertEquals(0,fake.unexpected.get());
+        } finally {fake.stop();}
+    }
+    /** Direct guard check: an already expired attempt must be rejected before its first storage call. */
+    @Test void expiredPreflightIssuesNoStorageCall() throws Exception {
+        FakeS3 fake=new FakeS3("Private");fake.start();
+        try(MinioPrivateObjectStore store=store(fake.server,3)) {
+            java.lang.reflect.Method preflight=MinioPrivateObjectStore.class.getDeclaredMethod("preflight",long.class);
+            preflight.setAccessible(true);
+            java.lang.reflect.InvocationTargetException rejected=assertThrows(java.lang.reflect.InvocationTargetException.class,
+                ()->preflight.invoke(store,System.nanoTime()-1));
+            assertTrue(rejected.getCause() instanceof AttachmentException,"expired preflight must fail closed");
+            assertEquals(503,((AttachmentException)rejected.getCause()).getStatus());
+            assertEquals(0,fake.requests.get(),"expired preflight must not issue any HTTP request");
+        } finally {fake.stop();}
+    }
+    /**
+     * A waiter that expires while blocked on the held monitor, with no caller-side cancellation:
+     * after release it must fail closed instead of starting preflight HTTP.
+     */
+    @Test void waiterExpiringOnHeldPreflightIssuesNoStorageCall() throws Exception {
+        FakeS3 fake=new FakeS3("Private");fake.start();
+        try(MinioPrivateObjectStore store=store(fake.server,3)) {
+            Object preflightLock=field(store,"preflightLock");
+            java.lang.reflect.Method preflight=MinioPrivateObjectStore.class.getDeclaredMethod("preflight",long.class);
+            preflight.setAccessible(true);
+            final java.util.concurrent.atomic.AtomicReference<Throwable> outcome=new java.util.concurrent.atomic.AtomicReference<>();
+            final CountDownLatch submitted=new CountDownLatch(1);
+            Thread waiter=new Thread(()->{
+                submitted.countDown();
+                try{preflight.invoke(store,System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(300));outcome.set(new AssertionError("expired waiter returned normally"));}
+                catch(java.lang.reflect.InvocationTargetException ex){outcome.set(ex.getCause());}
+                catch(Throwable ex){outcome.set(ex);}
+            },"preflight-waiter");
+            synchronized(preflightLock) {
+                waiter.start();
+                assertTrue(submitted.await(2,TimeUnit.SECONDS));
+                Thread.sleep(600);
+                assertEquals(0,fake.requests.get(),"a waiter must issue no HTTP while the monitor is held");
+            }
+            waiter.join(5000);
+            assertFalse(waiter.isAlive(),"the expired waiter must finish after the monitor is released");
+            assertTrue(outcome.get() instanceof AttachmentException,()->"waiter outcome: "+outcome.get());
+            assertEquals(503,((AttachmentException)outcome.get()).getStatus());
+            assertEquals(0,fake.requests.get(),"an expired waiter must not start preflight HTTP after release");
         } finally {fake.stop();}
     }
     @Test void signedExpiryMatchesActualSignatureMoment() throws Exception {
@@ -218,6 +284,11 @@ class PrivateObjectStoreTest {
     private MinioPrivateObjectStore store(HttpServer server,int deadline) {
         String endpoint="http://127.0.0.1:"+server.getAddress().getPort();
         return new MinioPrivateObjectStore(endpoint,endpoint,"us-east-1","course-files","course-test-app","fictional-test-secret","course-attachments/",new AttachmentLimits(10485760,20000000,200,4,2,3,deadline,120));
+    }
+    private static Object field(Object target,String name) throws Exception {
+        java.lang.reflect.Field field=target.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        return field.get(target);
     }
     private interface RealAssertion {void run(Fixture fixture,MinioPrivateObjectStore store,String key,byte[] bytes,String sha) throws Exception;}
     private void withRealObject(RealAssertion assertion) throws Exception {
