@@ -25,11 +25,11 @@ function Assert-OnboardingTestThrows([scriptblock]$Action,[string]$Pattern='*') 
 }
 function New-OnboardingTestOptions {
     $OnboardingId = [guid]::NewGuid().ToString('N')
-    $OnboardingSandbox = Join-Path $OnboardingTestRoot $OnboardingId
+    $OnboardingSandbox = Join-Path $OnboardingTestRoot $OnboardingId.Substring(0,12)
     foreach ($OnboardingDir in @('.local/runtime','.local/builds','source','mysql','java/bin','tomcat/conf','tomcat/bin','wildfly/standalone/configuration','wildfly/bin/client','wildfly/modules/system/layers/base/com/mysql/main')) {
         [IO.Directory]::CreateDirectory((Join-Path $OnboardingSandbox $OnboardingDir)) | Out-Null
     }
-    foreach ($OnboardingLeaf in @('mysql/mysqld.exe','mysql/mysql.exe','mysql/mysqladmin.exe','mysql/mysqldump.exe','java/bin/java.exe','java/bin/javac.exe','tomcat/bin/bootstrap.jar','tomcat/bin/tomcat-juli.jar','wildfly/jboss-modules.jar','wildfly/bin/client/jboss-cli-client.jar','minio.exe','mc.exe')) {
+    foreach ($OnboardingLeaf in @('mysql/mysqld.exe','mysql/mysql.exe','mysql/mysqladmin.exe','mysql/mysqldump.exe','java/bin/java.exe','java/bin/javac.exe','tomcat/bin/bootstrap.jar','tomcat/bin/tomcat-juli.jar','wildfly/jboss-modules.jar','wildfly/bin/jboss-cli.bat','wildfly/bin/client/jboss-cli-client.jar','minio.exe','mc.exe','mvn.cmd','mysql-connector-j.jar')) {
         [IO.File]::WriteAllText((Join-Path $OnboardingSandbox $OnboardingLeaf),'external-boundary-placeholder')
     }
     [IO.File]::WriteAllText((Join-Path $OnboardingSandbox 'tomcat/conf/server.xml'),'<Server port="8005"><Service><Connector port="8080" protocol="HTTP/1.1"/><Connector port="8009" protocol="AJP/1.3"/></Service></Server>')
@@ -40,7 +40,8 @@ function New-OnboardingTestOptions {
         RuntimeRoot=(Join-Path $OnboardingSandbox ('.local/runtime/attachments-' + $OnboardingId));
         NewRunId=$OnboardingId; SourceCommit=('a' * 40); MySqlBin=(Join-Path $OnboardingSandbox 'mysql');
         JavaHome=(Join-Path $OnboardingSandbox 'java'); TomcatHome=(Join-Path $OnboardingSandbox 'tomcat'); WildFlyHome=(Join-Path $OnboardingSandbox 'wildfly');
-        MinioExecutable=(Join-Path $OnboardingSandbox 'minio.exe'); MinioClientExecutable=(Join-Path $OnboardingSandbox 'mc.exe')
+        MinioExecutable=(Join-Path $OnboardingSandbox 'minio.exe'); MinioClientExecutable=(Join-Path $OnboardingSandbox 'mc.exe');
+        MavenExecutable=(Join-Path $OnboardingSandbox 'mvn.cmd'); ConnectorJar=(Join-Path $OnboardingSandbox 'mysql-connector-j.jar')
     }
 }
 function New-OnboardingTestZip([string]$Path,[hashtable]$Entries) {
@@ -164,21 +165,25 @@ try {
     }
     # External boundaries below are replaced; filesystem/configuration/journal code remains real.
     $OnboardingRealNative=${function:Invoke-OnboardingNative}
+    $OnboardingRealHash=${function:Get-OnboardingToolHash}
+    function Get-OnboardingToolHash($OnboardingPath) { if($OnboardingPath -like '*mysql-connector*'){'e2a3b2fc726a1ac64e998585db86b30fa8bf3f706195b78bb77c5f99bf877bd9'}elseif($OnboardingPath -like '*mc.exe'){'c8db13ebeda31497f354c0e950809db0ae9b2a2a69b8afee68c128c37300c157'}else{'1e534498e2468a4b82c2e98300a883492af3107e666af35aba9875ef7853162f'} }
     function Invoke-OnboardingNative {
         param($OnboardingExecutable,$OnboardingArguments,$OnboardingWorkingDirectory,$OnboardingInput,$OnboardingLabel,[switch]$OnboardingStart)
         $script:OnboardingCalls.Add([pscustomobject]@{Label=$OnboardingLabel;Arguments=@($OnboardingArguments);Working=$OnboardingWorkingDirectory;Input=$OnboardingInput})
         if ($script:OnboardingFailLabel -eq $OnboardingLabel) { return [pscustomobject]@{ExitCode=9;Output='private-native-error-must-not-escape'} }
         if ($OnboardingLabel -eq 'source-identity') { return [pscustomobject]@{ExitCode=0;Output=('a'*40)+"`n"} }
+        if ($OnboardingLabel -eq 'mysql-version') { return [pscustomobject]@{ExitCode=0;Output='mysqld  Ver 8.0.45 for Win64'} }
         if ($OnboardingLabel -eq 'java-version') { return [pscustomobject]@{ExitCode=0;Output='javac 1.8.0_341'} }
         if ($OnboardingLabel -eq 'source-export') {
             $OnboardingOut=(@($OnboardingArguments|Where-Object{$_ -like '--output=*'})[0]).Substring(9)
-            New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# boundary'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'}
+            New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# boundary'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/mysql-module.xml'='<module/>'}
         }
         if ($OnboardingLabel -eq 'baseline-export') { return [pscustomobject]@{ExitCode=0;Output='exact004'} }
         if ($OnboardingLabel -eq 'compile') {
             foreach ($OnboardingModule in @('paas','portal')) {
                 $OnboardingTarget=Join-Path $OnboardingWorkingDirectory ('course/'+$OnboardingModule+'/target'); [IO.Directory]::CreateDirectory($OnboardingTarget)|Out-Null
-                New-OnboardingTestZip (Join-Path $OnboardingTarget ($OnboardingModule+'.war')) @{'WEB-INF/lib/mysql-connector-j-8.0.33.jar'='jar';'WEB-INF/web.xml'='<web-app/>'}
+                $OnboardingEntries=if($OnboardingModule -eq 'paas'){@{'WEB-INF/lib/jbcrypt-0.4.jar'='jar';'WEB-INF/lib/mysql-connector-j-8.0.33.jar'='jar';'WEB-INF/classes/META-INF/persistence.xml'='<persistence/>';'WEB-INF/classes/com/medcloud/course/paas/api/CourseApplication.class'='class'}}else{@{'WEB-INF/web.xml'='<web-app/>';'WEB-INF/views/login.jsp'='jsp'}}
+                New-OnboardingTestZip (Join-Path $OnboardingTarget ($OnboardingModule+'.war')) $OnboardingEntries
             }
         }
         return [pscustomobject]@{ExitCode=0;Output=''}
@@ -187,14 +192,19 @@ try {
         Test-OnboardingBehavior ('preflight '+$OnboardingLabel+' failure prevents all service starts and SQL') {
             $OnboardingOptions=New-OnboardingTestOptions; $script:OnboardingCalls=New-Object 'Collections.Generic.List[object]'; $script:OnboardingFailLabel=$OnboardingLabel
             Assert-OnboardingTestThrows { New-OnboardingFixture $OnboardingOptions } '*stopped*'
-            Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -match 'start|sql|init|migration'}).Count -eq 0) 'Preflight failure reached service/SQL'
-            Assert-OnboardingTest (([IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'journal.json'))) -notlike '*private-native-error*') 'Native error leaked to journal'
-            $OnboardingJournal=[IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'journal.json'))|ConvertFrom-Json
-            Assert-OnboardingTest ($OnboardingJournal.ownerId -ceq $OnboardingOptions.NewRunId -and $OnboardingJournal.state -ceq 'failed') 'Failure identity/journal missing'
+            Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -match 'start|sql|init|migration' -and $_.Label -notmatch 'version'}).Count -eq 0) 'Preflight failure reached service/SQL'
+            if ($OnboardingLabel -eq 'java-version') {
+                Assert-OnboardingTest (-not (Test-Path -LiteralPath $OnboardingOptions.RuntimeRoot)) 'Toolchain failure wrote the runtime before preflight'
+            } else {
+                Assert-OnboardingTest (([IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'journal.json'))) -notlike '*private-native-error*') 'Native error leaked to journal'
+                $OnboardingJournal=[IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'journal.json'))|ConvertFrom-Json
+                Assert-OnboardingTest ($OnboardingJournal.ownerId -ceq $OnboardingOptions.NewRunId -and $OnboardingJournal.state -ceq 'failed') 'Failure identity/journal missing'
+            }
             Assert-OnboardingTest ($env:TEMP -ceq $OnboardingTestRoot -and $env:TMP -ceq $OnboardingTestRoot) 'Environment not restored'
         }
     }
     ${function:Invoke-OnboardingNative}=$OnboardingRealNative
+    ${function:Get-OnboardingToolHash}=$OnboardingRealHash
     Test-OnboardingBehavior 'owned identity refuses PID creation listener UUID and marker substitutions before mutation' {
         $OnboardingOptions=New-OnboardingTestOptions
         [IO.Directory]::CreateDirectory($OnboardingOptions.RuntimeRoot)|Out-Null
@@ -248,7 +258,7 @@ try {
         $OnboardingOptions=New-OnboardingTestOptions
         [IO.Directory]::CreateDirectory($OnboardingOptions.RuntimeRoot)|Out-Null
         Set-OnboardingPrivateAcl $OnboardingOptions.RuntimeRoot
-        $OnboardingContext=@{Root=$OnboardingOptions.RuntimeRoot;Options=$OnboardingOptions;Ports=@{mysql=49101;portal=49102;paas=49103;management=49104;shutdown=49105};Secrets=@{dbUser='fixtureuser';dbPassword='fake-password';tomcatShutdown='fictional-stop-token'};Driver='mysql-driver.jar'}
+        $OnboardingContext=@{Root=$OnboardingOptions.RuntimeRoot;Options=$OnboardingOptions;Ports=@{mysql=49101;portal=49102;paas=49103;management=49104;shutdown=49105};Secrets=@{dbUser='fixtureuser';dbPassword='fake-password';tomcatShutdown='fictional-stop-token'};Driver='mysql'}
         New-OnboardingContainerConfiguration $OnboardingContext
         [xml]$OnboardingTomcat=[IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'portal-base/conf/server.xml'))
         Assert-OnboardingTest ($OnboardingTomcat.Server.port -eq '49105' -and $OnboardingTomcat.Server.address -eq '127.0.0.1' -and $OnboardingTomcat.Server.shutdown -eq 'fictional-stop-token' -and @($OnboardingTomcat.Server.Service.Connector).Count -eq 1 -and $OnboardingTomcat.Server.Service.Connector.address -eq '127.0.0.1' -and $OnboardingTomcat.Server.Service.Connector.port -eq '49102') 'Tomcat exposed old/default listeners or lost graceful stop'
@@ -256,6 +266,14 @@ try {
         $OnboardingDatasource=$OnboardingWildfly.SelectSingleNode("//*[local-name()='datasource']")
         Assert-OnboardingTest ($OnboardingDatasource.GetAttribute('jndi-name') -ceq 'java:/jdbc/MedicalCloudCourseDS') 'Wrong application datasource'
         Assert-OnboardingTest ($OnboardingDatasource.InnerText -like '*127.0.0.1:49101/medical_cloud_course*') 'Wrong database endpoint'
+        Assert-OnboardingTest ($OnboardingDatasource.InnerText -like '*allowPublicKeyRetrieval=true*') 'MySQL 8 public key retrieval missing'
+        $OnboardingDriver=$OnboardingWildfly.SelectSingleNode("//*[local-name()='driver' and @name='mysql']")
+        Assert-OnboardingTest ($OnboardingDriver -and $OnboardingDriver.GetAttribute('module') -eq 'com.mysql') 'MySQL module driver not registered'
+        $OnboardingContext.Journal=@{components=@{storage=@{internalEndpoint='http://127.0.0.1:49106';publicEndpoint='http://127.0.0.1:49106';bucket='fictional-bucket';prefix='course-attachments/'}}}
+        $OnboardingContext.Secrets.storageAppKey='fictional-app'; $OnboardingContext.Secrets.storageAppSecret='fictional-secret'
+        Set-OnboardingRuntimeEnvironment $OnboardingContext
+        Assert-OnboardingTest ($env:COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS -ceq 'http://127.0.0.1:49102' -and $env:COURSE_ATTACHMENTS_TEMP_DIR -like '*attachments-temp' -and $env:COURSE_S3_BUCKET -ceq 'fictional-bucket' -and $env:MEDICAL_COURSE_PAAS_URL -ceq 'http://127.0.0.1:49103/paas/api') 'Portal/attachment runtime environment incomplete'
+        foreach($OnboardingName in @('COURSE_ATTACHMENTS_ENABLED','COURSE_ATTACHMENTS_TEMP_DIR','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_INTERNAL_ENDPOINT','COURSE_S3_PUBLIC_ENDPOINT','COURSE_S3_REGION','COURSE_S3_BUCKET','COURSE_S3_PREFIX','COURSE_S3_ACCESS_KEY','COURSE_S3_SECRET_KEY','MEDICAL_COURSE_PAAS_URL')) { [Environment]::SetEnvironmentVariable($OnboardingName,$null,'Process') }
         Assert-OnboardingTest ([IO.File]::ReadAllText((Join-Path $OnboardingOptions.TomcatHome 'conf/server.xml')) -like '*8009*') 'Teacher configuration mutated'
     }
     Test-OnboardingBehavior 'IAM archive contains scoped policy and verified enabled user mapping' {
@@ -285,22 +303,26 @@ try {
             }
         }
         function Invoke-OnboardingHttp($OnboardingUri) { [pscustomobject]@{StatusCode=200} }
-        function Get-OnboardingToolHash($OnboardingPath) { if($OnboardingPath -like '*mc.exe'){'c8db13ebeda31497f354c0e950809db0ae9b2a2a69b8afee68c128c37300c157'}else{'1e534498e2468a4b82c2e98300a883492af3107e666af35aba9875ef7853162f'} }
+        function Get-OnboardingToolHash($OnboardingPath) { if($OnboardingPath -like '*mysql-connector*'){'e2a3b2fc726a1ac64e998585db86b30fa8bf3f706195b78bb77c5f99bf877bd9'}elseif($OnboardingPath -like '*mc.exe'){'c8db13ebeda31497f354c0e950809db0ae9b2a2a69b8afee68c128c37300c157'}else{'1e534498e2468a4b82c2e98300a883492af3107e666af35aba9875ef7853162f'} }
         function Invoke-OnboardingNative {
             param($OnboardingExecutable,$OnboardingArguments,$OnboardingWorkingDirectory,$OnboardingInput,$OnboardingLabel,[switch]$OnboardingStart)
             $script:OnboardingCalls.Add([pscustomobject]@{Label=$OnboardingLabel;Arguments=@($OnboardingArguments);Input=$OnboardingInput;Working=$OnboardingWorkingDirectory})
             if ($OnboardingLabel -eq 'source-identity') { return @{ExitCode=0;Output=('a'*40)+"`n"} }
             if ($OnboardingLabel -eq 'source-export') {
                 $OnboardingOut=(@($OnboardingArguments|Where-Object{$_ -like '--output=*'})[0]).Substring(9)
-                New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# external upgrader'; 'course/deploy/scripts/upgrade-clinical-database.ps1'='# metadata'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'}
+                New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# external upgrader'; 'course/deploy/scripts/upgrade-clinical-database.ps1'='# metadata'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/mysql-module.xml'='<module/>'}
             }
             if ($OnboardingLabel -eq 'baseline-export') { return @{ExitCode=0;Output='exact004'} }
+            if ($OnboardingLabel -eq 'mysql-version') { return @{ExitCode=0;Output='D:/mysql/mysqld.exe  Ver 8.0.45 for Win64 on x86_64 (MySQL Community Server - GPL)'} }
             if ($OnboardingLabel -eq 'java-version') { return @{ExitCode=0;Output='javac 1.8.0_341'} }
             if ($OnboardingLabel -eq 'compile') {
                 foreach ($OnboardingModule in @('paas','portal')) {
                     $OnboardingTarget=Join-Path $OnboardingWorkingDirectory ('course/'+$OnboardingModule+'/target'); [IO.Directory]::CreateDirectory($OnboardingTarget)|Out-Null
-                    New-OnboardingTestZip (Join-Path $OnboardingTarget ($OnboardingModule+'.war')) @{'WEB-INF/lib/jbcrypt-0.4.jar'='bcrypt';'WEB-INF/classes/META-INF/persistence.xml'='<persistence><property name="hibernate.hbm2ddl.auto" value="validate"/></persistence>'; 'WEB-INF/web.xml'='<web-app/>'}
+                    $OnboardingEntries=if($OnboardingModule -eq 'paas'){@{'WEB-INF/lib/jbcrypt-0.4.jar'='bcrypt';'WEB-INF/classes/META-INF/persistence.xml'='<persistence><property name="hibernate.hbm2ddl.auto" value="validate"/></persistence>';'WEB-INF/classes/com/medcloud/course/paas/api/CourseApplication.class'='class'}}else{@{'WEB-INF/web.xml'='<web-app/>';'WEB-INF/views/login.jsp'='login'}}
+                    New-OnboardingTestZip (Join-Path $OnboardingTarget ($OnboardingModule+'.war')) $OnboardingEntries
                 }
+                # Real builds emit probe WARs next to the deployable one; they must be ignored by name.
+                New-OnboardingTestZip (Join-Path $OnboardingWorkingDirectory 'course/paas/target/attachment-sdk-structure.war') @{'probe'='not-deployable'}
             }
             if ($OnboardingLabel -like '*-init') {
                 $OnboardingData=(@($OnboardingArguments|Where-Object{$_ -like '--datadir=*'})[0]).Substring(10)
