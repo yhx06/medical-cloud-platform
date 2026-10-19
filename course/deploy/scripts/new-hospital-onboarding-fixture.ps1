@@ -344,6 +344,7 @@ function Set-OnboardingRuntimeEnvironment($OnboardingContext) {
     $env:COURSE_S3_PREFIX=$OnboardingStorage.prefix
     $env:COURSE_S3_ACCESS_KEY=$OnboardingCredentials.storageAppKey
     $env:COURSE_S3_SECRET_KEY=$OnboardingCredentials.storageAppSecret
+    $env:MEDICAL_COURSE_JWT_SECRET=$OnboardingCredentials.jwtSecret
     $env:MEDICAL_COURSE_PAAS_URL='http://127.0.0.1:'+$OnboardingContext.Ports.paas+'/paas/api'
 }
 function New-OnboardingRandomToken {
@@ -493,7 +494,7 @@ function Invoke-OnboardingBootstrap($OnboardingContext) {
     if ((Get-OnboardingToolHash $OnboardingOptions.MinioExecutable) -cne '1e534498e2468a4b82c2e98300a883492af3107e666af35aba9875ef7853162f' -or
         (Get-OnboardingToolHash $OnboardingOptions.MinioClientExecutable) -cne 'c8db13ebeda31497f354c0e950809db0ae9b2a2a69b8afee68c128c37300c157') { throw 'Pinned object-store tool identity mismatch' }
     $OnboardingContext.Journal.tools=@{minioSource='9e49d5e7a648f00e26f2246f4dc28e6b07f8c84a';mcSource='7394ce0dd2a80935aded936b09fa12cbb3cb8096';notice='AGPLv3; archived server; no security updates; local fictional-data acceptance only, not production';host=@{JavaHome=$OnboardingOptions.JavaHome;TomcatHome=$OnboardingOptions.TomcatHome;WildFlyHome=$OnboardingOptions.WildFlyHome;MavenExecutable=$OnboardingOptions.MavenExecutable;ConnectorJar=$OnboardingOptions.ConnectorJar;MinioExecutable=$OnboardingOptions.MinioExecutable;MinioClientExecutable=$OnboardingOptions.MinioClientExecutable}}
-    $OnboardingContext.Secrets=@{mysqlRootPassword=(New-OnboardingRandomToken);migrationRootPassword=(New-OnboardingRandomToken);dbUser=('hob_'+$OnboardingOptions.NewRunId.Substring(0,12));dbPassword=(New-OnboardingRandomToken);storageRootKey=('root'+$OnboardingOptions.NewRunId.Substring(0,20));storageRootSecret=(New-OnboardingRandomToken);storageAppKey=('app'+$OnboardingOptions.NewRunId.Substring(0,20));storageAppSecret=(New-OnboardingRandomToken);tomcatShutdown=(New-OnboardingRandomToken)}
+    $OnboardingContext.Secrets=@{mysqlRootPassword=(New-OnboardingRandomToken);migrationRootPassword=(New-OnboardingRandomToken);dbUser=('hob_'+$OnboardingOptions.NewRunId.Substring(0,12));dbPassword=(New-OnboardingRandomToken);storageRootKey=('root'+$OnboardingOptions.NewRunId.Substring(0,20));storageRootSecret=(New-OnboardingRandomToken);storageAppKey=('app'+$OnboardingOptions.NewRunId.Substring(0,20));storageAppSecret=(New-OnboardingRandomToken);jwtSecret=(New-OnboardingRandomToken);tomcatShutdown=(New-OnboardingRandomToken)}
     Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'credentials.json') ($OnboardingContext.Secrets|ConvertTo-Json)
     $OnboardingUsed=New-Object 'Collections.Generic.HashSet[int]'
     $OnboardingContext.Ports=@{}
