@@ -311,7 +311,10 @@ function New-OnboardingContainerConfiguration($OnboardingContext) {
     }
     $OnboardingDatasources=$OnboardingXml.SelectSingleNode("//*[local-name()='datasources' and *[local-name()='drivers']]")
     if (-not $OnboardingDatasources) { throw 'WildFly datasource configuration missing' }
-    foreach ($OnboardingExisting in @($OnboardingDatasources.SelectNodes("*[local-name()='datasource' or local-name()='xa-datasource']"))) { [void]$OnboardingDatasources.RemoveChild($OnboardingExisting) }
+    # Keep the container's default ExampleDS: WildFly binds java:comp/DefaultDataSource to it.
+    foreach ($OnboardingExisting in @($OnboardingDatasources.SelectNodes("*[local-name()='datasource' or local-name()='xa-datasource']"))) {
+        if ($OnboardingExisting.GetAttribute('jndi-name') -eq 'java:/jdbc/MedicalCloudCourseDS') { [void]$OnboardingDatasources.RemoveChild($OnboardingExisting) }
+    }
     $OnboardingDriverList=$OnboardingDatasources.SelectSingleNode("*[local-name()='drivers']")
     if (-not $OnboardingDriverList) { throw 'WildFly driver list missing' }
     foreach ($OnboardingExisting in @($OnboardingDriverList.SelectNodes("*[local-name()='driver' and @name='mysql']"))) { [void]$OnboardingDriverList.RemoveChild($OnboardingExisting) }
@@ -642,9 +645,11 @@ function Stop-OnboardingFixture([hashtable]$OnboardingOptions) {
     if ($OnboardingContext.Manifest.state -eq 'stopped') { return }
     $OnboardingCredentials=ConvertTo-OnboardingMap ([IO.File]::ReadAllText((Join-Path $OnboardingContext.Root 'credentials.json'))|ConvertFrom-Json -ErrorAction Stop)
     $OnboardingSaved=@{}
-    foreach($OnboardingName in @('MC_CONFIG_DIR','MC_HOST_onboarding_fixture','JAVA_HOME')) { $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process') }
+    foreach($OnboardingName in @('MC_CONFIG_DIR','MC_HOST_onboarding_fixture','JAVA_HOME','JBOSS_HOME','NOPAUSE')) { $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process') }
     try {
         if ($OnboardingContext.Options.JavaHome) { $env:JAVA_HOME=$OnboardingContext.Options.JavaHome }
+        if ($OnboardingContext.Options.WildFlyHome) { $env:JBOSS_HOME=$OnboardingContext.Options.WildFlyHome }
+        $env:NOPAUSE='1'
         $OnboardingContext.Journal.state='stopping'
         Save-OnboardingJournal $OnboardingContext
         foreach($OnboardingName in @('portal','paas','storage','mysqlMigration','mysql')) {
