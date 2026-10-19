@@ -1,5 +1,7 @@
 # 基于多租户医疗云的在线预约与诊疗服务平台
 
+接续开发请先读 [2026-10-19 最新交接](docs/AI-HANDOFF-2026-10-19.md) 和 [后续全部开发与验收任务](docs/DEVELOPMENT-BACKLOG-2026-10-19.md)。系统尚未全部完成：医院开通业务/API/门户已保存，独立环境及真实验收仍未完成，另有两项附件超时回归待处理。下方端口和验收日期是历史说明，不代表服务当前在线；未审查的验收WIP不得直接操作真实数据库。
+
 本仓库有两条互不覆盖的实现路径。课程验收主路径是 `course/`：JDK 8、Tomcat 9 门户 WAR、WildFly 10 PaaS WAR、MySQL/JNDI/JPA 和 PowerDesigner 模型，已补齐患者注册、医院科室/医生/号源管理、组合筛选、预约取消与重约、接诊病历、模拟缴费及医院订单查询。`backend/` 与 `frontend/` 保留原 Java 21/Spring Boot/Vue 实现，便于对比和后续扩展。
 
 按老师环境复现时请先看 [课程版部署与验收](course/deploy/README.md)、[架构及接口](docs/course-architecture/README.md)、[实验记录](docs/course-labs/README.md)。课程版入口为 `http://127.0.0.1:8088/portal/login`，隔离环境启动后可访问。以下快速开始仅适用于原 Java 21/Vue 版本。
