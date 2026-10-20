@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS payment_order (
     amount DECIMAL(10,2) NOT NULL,
     status VARCHAR(16) NOT NULL,
     paid_at DATETIME NULL,
+    payment_reference VARCHAR(25) NULL,
     CONSTRAINT uk_course_order_appointment UNIQUE (appointment_id),
+    CONSTRAINT uk_course_order_payment_reference UNIQUE (payment_reference),
     CONSTRAINT fk_course_order_appointment FOREIGN KEY (appointment_id) REFERENCES appointment(id)
 );
 

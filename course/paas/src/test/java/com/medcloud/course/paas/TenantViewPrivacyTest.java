@@ -82,7 +82,7 @@ class TenantViewPrivacyTest extends TenantFixture {
         assertEquals(new BigDecimal("39.25"), unpaid.getAmount());
         assertEquals("UNPAID", unpaid.getStatus());
         assertNull(unpaid.getPaidAt());
-        assertEquals(fields("id", "appointmentId", "amount", "status", "paidAt", "businessWritable"),
+        assertEquals(fields("id", "appointmentId", "amount", "status", "paidAt", "paymentReference", "businessWritable"),
                 fieldNames(new ObjectMapper().valueToTree(unpaid)));
         assertFalse(resource.order(bearer, "paid").getData().isBusinessWritable());
         manager.getTransaction().begin();

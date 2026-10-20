@@ -181,7 +181,7 @@ try {
         if ($OnboardingLabel -eq 'java-version') { return [pscustomobject]@{ExitCode=0;Output='javac 1.8.0_341'} }
         if ($OnboardingLabel -eq 'source-export') {
             $OnboardingOut=(@($OnboardingArguments|Where-Object{$_ -like '--output=*'})[0]).Substring(9)
-            New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# boundary'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/mysql-module.xml'='<module/>'}
+            New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh006'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# boundary'; 'course/deploy/scripts/upgrade-clinical-database.ps1'='# metadata'; 'course/deploy/scripts/upgrade-payment-reference-database.ps1'='# boundary'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/migrations/006_payment_reference.sql'='migration006'; 'course/deploy/mysql-module.xml'='<module/>'}
         }
         if ($OnboardingLabel -eq 'baseline-export') { return [pscustomobject]@{ExitCode=0;Output='exact004'} }
         if ($OnboardingLabel -eq 'compile') {
@@ -315,7 +315,7 @@ try {
             if ($OnboardingLabel -eq 'source-identity') { return @{ExitCode=0;Output=('a'*40)+"`n"} }
             if ($OnboardingLabel -eq 'source-export') {
                 $OnboardingOut=(@($OnboardingArguments|Where-Object{$_ -like '--output=*'})[0]).Substring(9)
-                New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh005'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# external upgrader'; 'course/deploy/scripts/upgrade-clinical-database.ps1'='# metadata'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/mysql-module.xml'='<module/>'}
+                New-OnboardingTestZip $OnboardingOut @{'course/pom.xml'='<project/>'; 'course/deploy/schema.sql'='fresh006'; 'course/deploy/seed-demo.sql'='seed'; 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'='# external upgrader'; 'course/deploy/scripts/upgrade-clinical-database.ps1'='# metadata'; 'course/deploy/scripts/upgrade-payment-reference-database.ps1'='# external upgrader'; 'course/deploy/migrations/005_hospital_onboarding.sql'='migration005'; 'course/deploy/migrations/006_payment_reference.sql'='migration006'; 'course/deploy/mysql-module.xml'='<module/>'}
             }
             if ($OnboardingLabel -eq 'baseline-export') { return @{ExitCode=0;Output='exact004'} }
             if ($OnboardingLabel -eq 'mysql-version') { return @{ExitCode=0;Output='D:/mysql/mysqld.exe  Ver 8.0.45 for Win64 on x86_64 (MySQL Community Server - GPL)'} }
@@ -355,6 +355,7 @@ try {
             }
             if ($OnboardingLabel -eq 'password-hash') { return @{ExitCode=0;Output='$2a$10$ucqsp8rSjN.zbcRRnijpDuSF/W7eqnYiifPs3K0wC00mmYGdj0DU2'} }
             if ($OnboardingLabel -like '*-tables') { return @{ExitCode=0;Output="13`t1`n"} }
+            if ($OnboardingLabel -like '*-reference') { return @{ExitCode=0;Output="1`n"} }
             if ($OnboardingLabel -eq 'iam-import') {
                 $OnboardingOwner=[IO.File]::ReadAllText((Join-Path $OnboardingWorkingDirectory 'owner.id'))
                 $OnboardingUser='app'+$OnboardingOwner.Substring(0,20); $OnboardingPolicy='onboarding-'+$OnboardingOwner.Substring(0,12)
@@ -364,7 +365,7 @@ try {
         }
         $OnboardingResult=New-OnboardingFixture $OnboardingOptions
         $OnboardingFixture=[IO.File]::ReadAllText($OnboardingResult)|ConvertFrom-Json
-        Assert-OnboardingTest ($OnboardingFixture.sourceCommit -ceq ('a'*40) -and $OnboardingFixture.schemaVersion -ceq '005' -and $OnboardingFixture.state -ceq 'running') 'Incomplete final manifest'
+        Assert-OnboardingTest ($OnboardingFixture.sourceCommit -ceq ('a'*40) -and $OnboardingFixture.schemaVersion -ceq '006' -and $OnboardingFixture.state -ceq 'running') 'Incomplete final manifest'
         $OnboardingAccounts=(Get-Content -LiteralPath (Join-Path (Split-Path $OnboardingResult -Parent) 'accounts.json') -Raw -Encoding UTF8|ConvertFrom-Json)
         Assert-OnboardingTest (@($OnboardingAccounts).Count -eq 7) 'Account file missing entries'
         foreach($OnboardingAccount in @($OnboardingAccounts)) { Assert-OnboardingTest ($OnboardingAccount.username -and $OnboardingAccount.role -and $OnboardingAccount.password) 'Account file lost credentials' }
@@ -375,7 +376,8 @@ try {
         Assert-OnboardingTest ($OnboardingFixture.mysql.port -ne $OnboardingFixture.mysqlMigration.port -and $OnboardingFixture.mysql.serverUuid -ne $OnboardingFixture.mysqlMigration.serverUuid) 'Migration did not use independent MySQL'
         Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -like '*-start'}).Count -eq 5) 'Did not start exactly five isolated processes'
         Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -eq 'mysqlMigration-schema' -and $_.Input -ceq 'exact004'}).Count -eq 1) 'Baseline was not exact exported 004'
-        Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -eq 'migration-upgrade'}).Count -eq 1) 'Actual updater boundary missing'
+        Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -eq 'migration-upgrade-005'}).Count -eq 1) 'Actual 005 updater boundary missing'
+        Assert-OnboardingTest (@($script:OnboardingCalls|Where-Object{$_.Label -eq 'migration-upgrade-006'}).Count -eq 1) 'Actual 006 updater boundary missing'
         $OnboardingSecrets=[IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'credentials.json'))|ConvertFrom-Json
         foreach($OnboardingSecret in @($OnboardingSecrets.dbPassword,$OnboardingSecrets.mysqlRootPassword,$OnboardingSecrets.storageRootSecret,$OnboardingSecrets.storageAppSecret)) {
             Assert-OnboardingTest (($script:OnboardingCalls.Arguments -join ' ') -notlike ('*'+$OnboardingSecret+'*')) 'Secret escaped to argv'

@@ -10,7 +10,10 @@ import java.sql.Timestamp;
 import java.time.Instant;
 
 @Entity
-@Table(name = "payment_order", uniqueConstraints = @UniqueConstraint(columnNames = "appointment_id"))
+@Table(name = "payment_order", uniqueConstraints = {
+    @UniqueConstraint(columnNames = "appointment_id"),
+    @UniqueConstraint(columnNames = "payment_reference")
+})
 public class PaymentOrder {
     @Id
     @Column(length = 36)
@@ -34,6 +37,9 @@ public class PaymentOrder {
     @Column(name = "paid_at")
     private Timestamp paidAt;
 
+    @Column(name = "payment_reference", length = 25)
+    private String paymentReference;
+
     protected PaymentOrder() { }
 
     public PaymentOrder(String id, String appointmentId, String patientId, String tenantId, BigDecimal amount) {
@@ -56,6 +62,7 @@ public class PaymentOrder {
         if (!"PAID".equals(status)) {
             status = "PAID";
             paidAt = Timestamp.from(now);
+            paymentReference = PaymentReference.generate(now);
         }
     }
 
@@ -66,4 +73,5 @@ public class PaymentOrder {
     public BigDecimal getAmount() { return amount; }
     public String getStatus() { return status; }
     public Timestamp getPaidAt() { return paidAt; }
+    public String getPaymentReference() { return paymentReference; }
 }

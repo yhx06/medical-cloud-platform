@@ -104,7 +104,8 @@ public class HospitalResource {
         List<PaymentOrderView> views = new ArrayList<PaymentOrderView>();
         for (PaymentOrder order : payments.forHospital(actor(authorization), status, parseDate(from), parseDate(to))) {
             views.add(new PaymentOrderView(order.getId(), order.getAppointmentId(), order.getAmount(),
-                    order.getStatus(), order.getPaidAt()));
+                    order.getStatus(), order.getPaidAt(),
+                    com.medcloud.course.paas.order.PaymentReference.masked(order.getPaymentReference()), false));
         }
         return ApiResponse.success("orders", views);
     }

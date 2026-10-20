@@ -64,6 +64,7 @@ public class PaymentResource {
 
     private static PaymentOrderView view(PaymentOrder order, boolean businessWritable) {
         return new PaymentOrderView(order.getId(), order.getAppointmentId(), order.getAmount(), order.getStatus(),
-                order.getPaidAt(), businessWritable);
+                order.getPaidAt(), com.medcloud.course.paas.order.PaymentReference.masked(order.getPaymentReference()),
+                businessWritable);
     }
 }

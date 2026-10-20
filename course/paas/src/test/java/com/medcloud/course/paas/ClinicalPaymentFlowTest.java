@@ -32,6 +32,7 @@ import java.sql.Timestamp;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ClinicalPaymentFlowTest {
     @Test
@@ -111,10 +112,19 @@ class ClinicalPaymentFlowTest {
             PaymentOrder paid = payments.pay(patientA, order.getId());
             Timestamp firstPaidAt = paid.getPaidAt();
             assertNotNull(firstPaidAt);
+            String reference = paid.getPaymentReference();
+            assertNotNull(reference);
+            assertTrue(reference.matches("PAY-\\d{8}-[0-9A-F]{12}"), "unexpected reference shape: " + reference);
             PaymentOrder paidAgain = payments.pay(patientA, order.getId());
             assertEquals("PAID", paymentApi.pay(patientBearer, order.getId()).getData().getStatus());
             assertEquals(firstPaidAt, paidAgain.getPaidAt());
+            assertEquals(reference, paidAgain.getPaymentReference(), "retry must keep the original reference");
             assertNotNull(paymentApi.order(patientBearer, appointment.getId()).getData().getPaidAt());
+            String masked = paymentApi.order(patientBearer, appointment.getId()).getData().getPaymentReference();
+            assertNotNull(masked);
+            assertTrue(masked.contains("\u2022\u2022\u2022\u2022"), "view must expose a masked reference: " + masked);
+            assertTrue(!masked.contains(reference.substring(reference.lastIndexOf('-') + 1)),
+                    "full 12-hex suffix leaked into view: " + masked);
             manager.getTransaction().commit();
             manager.clear();
             assertEquals(firstPaidAt, manager.find(PaymentOrder.class, order.getId()).getPaidAt());

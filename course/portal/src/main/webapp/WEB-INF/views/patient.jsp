@@ -134,6 +134,9 @@
     <% if ("PAID".equals(order.path("status").asText())) { %>
       <p>缴费时间：<%= WebEscaper.html(order.path("paidAt").isNull() ? "历史时间未知" : order.path("paidAt").asText("历史时间未知")) %></p>
     <% } %>
+    <% if (!order.path("paymentReference").isNull() && !order.path("paymentReference").asText().isEmpty()) { %>
+      <p>支付流水号：<%= WebEscaper.html(order.path("paymentReference").asText()) %></p>
+    <% } %>
     <% if ("UNPAID".equals(order.path("status").asText()) && order.path("businessWritable").isBoolean()
         && order.path("businessWritable").asBoolean()) { %>
       <form method="post" action="<%= context %>/patient/pay">
