@@ -738,8 +738,10 @@ function Start-OnboardingFixture([hashtable]$OnboardingOptions) {
         if ((Invoke-OnboardingHttp ($OnboardingStorage.url+'/minio/health/live')).StatusCode -ne 200) { throw 'Storage health failed on restart' }
         if ((Invoke-OnboardingHttp ('http://127.0.0.1:'+$OnboardingContext.Ports.portal+'/portal/login')).StatusCode -ne 200) { throw 'Portal health failed on restart' }
         foreach($OnboardingName in @('mysql','mysqlMigration')) { Assert-OnboardingMysqlLive $OnboardingContext $OnboardingName }
-        $OnboardingAccounts=@(ConvertTo-OnboardingMap ([IO.File]::ReadAllText($OnboardingContext.Manifest.accountsFile)|ConvertFrom-Json -ErrorAction Stop))
-        $OnboardingPlatform=@($OnboardingAccounts|Where-Object{$_.username -ceq 'platform_admin'})[0]
+        $OnboardingAccounts=ConvertTo-OnboardingMap ([IO.File]::ReadAllText($OnboardingContext.Manifest.accountsFile)|ConvertFrom-Json -ErrorAction Stop)
+        $OnboardingPlatform=$null
+        foreach($OnboardingEntry in @($OnboardingAccounts)) { if ($OnboardingEntry.username -ceq 'platform_admin') { $OnboardingPlatform=$OnboardingEntry; break } }
+        if (-not $OnboardingPlatform -or -not $OnboardingPlatform.password) { throw 'Platform account credential missing' }
         if ((Invoke-OnboardingHttp ($env:MEDICAL_COURSE_PAAS_URL+'/auth/login') (@{username=$OnboardingPlatform.username;password=$OnboardingPlatform.password}|ConvertTo-Json -Compress)).StatusCode -ne 200) { throw 'PaaS login health failed on restart' }
         Save-OnboardingLifecycleState $OnboardingContext 'running'
     } catch {

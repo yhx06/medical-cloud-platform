@@ -79,6 +79,11 @@ try {
     Test-OnboardingBehavior 'dot source preserves caller parameters and returns without execution' {
         Assert-OnboardingTest ($RuntimeRoot -eq 'parameter-preserved' -and $SourceCommit -ceq ('b'*40) -and $NewRunId -ceq ('c'*32)) 'Import clobbered public parameters'
     }
+    Test-OnboardingBehavior 'array import preserves every account entry' {
+        $OnboardingMapped=ConvertTo-OnboardingMap ('[{"username":"first","password":"one"},{"username":"second","password":"two"}]'|ConvertFrom-Json)
+        $OnboardingItems=@($OnboardingMapped)
+        Assert-OnboardingTest ($OnboardingItems.Count -eq 2 -and $OnboardingItems[0].username -ceq 'first' -and $OnboardingItems[1].username -ceq 'second') 'Array import lost entries'
+    }
     Test-OnboardingBehavior 'new path accepts exact owner bound directory without creating it' {
         $OnboardingOptions=New-OnboardingTestOptions
         $OnboardingActual=Assert-OnboardingNewRuntime $OnboardingOptions
