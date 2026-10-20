@@ -6,6 +6,18 @@
    JsonNode doctors = (JsonNode) request.getAttribute("doctors");
    JsonNode slots = (JsonNode) request.getAttribute("slots");
    String csrf = WebEscaper.html(attribute(request, "csrfToken")); %>
+<section class="card" id="hospital-profile">
+  <div class="section-heading"><div><p class="section-kicker">00 / PROFILE</p><h2>医院资料</h2></div></div>
+  <% if (hospitalContext != null) { %>
+  <p>当前名称：<strong><%= WebEscaper.html(hospitalContext.path("name").asText()) %></strong></p>
+  <% if (workspaceWritable) { %>
+  <form method="post" action="<%= context %>/hospital/name" class="inline-form">
+    <input type="hidden" name="csrfToken" value="<%= csrf %>">
+    <label>医院名称<input name="name" maxlength="100" value="<%= WebEscaper.html(hospitalContext.path("name").asText()) %>" required></label>
+    <button type="submit">更新名称</button>
+  </form>
+  <% } } %>
+</section>
 <section class="card" id="departments">
   <div class="section-heading"><div><p class="section-kicker">01 / DEPARTMENTS</p><h2>科室管理</h2></div></div>
   <p class="subtle">停用有未来有效号源或未完成预约的科室会被拒绝。</p>

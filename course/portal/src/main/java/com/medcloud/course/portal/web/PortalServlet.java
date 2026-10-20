@@ -9,6 +9,8 @@ import com.medcloud.course.contract.RegisterRequest;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.DepartmentRequest;
 import com.medcloud.course.contract.DoctorRequest;
+import com.medcloud.course.contract.DoctorProfileRequest;
+import com.medcloud.course.contract.HospitalNameRequest;
 import com.medcloud.course.contract.SlotRequest;
 import com.medcloud.course.portal.factory.CloudServiceFactory;
 
@@ -29,8 +31,8 @@ import java.util.Base64;
 import java.util.regex.Pattern;
 
 @WebServlet(urlPatterns = {"/", "/login", "/register", "/logout", "/patient", "/patient/book", "/patient/cancel", "/patient/pay",
-        "/doctor", "/doctor/start", "/doctor/complete", "/hospital", "/hospital/department/create",
-        "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit",
+        "/doctor", "/doctor/start", "/doctor/complete", "/doctor/profile", "/hospital", "/hospital/name",
+        "/hospital/department/create", "/hospital/department/edit", "/hospital/doctor/create", "/hospital/doctor/edit",
         "/hospital/slot/create", "/hospital/slot/edit", "/platform", "/platform/*"})
 public class PortalServlet extends HttpServlet {
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -124,6 +126,7 @@ public class PortalServlet extends HttpServlet {
             } else if ("/doctor".equals(path)) {
                 access.loadSection(request, token(session), "appointments", "/doctor/appointments");
                 loadFilteredSection(request, token(session), access, "records", "/doctor/records", false);
+                access.loadSection(request, token(session), "doctorProfile", "/doctor/profile");
                 access.loadContext(request, token(session), expected);
             } else if ("/hospital".equals(path)) {
                 access.loadSection(request, token(session), "departments", "/hospital/departments");
@@ -326,6 +329,13 @@ public class PortalServlet extends HttpServlet {
             } else if ("/hospital/slot/edit".equals(path)) {
                 paas.put("/hospital/slots/" + requiredId(required(request, "id")), token(session), slotRequest(request, true));
                 session.setAttribute("flash", "号源已更新");
+            } else if ("/hospital/name".equals(path)) {
+                paas.put("/hospital/name", token(session), new HospitalNameRequest(required(request, "name")));
+                session.setAttribute("flash", "医院名称已更新");
+            } else if ("/doctor/profile".equals(path)) {
+                paas.put("/doctor/profile", token(session),
+                        new DoctorProfileRequest(parameter(request, "title"), parameter(request, "bio")));
+                session.setAttribute("flash", "个人资料已更新");
             } else {
                 response.sendError(404);
                 return;

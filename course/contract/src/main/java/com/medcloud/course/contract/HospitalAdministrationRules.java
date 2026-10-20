@@ -39,6 +39,20 @@ public final class HospitalAdministrationRules {
         return value;
     }
 
+    /** Optional free text (title/bio): null or blank becomes null; otherwise trimmed, bounded, control-free. */
+    public static String requireOptionalText(String value, int maxLength) {
+        if (value == null) return null;
+        requireText(value);
+        int start = 0;
+        int end = value.length();
+        while (start < end && value.charAt(start) == ' ') start++;
+        while (end > start && value.charAt(end - 1) == ' ') end--;
+        String text = value.substring(start, end);
+        if (text.isEmpty()) return null;
+        if (text.length() > maxLength) throw invalid();
+        return text;
+    }
+
     public static String requireTargetId(String value) {
         requireText(value);
         if (value.isEmpty() || value.length() > 36) throw invalid();

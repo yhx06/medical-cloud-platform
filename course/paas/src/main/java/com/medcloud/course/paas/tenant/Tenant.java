@@ -43,4 +43,9 @@ public class Tenant {
             throw new IllegalArgumentException("invalid hospital status");
         this.status = status;
     }
+    public void rename(String name) {
+        if (name == null || name.isEmpty() || name.length() > 100)
+            throw new IllegalArgumentException("invalid hospital name");
+        this.name = name;
+    }
 }

@@ -239,12 +239,12 @@ function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$O
     Assert-OnboardingPrivateParent $OnboardingFixturePath
     if ([IO.File]::ReadAllText((Join-Path $OnboardingRoot 'owner.id')) -cne $OnboardingExpectedOwner) { throw 'Fixture owner marker mismatch' }
     $OnboardingManifest=ConvertTo-OnboardingMap ([IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json -ErrorAction Stop)
-    if ($OnboardingManifest.ownerId -cne $OnboardingExpectedOwner -or $OnboardingManifest.runtimeRoot -cne $OnboardingRoot -or $OnboardingManifest.sourceCommit -cnotmatch '\A[0-9a-f]{40}\z' -or $OnboardingManifest.schemaVersion -cne '006' -or $OnboardingManifest.state -notin @('running','stopped','failed')) { throw 'Fixture deployment identity incomplete' }
+    if ($OnboardingManifest.ownerId -cne $OnboardingExpectedOwner -or $OnboardingManifest.runtimeRoot -cne $OnboardingRoot -or $OnboardingManifest.sourceCommit -cnotmatch '\A[0-9a-f]{40}\z' -or $OnboardingManifest.schemaVersion -cne '007' -or $OnboardingManifest.state -notin @('running','stopped','failed')) { throw 'Fixture deployment identity incomplete' }
     if (-not $AllowStopped -and $OnboardingManifest.state -ne 'running') { throw 'Fixture is not running' }
     $OnboardingJournalPath=Join-Path $OnboardingRoot 'journal.json'
     Assert-OnboardingPathChain $OnboardingJournalPath; Assert-OnboardingPrivateParent $OnboardingJournalPath
     $OnboardingJournal=ConvertTo-OnboardingMap ([IO.File]::ReadAllText($OnboardingJournalPath)|ConvertFrom-Json -ErrorAction Stop)
-    if ($OnboardingJournal.ownerId -cne $OnboardingExpectedOwner -or $OnboardingJournal.sourceCommit -cne $OnboardingManifest.sourceCommit -or $OnboardingJournal.schemaVersion -cne '006' -or $OnboardingJournal.state -ne $OnboardingManifest.state) { throw 'Journal deployment identity differs' }
+    if ($OnboardingJournal.ownerId -cne $OnboardingExpectedOwner -or $OnboardingJournal.sourceCommit -cne $OnboardingManifest.sourceCommit -or $OnboardingJournal.schemaVersion -cne '007' -or $OnboardingJournal.state -ne $OnboardingManifest.state) { throw 'Journal deployment identity differs' }
     $OnboardingOptions=@{NewRunId=$OnboardingExpectedOwner;MySqlBin=(Split-Path $OnboardingManifest.mysql.clientExecutable -Parent)}
     foreach($OnboardingTool in @('JavaHome','TomcatHome','WildFlyHome','MinioExecutable','MinioClientExecutable','MavenExecutable','ConnectorJar')) {
         if ($OnboardingManifest.tools.host.$OnboardingTool) { $OnboardingOptions[$OnboardingTool]=$OnboardingManifest.tools.host.$OnboardingTool }
@@ -272,7 +272,7 @@ function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$O
         if ($OnboardingPart.url -cne ('http://127.0.0.1:'+$OnboardingPart.port)) { throw 'Component endpoint mismatch' }
         if ($OnboardingName -like 'mysql*') {
             $OnboardingCredential=Join-Path $OnboardingRoot ($OnboardingName+'-client.cnf')
-            if ($OnboardingPart.credentialFile -cne $OnboardingCredential -or $OnboardingPart.schemaVersion -cne '006' -or $OnboardingPart.authenticated -ne $true -or $OnboardingPart.database -cne 'medical_cloud_course' -or $OnboardingPart.host -cne '127.0.0.1' -or $OnboardingPart.clientExecutable -cne (Join-Path $OnboardingContext.Options.MySqlBin 'mysql.exe')) { throw 'MySQL metadata mismatch' }
+            if ($OnboardingPart.credentialFile -cne $OnboardingCredential -or $OnboardingPart.schemaVersion -cne '007' -or $OnboardingPart.authenticated -ne $true -or $OnboardingPart.database -cne 'medical_cloud_course' -or $OnboardingPart.host -cne '127.0.0.1' -or $OnboardingPart.clientExecutable -cne (Join-Path $OnboardingContext.Options.MySqlBin 'mysql.exe')) { throw 'MySQL metadata mismatch' }
             Assert-OnboardingPathChain $OnboardingCredential; Assert-OnboardingPrivateParent $OnboardingCredential
         }
         if ($OnboardingPart.status -eq 'running' -and -not $AllowStaleRunning) { Assert-OnboardingIdentity $OnboardingContext $OnboardingName }
@@ -570,13 +570,16 @@ function Invoke-OnboardingBootstrap($OnboardingContext) {
             try {
                 Invoke-OnboardingStep $OnboardingContext 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $OnboardingContext.Snapshot 'course/deploy/scripts/upgrade-hospital-onboarding-database.ps1'),'-MySqlCli',(Join-Path $OnboardingOptions.MySqlBin 'mysql.exe'),'-MySqlDumpCli',(Join-Path $OnboardingOptions.MySqlBin 'mysqldump.exe'),'-HostName','127.0.0.1','-Port',[string]$OnboardingPart.port,'-Database','medical_cloud_course','-ExpectedServerUuid',$OnboardingPart.serverUuid,'-BackupPath',(Join-Path $OnboardingContext.Root 'migration004-backup.sql')) $null 'migration-upgrade-005'|Out-Null
                 Invoke-OnboardingStep $OnboardingContext 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $OnboardingContext.Snapshot 'course/deploy/scripts/upgrade-payment-reference-database.ps1'),'-MySqlCli',(Join-Path $OnboardingOptions.MySqlBin 'mysql.exe'),'-MySqlDumpCli',(Join-Path $OnboardingOptions.MySqlBin 'mysqldump.exe'),'-HostName','127.0.0.1','-Port',[string]$OnboardingPart.port,'-Database','medical_cloud_course','-ExpectedServerUuid',$OnboardingPart.serverUuid,'-BackupPath',(Join-Path $OnboardingContext.Root 'migration005-backup.sql')) $null 'migration-upgrade-006'|Out-Null
+                Invoke-OnboardingStep $OnboardingContext 'powershell.exe' @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',(Join-Path $OnboardingContext.Snapshot 'course/deploy/scripts/upgrade-doctor-profile-database.ps1'),'-MySqlCli',(Join-Path $OnboardingOptions.MySqlBin 'mysql.exe'),'-MySqlDumpCli',(Join-Path $OnboardingOptions.MySqlBin 'mysqldump.exe'),'-HostName','127.0.0.1','-Port',[string]$OnboardingPart.port,'-Database','medical_cloud_course','-ExpectedServerUuid',$OnboardingPart.serverUuid,'-BackupPath',(Join-Path $OnboardingContext.Root 'migration006-backup.sql')) $null 'migration-upgrade-007'|Out-Null
             } finally { $env:MEDICAL_COURSE_DB_USER=$null; $env:MEDICAL_COURSE_DB_PASSWORD=$null }
         }
         $OnboardingTables=Invoke-OnboardingSql $OnboardingContext $OnboardingName "SELECT COUNT(*),SUM(table_name='hospital_admin_operation') FROM information_schema.tables WHERE table_schema='medical_cloud_course' AND table_type='BASE TABLE';" ($OnboardingName+'-tables')
         if ($OnboardingTables.Trim() -cne "13`t1") { throw 'Complete 006 table count not verified' }
         $OnboardingReference=Invoke-OnboardingSql $OnboardingContext $OnboardingName "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND column_name='payment_reference';" ($OnboardingName+'-reference')
         if ($OnboardingReference.Trim() -cne '1') { throw 'payment_reference column not verified' }
-        $OnboardingPart.schemaVersion='006'
+        $OnboardingDoctorProfile=Invoke-OnboardingSql $OnboardingContext $OnboardingName "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='doctor_profile' AND column_name IN ('title','bio');" ($OnboardingName+'-doctorprofile')
+        if ($OnboardingDoctorProfile.Trim() -cne '2') { throw 'doctor_profile title/bio columns not verified' }
+        $OnboardingPart.schemaVersion='007'
     }
     Invoke-OnboardingSql $OnboardingContext 'mysql' ([IO.File]::ReadAllText((Join-Path $OnboardingContext.Snapshot 'course/deploy/seed-demo.sql'))) 'mysql-seed'|Out-Null
     $OnboardingAccountSql="USE medical_cloud_course; INSERT INTO user_account(id,username,password_hash,role,status,tenant_id) SELECT '40000000-0000-0000-0000-000000000002','platform_second',password_hash,'PLATFORM_ADMIN','ACTIVE',NULL FROM user_account WHERE username='platform_admin';"
@@ -620,9 +623,9 @@ function Invoke-OnboardingBootstrap($OnboardingContext) {
     $OnboardingPlatform=@($OnboardingAccounts|Where-Object{$_.username -ceq 'platform_admin'})[0]
     if ((Invoke-OnboardingHttp ($env:MEDICAL_COURSE_PAAS_URL+'/auth/login') (@{username=$OnboardingPlatform.username;password=$OnboardingPlatform.password}|ConvertTo-Json -Compress)).StatusCode -ne 200) { throw 'PaaS login health failed' }
     foreach($OnboardingName in @('mysql','mysqlMigration')) { Assert-OnboardingMysqlLive $OnboardingContext $OnboardingName }
-    $OnboardingContext.Journal.state='running'; $OnboardingContext.Journal.stage='complete'; $OnboardingContext.Journal.schemaVersion='006'
+    $OnboardingContext.Journal.state='running'; $OnboardingContext.Journal.stage='complete'; $OnboardingContext.Journal.schemaVersion='007'
     Save-OnboardingJournal $OnboardingContext
-    $OnboardingManifest=[ordered]@{ownerId=$OnboardingOptions.NewRunId;runtimeRoot=$OnboardingContext.Root;sourceCommit=$OnboardingOptions.SourceCommit;schemaVersion='006';state='running';snapshot=$OnboardingContext.Snapshot;tools=$OnboardingContext.Journal.tools;mysql=$OnboardingContext.Journal.components.mysql;mysqlMigration=$OnboardingContext.Journal.components.mysqlMigration;storage=$OnboardingContext.Journal.components.storage;paas=$OnboardingContext.Journal.components.paas;portal=$OnboardingContext.Journal.components.portal;accountsFile=(Join-Path $OnboardingContext.Root 'accounts.json');lifecycleValidation='pending-root-stop-start'}
+    $OnboardingManifest=[ordered]@{ownerId=$OnboardingOptions.NewRunId;runtimeRoot=$OnboardingContext.Root;sourceCommit=$OnboardingOptions.SourceCommit;schemaVersion='007';state='running';snapshot=$OnboardingContext.Snapshot;tools=$OnboardingContext.Journal.tools;mysql=$OnboardingContext.Journal.components.mysql;mysqlMigration=$OnboardingContext.Journal.components.mysqlMigration;storage=$OnboardingContext.Journal.components.storage;paas=$OnboardingContext.Journal.components.paas;portal=$OnboardingContext.Journal.components.portal;accountsFile=(Join-Path $OnboardingContext.Root 'accounts.json');lifecycleValidation='pending-root-stop-start'}
     Assert-OnboardingAllProcesses $OnboardingContext
     Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'fixture.json') ($OnboardingManifest|ConvertTo-Json -Depth 16)
 }
@@ -641,7 +644,7 @@ function Save-OnboardingLifecycleState($OnboardingContext,[string]$OnboardingSta
     $OnboardingValidation=$OnboardingPrevious
     if ($OnboardingState -eq 'stopped' -and $OnboardingPrevious -eq 'pending-root-stop-start') { $OnboardingValidation='stop-verified' }
     elseif ($OnboardingState -eq 'running' -and $OnboardingPrevious -in @('pending-root-stop-start','stop-verified')) { $OnboardingValidation='root-stop-start-verified' }
-    $OnboardingManifest=[ordered]@{ownerId=$OnboardingContext.Journal.ownerId;runtimeRoot=$OnboardingContext.Root;sourceCommit=$OnboardingContext.Journal.sourceCommit;schemaVersion='006';state=$OnboardingState;snapshot=$OnboardingContext.Manifest.snapshot;tools=$OnboardingContext.Journal.tools;mysql=$OnboardingContext.Journal.components.mysql;mysqlMigration=$OnboardingContext.Journal.components.mysqlMigration;storage=$OnboardingContext.Journal.components.storage;paas=$OnboardingContext.Journal.components.paas;portal=$OnboardingContext.Journal.components.portal;accountsFile=$OnboardingContext.Manifest.accountsFile;lifecycleValidation=$OnboardingValidation}
+    $OnboardingManifest=[ordered]@{ownerId=$OnboardingContext.Journal.ownerId;runtimeRoot=$OnboardingContext.Root;sourceCommit=$OnboardingContext.Journal.sourceCommit;schemaVersion='007';state=$OnboardingState;snapshot=$OnboardingContext.Manifest.snapshot;tools=$OnboardingContext.Journal.tools;mysql=$OnboardingContext.Journal.components.mysql;mysqlMigration=$OnboardingContext.Journal.components.mysqlMigration;storage=$OnboardingContext.Journal.components.storage;paas=$OnboardingContext.Journal.components.paas;portal=$OnboardingContext.Journal.components.portal;accountsFile=$OnboardingContext.Manifest.accountsFile;lifecycleValidation=$OnboardingValidation}
     Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'fixture.json') ($OnboardingManifest|ConvertTo-Json -Depth 16)
     $OnboardingContext.Manifest=ConvertTo-OnboardingMap ($OnboardingManifest|ConvertTo-Json -Depth 16|ConvertFrom-Json)
 }

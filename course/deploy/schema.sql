@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS doctor_profile (
     tenant_id VARCHAR(36) NOT NULL,
     department_id VARCHAR(36) NOT NULL,
     display_name VARCHAR(100) NOT NULL,
+    title VARCHAR(100) NULL,
+    bio VARCHAR(1000) NULL,
     CONSTRAINT fk_course_doctor_user FOREIGN KEY (user_id) REFERENCES user_account(id),
     CONSTRAINT fk_course_doctor_tenant FOREIGN KEY (tenant_id) REFERENCES tenant(id),
     CONSTRAINT fk_course_doctor_department FOREIGN KEY (department_id) REFERENCES department(id)

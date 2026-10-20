@@ -141,7 +141,7 @@ public class HospitalDoctorService {
 
     private static DoctorView view(Account account, DoctorProfile profile) {
         return new DoctorView(account.getId(), account.getUsername(), profile.getDisplayName(),
-                profile.getDepartmentId(), account.getStatus());
+                profile.getDepartmentId(), account.getStatus(), profile.getTitle(), profile.getBio());
     }
 
 }

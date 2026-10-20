@@ -13,6 +13,7 @@ import com.medcloud.course.contract.DepartmentView;
 import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.contract.DoctorView;
+import com.medcloud.course.contract.HospitalNameRequest;
 import com.medcloud.course.contract.PaymentOrderView;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.TenantContextView;
@@ -26,6 +27,7 @@ import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Department;
 import com.medcloud.course.paas.tenant.HospitalDepartmentService;
 import com.medcloud.course.paas.tenant.HospitalDoctorService;
+import com.medcloud.course.paas.tenant.HospitalProfileService;
 
 import javax.ejb.EJB;
 import javax.ws.rs.Consumes;
@@ -52,6 +54,7 @@ public class HospitalResource {
     @EJB private AuthService auth;
     @EJB private HospitalDepartmentService departments;
     @EJB private HospitalDoctorService doctors;
+    @EJB private HospitalProfileService profiles;
     @EJB private PaymentService payments;
     @EJB private PlatformTenantService tenants;
     @EJB private StatisticsService statistics;
@@ -65,6 +68,9 @@ public class HospitalResource {
     }
     public HospitalResource(AuthService auth, HospitalDepartmentService departments, HospitalDoctorService doctors, AuditOperationRunner runner) {
         this(auth, departments, doctors); this.runner = java.util.Objects.requireNonNull(runner);
+    }
+    public HospitalResource(AuthService auth, HospitalProfileService profiles, AuditOperationRunner runner) {
+        this.auth = auth; this.profiles = profiles; this.runner = java.util.Objects.requireNonNull(runner);
     }
     public HospitalResource(AuthService auth, PlatformTenantService tenants, StatisticsService statistics) {
         this.auth = auth; this.tenants = tenants; this.statistics = statistics;
@@ -87,6 +93,15 @@ public class HospitalResource {
     @GET @Path("context")
     public ApiResponse<TenantContextView> context(@HeaderParam("Authorization") String authorization) {
         return ApiResponse.success("hospital context", tenants.context(actor(authorization), Role.HOSPITAL_ADMIN));
+    }
+    @PUT @Path("name") @AuditTracked
+    public ApiResponse<String> rename(@HeaderParam("Authorization") String authorization, HospitalNameRequest request) {
+        AuditContext context = AuditContext.create(AuditEventType.HOSPITAL_RENAME, AuditRequestIds.ensure(requestContext));
+        String name = java.util.Objects.requireNonNull(runner, "Audit runner required").execute(context, c -> {
+            CurrentActor current = actor(authorization); c.attachActor(current);
+            return profiles.renameHospital(current, request == null ? null : request.getName(), c);
+        });
+        return ApiResponse.success("hospital name", name);
     }
 
     @GET @Path("statistics")
