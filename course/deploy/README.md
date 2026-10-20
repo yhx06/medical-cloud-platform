@@ -1,5 +1,13 @@
 # 课程环境部署与验收
 
+## 当前基本 Demo 入口（2026-10-20）
+
+先看[基本Demo指南](../../docs/DEMO.md)。课程主版本为Java8/双WAR；当前源码需要**完整007结构、13表**，不是历史005环境。新建专属空库使用当前`schema.sql`；已有库依次保护升级`001 → 002 → 003 → 004 → 005 → 006 → 007`，每个入口只接受对应完整基线，不跳级、不重跑初始化。不操作其他验收仍使用的旧库。
+
+当前006/007入口分别为`upgrade-payment-reference-database.ps1`、`upgrade-doctor-profile-database.ps1`。它们先核对目标和精确结构、成功备份后才执行DDL，并检查旧数据与后置条件；DDL失败可能部分提交，保留备份和实际结构，不自动DROP或覆盖恢复。完整只读检查不证明未知历史迁移的数据保全。当前离线保护测试不代替真实MySQL/教师5.6验证。
+
+以下按日期保留的记录是历史证据，不代表本轮新版本已完成全部验收或服务正在运行；不要将旧“无结构变更”说明套用于当前WAR。验收助手并非通用Demo启动器，实际操作须明确目标和owner。[最新修复检查点](../../docs/reviews/2026-10-20-repair-checkpoint.md)列出尚未闭合的门。
+
 本目录是课程验收主链：JDK 8 → Tomcat 9（SaaS Portal）→ WildFly 10（PaaS/EJB）→ JNDI/JPA → MySQL。原 `backend/` 与 `frontend/` 是独立的 Java 21/Vue 实现，不要把它们的 JAR 或静态资源当作课程 WAR 部署。所有数据、账号和支付均为课堂虚构演示，不能用于真实诊疗。
 
 P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-labs/2026-10-02-p0-acceptance.md)。本次验证还覆盖角色越权返回 403、已开始号源拒绝预约、医生调科后旧号源拒绝预约，以及 MySQL 旧快照下保护已预约号源。
@@ -31,9 +39,9 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
 脚本当前实际执行七项 HTTP 子检查（患者 JPG/PNG，不含医生 PDF），并列出十二组尚未覆盖的必需检查。摘要区分已执行、失败、跳过与未验证；七项全通过仍不代表设计第 12 节完整验收通过。直接驱动退出码：4 表示必需项未验证，1 表示检查失败，2 表示显式跳过必需项，3 表示未知跳过项或准备失败。完整验收未覆盖时不得以删去必需项或跳过方式制造成功。每次 HTTP 请求前校验夹具归属和本机地址，摘要不含签名材料。契约测试：`course/deploy/tests/attachments-acceptance.Tests.ps1 -FixturePath ... -EvidenceRoot ...`；无运行环境的摘要行为测试：`course/deploy/tests/attachments-acceptance-summary.Tests.ps1`。验收结论见 [附件验收记录](../../docs/course-labs/2026-10-12-attachments-acceptance.md)。
 
 
-## 医院开通与独立 005 环境
+## 医院开通与独立 007 环境
 
-医院开通/增补/启停/最后管理员保护需要 schema 005。新建空库直接使用 `schema.sql`（已含 005）。已有规范库按 `001 → 002 → 003 → 004 → 005` 顺序升级；005 只接受完整 004 结构，由 `upgrade-hospital-onboarding-database.ps1` 先备份后加表/列，不接受 003 旧基线，也不自动部署 WAR。不要对临床或附件旧运行库直接执行 005。
+医院开通本身引入schema005；当前源码另含006支付流水和007医生资料，部署需完整007。新建空库直接使用当前`schema.sql`；已有规范库按`001 → 002 → 003 → 004 → 005 → 006 → 007`顺序升级。005仅接受完整004，由`upgrade-hospital-onboarding-database.ps1`先备份后加表/列；006仅接受精确005或完整006只读，007仅接受精确006或完整007只读。旧严格入口拒绝更高版本是保护行为，不应放宽。不要直接升级仍供临床/附件验收使用的旧运行库。
 
 独立的课程验收环境由 `new-hospital-onboarding-fixture.ps1` 创建，使用新 32hex RunId、私有 runtime 目录、两个独立 loopback MySQL（主库 + 辅助迁移库）、私有 MinIO、Tomcat 9 与 WildFly 10 副本。`-RuntimeRoot` 必须是 `<仓库根>\.local\runtime\attachments-<32hex>`，脚本会按 owner/路径精确比对；不要指向其它目录。脚本先校验源码 commit、工具链、WAR 内容和短路径，再初始化数据库与容器；默认入口只打印提示并退出 4，必须显式 `-Execute`。
 
@@ -57,7 +65,7 @@ P0 完成情况与实测证据见 [2026-10-02 验收记录](../../docs/course-la
   -MinioClientExecutable '<mc.exe>' -Start
 ```
 
-创建成功后 `fixture.json` 记录 owner、sourceCommit、schema 005、五组件 PID/创建时间/端口/数据目录、双 MySQL 实时 UUID 与 `lifecycleValidation`；`journal.json` 保留阶段与意图。任何身份不一致、端口被他人占用、重复 RunId 或已有目录都会拒绝写入并保留最后一次私有 journal。失败不自动 DROP、不 force kill、不覆盖证据。`-Stop` 的顺序为 Portal（Tomcat shutdown）→ PaaS（jboss-cli `:shutdown`）→ MinIO（`mc admin service stop`）→ 两个 MySQL（`mysqladmin shutdown`），并等待监听消失；`-Start` 复用同一凭据与数据目录，删除旧部署标记后等待 `.deployed` 与健康检查。
+当前创建器的`fixture.json`记录owner、sourceCommit、schema007、五组件PID/创建时间/端口/数据目录、双MySQL UUID及`lifecycleValidation`；旧005环境不能改标签复用。`journal.json`保留阶段、意图和受限生命周期转换记录。身份不一致、端口占用、重复RunId或已有目录拒绝写入；失败不自动DROP、不force kill、不覆盖证据。`-Stop`依次正常关闭Portal→PaaS→MinIO→两个MySQL，并核对进程和监听均消失；未知启动结果或无法证明归属时拒绝伪报stopped。`-Start`复用原凭据和数据目录，等待部署标记与健康检查。具体新007实机停启仍以本轮验证证据为准，不使用历史005结果代替。
 
 浏览器验收记录见 [医院开通验收](../../docs/course-labs/2026-10-18-hospital-onboarding-acceptance.md)。双浏览器驱动是 Git 忽略的本机证据工具，不随产品部署；产品运行仍只需 Java 8/Tomcat/WildFly/MySQL/MinIO。
 
@@ -203,4 +211,4 @@ WildFly JNDI 名称为 `java:/jdbc/MedicalCloudCourseDS`，JPA 持久化单元�
 
 ## 已知边界
 
-支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停、本院/跨院脱敏统计及持久化脱敏审计已实现；新建医院/医院管理员入口仍未实现。附件存储和接口已实现，但完整实机验收未完成，见最新交接，亦不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。审计专项另建新副本和端口，不重启、升级或覆盖上述保护实例。原安装目录和默认服务未改动。MySQL 5.6、其他教师机器、云端部署和全主要流程多浏览器兼容尚未验证；禁脚本审计GET的特定Edge环境与交互边界见专项。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；业务模块的完整按 ID 恢复与分页尚待补充，附件已具备专项分页/按 ID 接口。
+支付只是数据库状态变更，没有第三方支付、清结算或退款；病历仅用于课程演示。医院管理/订单、平台医院启停、本院/跨院脱敏统计及持久化脱敏审计已实现；医院与首管理员一并开通、管理员增补及启停页面也已实现，但新环境、事务恢复和完整浏览器验收仍未闭合。附件存储和接口已实现，但完整实机验收未完成，见最新交接，亦不代表医疗合规认证。2026-10-02/03 复测沿用教师目录的隔离副本：Oracle JDK 1.8.0_341、Tomcat 9.0.24、WildFly 10.0.0.Final（RESTEasy 3.0.14.Final），MySQL 8.0.45 与 Connector/J 8.0.33；端口为 8188 / 8180 / 10090 / 3318。审计专项另建新副本和端口，不重启、升级或覆盖上述保护实例。原安装目录和默认服务未改动。MySQL 5.6、其他教师机器、云端部署和全主要流程多浏览器兼容尚未验证；禁脚本审计GET的特定Edge环境与交互边界见专项。演示脚本目前通过有上限的列表恢复资源，号源或历史数据超过列表范围后，应使用新场景；新分页接口已加入，但部分门户导航、编辑关联选项及按 ID 恢复仍需完善和复验，附件具备专项分页/按 ID 接口。
