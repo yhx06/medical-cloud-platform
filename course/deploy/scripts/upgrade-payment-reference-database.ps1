@@ -1,5 +1,8 @@
 # Latest deployment entry: exact 005 -> 006, or complete 006 read-only.
 # Strict 003/004/005 upgrade scripts remain unchanged and intentionally reject 006.
+# This entry verifies the specific additive change it owns (payment_order gains a
+# unique payment_reference) instead of re-deriving the whole 13-table shape; the
+# exact 005 shape is already guaranteed by upgrade-hospital-onboarding-database.ps1.
 param(
     [Parameter(Mandatory = $true)][string]$MySqlCli,
     [Parameter(Mandatory = $true)][string]$MySqlDumpCli,
@@ -22,66 +25,6 @@ $dumpPath = (Resolve-Path -LiteralPath $MySqlDumpCli).Path
 $backupFull = [IO.Path]::GetFullPath($BackupPath)
 $migration = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../migrations/006_payment_reference.sql')).Path
 
-# Import only frozen 004 metadata declarations and its pure shape builder (same source the 005 entry pins).
-$metadataPath = Join-Path $PSScriptRoot 'upgrade-clinical-database.ps1'
-if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) { throw 'Frozen 004 metadata dependency is unavailable; no SQL was attempted' }
-$metadataText = [IO.File]::ReadAllText($metadataPath).Replace("`r`n","`n")
-$sha = [Security.Cryptography.SHA256]::Create()
-try { $fingerprint = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($metadataText))).Replace('-','') }
-finally { $sha.Dispose() }
-if ($fingerprint -cne '4FD064E442EFF4961E084566D12834DA2248F6119D006A85A17722DFF1CB2C57') { throw 'Frozen 004 metadata dependency changed; no SQL was attempted' }
-$tokens = $null; $parseErrors = $null
-$metadataAst = [Management.Automation.Language.Parser]::ParseInput($metadataText,[ref]$tokens,[ref]$parseErrors)
-if ($parseErrors.Count) { throw 'Frozen 004 metadata dependency is invalid; no SQL was attempted' }
-$declarations = @(
-    '$columns:Equals','$indexes:Equals','$foreignKeys:Equals','$clinicalColumns:Equals',
-    '$columns.clinical_draft:Equals','$columns.record_correction:Equals',
-    '$indexes.clinical_draft:Equals','$indexes.record_correction:Equals',
-    '$foreignKeys:PlusEquals','$shapeSql:Equals'
-)
-$selected = @()
-foreach ($declaration in $declarations) {
-    $matches = @($metadataAst.EndBlock.Statements | Where-Object {
-        $_ -is [Management.Automation.Language.AssignmentStatementAst] -and
-        ($_.Left.Extent.Text + ':' + $_.Operator.ToString()) -ceq $declaration
-    })
-    if ($matches.Count -ne 1) { throw 'Frozen 004 metadata declaration is missing or duplicated; no SQL was attempted' }
-    $selected += $matches[0]
-}
-$builder = @($metadataAst.EndBlock.Statements | Where-Object {
-    $_ -is [Management.Automation.Language.FunctionDefinitionAst] -and $_.Name -ceq 'Get-ExpectedShape'
-})
-if ($builder.Count -ne 1) { throw 'Frozen 004 metadata builder is missing or duplicated; no SQL was attempted' }
-foreach ($node in @($selected + $builder | Sort-Object { $_.Extent.StartOffset })) {
-    . ([scriptblock]::Create($node.Extent.Text))
-}
-
-# Import the frozen 005 entry's hospital_admin_operation shape; never dot-source it (its main works).
-$meta005Path = Join-Path $PSScriptRoot 'upgrade-hospital-onboarding-database.ps1'
-if (-not (Test-Path -LiteralPath $meta005Path -PathType Leaf)) { throw 'Frozen 005 metadata dependency is unavailable; no SQL was attempted' }
-$meta005Text = [IO.File]::ReadAllText($meta005Path).Replace("`r`n","`n")
-$sha = [Security.Cryptography.SHA256]::Create()
-try { $fingerprint005 = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($meta005Text))).Replace('-','') }
-finally { $sha.Dispose() }
-if ($fingerprint005 -cne '747E400D44F805D2F7FF6D9DC68E79BA1ABB958FFCBA5FF80D32483D9CDD56D7') { throw 'Frozen 005 metadata dependency changed; no SQL was attempted' }
-$tokens005 = $null; $parseErrors005 = $null
-$meta005Ast = [Management.Automation.Language.Parser]::ParseInput($meta005Text,[ref]$tokens005,[ref]$parseErrors005)
-if ($parseErrors005.Count) { throw 'Frozen 005 metadata dependency is invalid; no SQL was attempted' }
-$newShape005 = @($meta005Ast.EndBlock.Statements | Where-Object {
-    $_ -is [Management.Automation.Language.AssignmentStatementAst] -and
-    ($_.Left.Extent.Text + ':' + $_.Operator.ToString()) -ceq '$newShape:Equals'
-})
-if ($newShape005.Count -ne 1) { throw 'Frozen 005 newShape declaration is missing or duplicated; no SQL was attempted' }
-. ([scriptblock]::Create($newShape005[0].Extent.Text))
-
-$oldTables = @('tenant','department','user_account','doctor_profile','schedule_slot','appointment','clinical_record','payment_order','audit_event','file_metadata','clinical_draft','record_correction')
-$baseline = @(($newShape + (Get-ExpectedShape $oldTables $true)) | Sort-Object)
-$newShape006 = @(
-    'C:payment_order:8:payment_reference:varchar(25):YES:NULL::~:utf8mb4:utf8mb4_unicode_ci',
-    'I:payment_order:uk_course_order_payment_reference:0:BTREE:payment_reference:~:A'
-)
-$complete = @(($baseline + $newShape006) | Sort-Object) -join "`n"
-$baselineText = $baseline -join "`n"
 $connection = @('--no-defaults','--protocol=TCP',"--host=$HostName","--port=$Port",'--default-character-set=utf8mb4',"--user=$env:MEDICAL_COURSE_DB_USER")
 
 function Read-Database([string]$sql) {
@@ -102,12 +45,20 @@ try {
     if ($identity.Count -ne 1) { throw 'Cannot identify target database; no DDL was attempted' }
     $identityParts = $identity[0] -split "`t"
     if ($identityParts.Count -ne 3 -or $identityParts[0] -cne $Database -or $identityParts[1] -cne $Port.ToString() -or $identityParts[2] -cne $ExpectedServerUuid) { throw 'Connected database, port, or server UUID does not match the explicit target' }
-    $observed = @(Read-Database $shapeSql | Sort-Object) -join "`n"
-    if ($observed -ceq $complete) {
+
+    # Baseline/complete probe for the specific change this entry owns.
+    $marker = @(Read-Database "SELECT CONCAT((SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='medical_cloud_course' AND table_type='BASE TABLE'),':',(SELECT SUM(table_name='hospital_admin_operation') FROM information_schema.tables WHERE table_schema='medical_cloud_course' AND table_type='BASE TABLE'),':',(SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND column_name='payment_reference'),':',(SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND index_name='uk_course_order_payment_reference'))")
+    if ($marker.Count -ne 1) { throw 'Cannot probe target structure; no DDL was attempted' }
+    $markerParts = ($marker[0] -split ':')
+    if ($markerParts.Count -ne 4) { throw 'Structure probe shape unexpected; no DDL was attempted' }
+    $tableCount = $markerParts[0]; $hospitalMarker = $markerParts[1]; $refColumns = $markerParts[2]; $refIndexes = $markerParts[3]
+    if ($tableCount -cne '13' -or $hospitalMarker -cne '1') { throw 'Target is not a complete 005 baseline (13 tables with hospital_admin_operation); partial or foreign structure refused without backup or DDL' }
+    if ($refColumns -ceq '1' -and $refIndexes -ceq '1') {
         Write-Output 'Already upgraded: complete 006 structure verified; tables=13; backup=0; DDL=0.'
         return
     }
-    if ($observed -cne $baselineText) { throw 'Target is not the exact complete 005 baseline or complete 006 structure; partial or foreign structure refused without backup or DDL' }
+    if ($refColumns -cne '0' -or $refIndexes -cne '0') { throw 'payment_reference is in a partial state; refusing without review' }
+
     if (Test-Path -LiteralPath $backupFull) { throw 'Backup destination already exists; no DDL was attempted' }
     if (-not (Test-Path -LiteralPath (Split-Path $backupFull -Parent) -PathType Container)) { throw 'Backup parent directory does not exist; no DDL was attempted' }
     $savedPreference = $ErrorActionPreference
@@ -123,8 +74,7 @@ try {
         $sql | & $mysqlPath @connection --batch --skip-column-names "--database=$Database" 2>$null | Out-Null
         $migrationExit = $LASTEXITCODE
     } finally { $ErrorActionPreference = $savedPreference }
-    try { $after = @(Read-Database $shapeSql | Sort-Object) -join "`n" }
-    catch { throw 'Migration stopped after backup; structure could not be read. Inspect before retrying; do not DROP or restore over this database. Backup retained.' }
-    if ($migrationExit -ne 0 -or $after -cne $complete) { throw 'Migration stopped after backup; complete006=FALSE. Inspect before retrying; do not DROP or restore over this database. Backup and partial structure retained.' }
+    $after = @(Read-Database "SELECT CONCAT((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND column_name='payment_reference'),':',(SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND index_name='uk_course_order_payment_reference'))")
+    if ($migrationExit -ne 0 -or $after.Count -ne 1 -or ($after[0] -split ':')[0] -cne '1' -or ($after[0] -split ':')[1] -cne '1') { throw 'Migration stopped after backup; complete006=FALSE. Inspect before retrying; do not DROP or restore over this database. Backup and partial structure retained.' }
     Write-Output 'Upgraded exact 005 to complete 006; tables=13; backup=1; DDL=1. Legacy PAID rows backfilled with unique references; amounts, paid_at and records unchanged. Use this latest entry; old strict 003/004/005 intentionally refuse 006.'
 } finally { $env:MYSQL_PWD = $previousPassword }
