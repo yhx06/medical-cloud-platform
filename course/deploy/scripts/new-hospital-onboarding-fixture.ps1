@@ -228,7 +228,7 @@ function ConvertTo-OnboardingMap($OnboardingValue) {
     foreach($OnboardingProperty in $OnboardingValue.PSObject.Properties) { $OnboardingMap[$OnboardingProperty.Name]=ConvertTo-OnboardingMap $OnboardingProperty.Value }
     return $OnboardingMap
 }
-function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$OnboardingExpectedOwner,[switch]$AllowStopped) {
+function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$OnboardingExpectedOwner,[switch]$AllowStopped,[switch]$AllowStaleRunning) {
     $ErrorActionPreference='Stop'
     if ($OnboardingExpectedOwner -cnotmatch '\A[0-9a-f]{32}\z' -or $OnboardingExpectedOwner -ceq ('0'*32)) { throw 'Explicit owner required' }
     $OnboardingProject=Get-OnboardingProjectRoot
@@ -275,7 +275,7 @@ function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$O
             if ($OnboardingPart.credentialFile -cne $OnboardingCredential -or $OnboardingPart.schemaVersion -cne '005' -or $OnboardingPart.authenticated -ne $true -or $OnboardingPart.database -cne 'medical_cloud_course' -or $OnboardingPart.host -cne '127.0.0.1' -or $OnboardingPart.clientExecutable -cne (Join-Path $OnboardingContext.Options.MySqlBin 'mysql.exe')) { throw 'MySQL metadata mismatch' }
             Assert-OnboardingPathChain $OnboardingCredential; Assert-OnboardingPrivateParent $OnboardingCredential
         }
-        if ($OnboardingPart.status -eq 'running') { Assert-OnboardingIdentity $OnboardingContext $OnboardingName }
+        if ($OnboardingPart.status -eq 'running' -and -not $AllowStaleRunning) { Assert-OnboardingIdentity $OnboardingContext $OnboardingName }
     }
     # No SQL, login, native command, journal write or service mutation here.
     # Call Assert-OnboardingMysqlLive explicitly immediately before SQL work.
@@ -544,7 +544,8 @@ function Invoke-OnboardingBootstrap($OnboardingContext) {
         if ($OnboardingHash -cnotmatch '\A\$2[aby]\$10\$[./A-Za-z0-9]{53}\z') { throw 'BCrypt generation failed' }
         $OnboardingAccounts+=@{username=$OnboardingAccount[0];role=$OnboardingAccount[1];password=$OnboardingPassword;hash=$OnboardingHash}
     }
-    Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'accounts.json') ($OnboardingAccounts|Select-Object username,role,password|ConvertTo-Json)
+    $OnboardingAccountView=@(); foreach($OnboardingEntry in $OnboardingAccounts) { $OnboardingAccountView+=[ordered]@{username=$OnboardingEntry.username;role=$OnboardingEntry.role;password=$OnboardingEntry.password} }
+    Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'accounts.json') ($OnboardingAccountView|ConvertTo-Json -Depth 4)
     foreach($OnboardingName in @('mysql','mysqlMigration')) {
         $OnboardingData=Join-Path $OnboardingContext.Root ($OnboardingName+'-data')
         $OnboardingServer=Join-Path $OnboardingOptions.MySqlBin 'mysqld.exe'
@@ -642,7 +643,7 @@ function Save-OnboardingLifecycleState($OnboardingContext,[string]$OnboardingSta
     $OnboardingContext.Manifest=ConvertTo-OnboardingMap ($OnboardingManifest|ConvertTo-Json -Depth 16|ConvertFrom-Json)
 }
 function Stop-OnboardingFixture([hashtable]$OnboardingOptions) {
-    $OnboardingContext=Read-OnboardingFixtureContext (Join-Path $OnboardingOptions.RuntimeRoot 'fixture.json') $OnboardingOptions.NewRunId -AllowStopped
+    $OnboardingContext=Read-OnboardingFixtureContext (Join-Path $OnboardingOptions.RuntimeRoot 'fixture.json') $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning
     if ($OnboardingContext.Manifest.state -eq 'stopped') { return }
     $OnboardingCredentials=ConvertTo-OnboardingMap ([IO.File]::ReadAllText((Join-Path $OnboardingContext.Root 'credentials.json'))|ConvertFrom-Json -ErrorAction Stop)
     $OnboardingSaved=@{}
@@ -651,11 +652,22 @@ function Stop-OnboardingFixture([hashtable]$OnboardingOptions) {
         if ($OnboardingContext.Options.JavaHome) { $env:JAVA_HOME=$OnboardingContext.Options.JavaHome }
         if ($OnboardingContext.Options.WildFlyHome) { $env:JBOSS_HOME=$OnboardingContext.Options.WildFlyHome }
         $env:NOPAUSE='1'
+        # Reconcile components already gone (for example after a reboot) before writing a stopping state.
+        foreach($OnboardingName in @('portal','paas','storage','mysqlMigration','mysql')) {
+            $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingName]
+            if ($OnboardingPart.status -ne 'running') { continue }
+            if (Get-Process -Id $OnboardingPart.pid -ErrorAction SilentlyContinue) { continue }
+            foreach($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) {
+                if ($OnboardingPort -and @(Get-OnboardingListeners $OnboardingPort).Count) { throw ('Unexpected listener without recorded process: '+$OnboardingName) }
+            }
+            $OnboardingPart.status='stopped'
+        }
         $OnboardingContext.Journal.state='stopping'
         Save-OnboardingJournal $OnboardingContext
         foreach($OnboardingName in @('portal','paas','storage','mysqlMigration','mysql')) {
             $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingName]
             if ($OnboardingPart.status -ne 'running') { continue }
+            Assert-OnboardingIdentity $OnboardingContext $OnboardingName
             if ($OnboardingName -eq 'portal') {
                 $OnboardingTomcat=Join-Path $OnboardingContext.Options.TomcatHome 'bin'
                 $OnboardingResult=Invoke-OnboardingNative (Join-Path $OnboardingContext.Options.JavaHome 'bin/java.exe') @(('-Djava.io.tmpdir='+(Join-Path $OnboardingContext.Root 'temp')),('-Dcatalina.home='+$OnboardingContext.Options.TomcatHome),('-Dcatalina.base='+$OnboardingPart.dataDirectory),'-cp',((Join-Path $OnboardingTomcat 'bootstrap.jar')+';'+(Join-Path $OnboardingTomcat 'tomcat-juli.jar')),'org.apache.catalina.startup.Bootstrap','stop') $OnboardingContext.Root $null 'portal-stop'

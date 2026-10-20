@@ -360,6 +360,9 @@ try {
         $OnboardingResult=New-OnboardingFixture $OnboardingOptions
         $OnboardingFixture=[IO.File]::ReadAllText($OnboardingResult)|ConvertFrom-Json
         Assert-OnboardingTest ($OnboardingFixture.sourceCommit -ceq ('a'*40) -and $OnboardingFixture.schemaVersion -ceq '005' -and $OnboardingFixture.state -ceq 'running') 'Incomplete final manifest'
+        $OnboardingAccounts=(Get-Content -LiteralPath (Join-Path (Split-Path $OnboardingResult -Parent) 'accounts.json') -Raw -Encoding UTF8|ConvertFrom-Json)
+        Assert-OnboardingTest (@($OnboardingAccounts).Count -eq 7) 'Account file missing entries'
+        foreach($OnboardingAccount in @($OnboardingAccounts)) { Assert-OnboardingTest ($OnboardingAccount.username -and $OnboardingAccount.role -and $OnboardingAccount.password) 'Account file lost credentials' }
         function Get-OnboardingProjectRoot { return $OnboardingOptions.ProjectRoot }
         $OnboardingRead=Read-OnboardingFixtureContext $OnboardingResult $OnboardingOptions.NewRunId
         Assert-OnboardingTest ($OnboardingRead.Options.MySqlBin -ceq $OnboardingOptions.MySqlBin -and $OnboardingRead.Journal.components.paas.port -eq $OnboardingFixture.paas.port) 'Read context changed fixed fixture endpoints'
