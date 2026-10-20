@@ -1,8 +1,6 @@
-# Latest deployment entry: exact 005 -> 006, or complete 006 read-only.
-# Strict 003/004/005 upgrade scripts remain unchanged and intentionally reject 006.
-# This entry verifies the specific additive change it owns (payment_order gains a
-# unique payment_reference) instead of re-deriving the whole 13-table shape; the
-# exact 005 shape is already guaranteed by upgrade-hospital-onboarding-database.ps1.
+# Latest deployment entry: exact 005 -> 006, or exact 006 read-only.
+# Every table/column/index/FK is compared with pinned immutable metadata.
+# No prior upgrader main is executed; frozen003/004/005 remain unchanged.
 param(
     [Parameter(Mandatory = $true)][string]$MySqlCli,
     [Parameter(Mandatory = $true)][string]$MySqlDumpCli,
@@ -25,6 +23,12 @@ $dumpPath = (Resolve-Path -LiteralPath $MySqlDumpCli).Path
 $backupFull = [IO.Path]::GetFullPath($BackupPath)
 $migration = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../migrations/006_payment_reference.sql')).Path
 
+. (Join-Path $PSScriptRoot 'protected-migration-metadata.ps1')
+$metadata = Get-ProtectedMigrationMetadata $PSScriptRoot
+$baselineShape = $metadata.Shape005
+$baselineText = $baselineShape -join "`n"
+$complete = $metadata.Shape006 -join "`n"
+$shapeSql = $metadata.ShapeSql
 $connection = @('--no-defaults','--protocol=TCP',"--host=$HostName","--port=$Port",'--default-character-set=utf8mb4',"--user=$env:MEDICAL_COURSE_DB_USER")
 
 function Read-Database([string]$sql) {
@@ -38,6 +42,40 @@ function Read-Database([string]$sql) {
     return $rows
 }
 
+# Preserve all pre-existing columns of all13 tables. HEX encodes bytes without
+# delimiter/newline/NULL ambiguity; private rows stay only in process memory.
+function Get-PreservationSql([string[]]$shape) {
+    $queries = @()
+    foreach ($table in @($shape | Where-Object { $_ -like 'T:*' } | ForEach-Object { ($_ -split ':')[1] } | Sort-Object)) {
+        $expressions = @()
+        foreach ($column in @($shape | Where-Object { $_ -like "C:${table}:*" } | Sort-Object { [int](($_ -split ':')[2]) })) {
+            $quoted = '`' + ($column -split ':')[3] + '`'
+            $expressions += ('IF({0} IS NULL,''N'',CONCAT(''H'',HEX(CAST({0} AS BINARY))))' -f $quoted)
+        }
+        $queries += ("SELECT CONCAT('D:" + $table + ":'," + ($expressions -join ",':',") + ') FROM `' + $table + '`')
+    }
+    return "/* protected-row-snapshot: private, never log */`n" + ($queries -join "`nUNION ALL`n")
+}
+
+function Assert-PaymentData {
+    $sql = @'
+/* protected-payment-invariants */
+SELECT
+ COALESCE(SUM(status='PAID' AND (payment_reference IS NULL
+   OR CHAR_LENGTH(payment_reference) <> 25 OR OCTET_LENGTH(payment_reference) <> 25
+   OR BINARY payment_reference <> BINARY UPPER(payment_reference)
+   OR NOT (payment_reference COLLATE utf8mb4_bin REGEXP '^PAY-[0-9]{8}-[0-9A-F]{12}$')
+   OR BINARY LEFT(payment_reference,13) <> BINARY CONCAT('PAY-',COALESCE(DATE_FORMAT(paid_at,'%Y%m%d'),'00000000'),'-'))),0),
+ COALESCE(SUM(status='UNPAID' AND payment_reference IS NOT NULL),0),
+ COUNT(CASE WHEN status='PAID' THEN payment_reference END)
+   - COUNT(DISTINCT BINARY payment_reference)
+FROM payment_order;
+'@
+    $validation = @(Read-Database $sql)
+    if ($validation.Count -ne 1 -or $validation[0] -cne "0`t0`t0") { throw 'Payment backfill invariants failed; inspect the target before retrying' }
+}
+
+
 $previousPassword = $env:MYSQL_PWD
 try {
     $env:MYSQL_PWD = $env:MEDICAL_COURSE_DB_PASSWORD
@@ -46,21 +84,18 @@ try {
     $identityParts = $identity[0] -split "`t"
     if ($identityParts.Count -ne 3 -or $identityParts[0] -cne $Database -or $identityParts[1] -cne $Port.ToString() -or $identityParts[2] -cne $ExpectedServerUuid) { throw 'Connected database, port, or server UUID does not match the explicit target' }
 
-    # Baseline/complete probe for the specific change this entry owns.
-    $marker = @(Read-Database "SELECT CONCAT((SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='medical_cloud_course' AND table_type='BASE TABLE'),':',(SELECT SUM(table_name='hospital_admin_operation') FROM information_schema.tables WHERE table_schema='medical_cloud_course' AND table_type='BASE TABLE'),':',(SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND column_name='payment_reference'),':',(SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND index_name='uk_course_order_payment_reference'))")
-    if ($marker.Count -ne 1) { throw 'Cannot probe target structure; no DDL was attempted' }
-    $markerParts = ($marker[0] -split ':')
-    if ($markerParts.Count -ne 4) { throw 'Structure probe shape unexpected; no DDL was attempted' }
-    $tableCount = $markerParts[0]; $hospitalMarker = $markerParts[1]; $refColumns = $markerParts[2]; $refIndexes = $markerParts[3]
-    if ($tableCount -cne '13' -or $hospitalMarker -cne '1') { throw 'Target is not a complete 005 baseline (13 tables with hospital_admin_operation); partial or foreign structure refused without backup or DDL' }
-    if ($refColumns -ceq '1' -and $refIndexes -ceq '1') {
+    $observed = @(Read-Database $shapeSql | Sort-Object) -join "`n"
+    if ($observed -ceq $complete) {
+        Assert-PaymentData
         Write-Output 'Already upgraded: complete 006 structure verified; tables=13; backup=0; DDL=0.'
         return
     }
-    if ($refColumns -cne '0' -or $refIndexes -cne '0') { throw 'payment_reference is in a partial state; refusing without review' }
+    if ($observed -cne $baselineText) { throw 'Target is not the exact complete 005 baseline or complete 006 structure; partial, foreign or later structure refused without backup or DDL' }
 
     if (Test-Path -LiteralPath $backupFull) { throw 'Backup destination already exists; no DDL was attempted' }
     if (-not (Test-Path -LiteralPath (Split-Path $backupFull -Parent) -PathType Container)) { throw 'Backup parent directory does not exist; no DDL was attempted' }
+    $preservationSql = Get-PreservationSql $baselineShape
+    $beforeRows = @(Read-Database $preservationSql | Sort-Object) -join "`n"
     $savedPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
@@ -74,7 +109,12 @@ try {
         $sql | & $mysqlPath @connection --batch --skip-column-names "--database=$Database" 2>$null | Out-Null
         $migrationExit = $LASTEXITCODE
     } finally { $ErrorActionPreference = $savedPreference }
-    $after = @(Read-Database "SELECT CONCAT((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND column_name='payment_reference'),':',(SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema='medical_cloud_course' AND table_name='payment_order' AND index_name='uk_course_order_payment_reference'))")
-    if ($migrationExit -ne 0 -or $after.Count -ne 1 -or ($after[0] -split ':')[0] -cne '1' -or ($after[0] -split ':')[1] -cne '1') { throw 'Migration stopped after backup; complete006=FALSE. Inspect before retrying; do not DROP or restore over this database. Backup and partial structure retained.' }
+    try {
+        $after = @(Read-Database $shapeSql | Sort-Object) -join "`n"
+        if ($migrationExit -ne 0 -or $after -cne $complete) { throw 'Incomplete006' }
+        $afterRows = @(Read-Database $preservationSql | Sort-Object) -join "`n"
+        if ($afterRows -cne $beforeRows) { throw 'Pre-existing rows changed' }
+        Assert-PaymentData
+    } catch { throw 'Migration stopped after backup; complete006=FALSE. Inspect before retrying; do not DROP or restore over this database. Backup and partial structure retained.' }
     Write-Output 'Upgraded exact 005 to complete 006; tables=13; backup=1; DDL=1. Legacy PAID rows backfilled with unique references; amounts, paid_at and records unchanged. Use this latest entry; old strict 003/004/005 intentionally refuse 006.'
-} finally { $env:MYSQL_PWD = $previousPassword }
+} finally { $beforeRows = $null; $afterRows = $null; $env:MYSQL_PWD = $previousPassword }

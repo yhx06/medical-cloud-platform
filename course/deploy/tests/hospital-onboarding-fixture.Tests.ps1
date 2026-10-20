@@ -67,6 +67,179 @@ function New-OnboardingTestZip([string]$Path,[hashtable]$Entries) {
         [IO.File]::WriteAllBytes($Path,$OnboardingZipBytes)
     }
 }
+function Invoke-OnboardingLifecycleRegressions($OnboardingOptions) {
+    $OnboardingFixturePath=Join-Path $OnboardingOptions.RuntimeRoot 'fixture.json'
+    $OnboardingOriginalManifest=[IO.File]::ReadAllText($OnboardingFixturePath)
+    $OnboardingOriginalJournal=[IO.File]::ReadAllText((Join-Path $OnboardingOptions.RuntimeRoot 'journal.json'))
+    function Reset-OnboardingLifecycle([string]$State='stopped') {
+        $script:OnboardingProcesses=@{}
+        $OnboardingM=ConvertTo-OnboardingMap ($OnboardingOriginalManifest|ConvertFrom-Json)
+        $OnboardingJ=ConvertTo-OnboardingMap ($OnboardingOriginalJournal|ConvertFrom-Json)
+        $OnboardingM.state=$State; $OnboardingJ.state=$State
+        foreach($OnboardingN in @('mysql','mysqlMigration','storage','paas','portal')) {
+            $OnboardingM[$OnboardingN].status='stopped'; $OnboardingJ.components[$OnboardingN].status='stopped'
+        }
+        Write-OnboardingPrivate $OnboardingFixturePath ($OnboardingM|ConvertTo-Json -Depth 24)
+        Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingJ|ConvertTo-Json -Depth 24)
+        return (Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped)
+    }
+    function Get-Process { param($Id,$ErrorAction) $script:OnboardingProcesses[[int]$Id] }
+    function Start-Sleep { param($Milliseconds,$Seconds) }
+    $OnboardingStartBoundary=${function:Invoke-OnboardingNative}
+    function Invoke-OnboardingNative {
+        param($OnboardingExecutable,$OnboardingArguments,$OnboardingWorkingDirectory,$OnboardingInput,$OnboardingLabel,[switch]$OnboardingStart)
+        if ($OnboardingStart) {
+            Assert-OnboardingTest ($env:TEMP -ceq (Join-Path $OnboardingWorkingDirectory 'temp') -and $env:TMP -ceq $env:TEMP -and $env:JAVA_HOME -ceq $OnboardingOptions.JavaHome) 'Restart child inherited foreign temp or Java home'
+            foreach($OnboardingN in @('JAVA_TOOL_OPTIONS','_JAVA_OPTIONS','JDK_JAVA_OPTIONS','MAVEN_ARGS','MYSQL_PWD','COURSE_FOREIGN','MINIO_FOREIGN')) {
+                Assert-OnboardingTest ($null -eq [Environment]::GetEnvironmentVariable($OnboardingN,'Process')) 'Restart child inherited unsafe configuration'
+            }
+            if ($OnboardingLabel -eq 'storage-start') { Assert-OnboardingTest ($env:MINIO_BROWSER -eq 'on' -and $env:MINIO_UPDATE -eq 'off') 'Restart lost owned storage runtime options' }
+            if ($OnboardingLabel -eq 'storage-start' -and $script:OnboardingFailStorage) { throw 'injected storage start failure' }
+        }
+        if ($OnboardingLabel -like '*-stop') {
+            $OnboardingJ=[IO.File]::ReadAllText((Join-Path $OnboardingWorkingDirectory 'journal.json'))|ConvertFrom-Json
+            $OnboardingN=$OnboardingLabel.Replace('-stop','')
+            [void]$script:OnboardingProcesses.Remove([int]$OnboardingJ.components.$OnboardingN.pid)
+            return @{ExitCode=0;Output=''}
+        }
+        & $OnboardingStartBoundary @PSBoundParameters
+    }
+    Test-OnboardingBehavior 'stop refuses live starting child without listener and preserves its identity' {
+        $OnboardingC=Reset-OnboardingLifecycle 'failed'
+        $OnboardingP=$OnboardingC.Journal.components.portal
+        $OnboardingP.status='starting'
+        $script:OnboardingProcesses[[int]$OnboardingP.pid]=[pscustomobject]@{ProcessId=$OnboardingP.pid;CreationDate=$OnboardingP.created;ExecutablePath=$OnboardingP.executable;CommandLine=($OnboardingP.arguments -join ' ');Ports=@()}
+        $OnboardingC.Manifest.portal.status='starting'
+        Write-OnboardingPrivate $OnboardingFixturePath ($OnboardingC.Manifest|ConvertTo-Json -Depth 24)
+        Save-OnboardingJournal $OnboardingC
+        Assert-OnboardingTestThrows { Stop-OnboardingFixture $OnboardingOptions }
+        $OnboardingAfter=[IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json
+        Assert-OnboardingTest ($OnboardingAfter.state -ne 'stopped' -and $OnboardingAfter.portal.pid -eq $OnboardingP.pid -and $script:OnboardingProcesses.ContainsKey([int]$OnboardingP.pid)) 'Live startup child was lost or certified stopped'
+        Assert-OnboardingTestThrows { Start-OnboardingFixture $OnboardingOptions }
+    }
+    Test-OnboardingBehavior 'stop reconciles disappeared starting child without replacement' {
+        $OnboardingC=Reset-OnboardingLifecycle 'failed'
+        $OnboardingC.Journal.components.portal.status='starting'; $OnboardingC.Manifest.portal.status='starting'
+        Write-OnboardingPrivate $OnboardingFixturePath ($OnboardingC.Manifest|ConvertTo-Json -Depth 24)
+        Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingC.Journal|ConvertTo-Json -Depth 24)
+        Stop-OnboardingFixture $OnboardingOptions
+        $OnboardingAfter=[IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json
+        Assert-OnboardingTest ($OnboardingAfter.state -eq 'stopped' -and $OnboardingAfter.portal.status -eq 'stopped') 'Disappeared startup child was not reconciled'
+    }
+    Test-OnboardingBehavior 'unknown intent launch outcome is retained and cannot become stopped' {
+        $OnboardingC=Reset-OnboardingLifecycle 'failed'
+        foreach($OnboardingRecord in @($OnboardingC.Manifest.portal,$OnboardingC.Journal.components.portal)) { $OnboardingRecord.status='intent'; $OnboardingRecord.pid=0; $OnboardingRecord.created=$null }
+        Write-OnboardingPrivate $OnboardingFixturePath ($OnboardingC.Manifest|ConvertTo-Json -Depth 24)
+        Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingC.Journal|ConvertTo-Json -Depth 24)
+        Assert-OnboardingTestThrows { Stop-OnboardingFixture $OnboardingOptions }
+        Assert-OnboardingTest (([IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json).state -ne 'stopped') 'Unknown launch outcome certified stopped'
+    }
+    foreach($OnboardingMode in @('success','storage-failure','success-existing','storage-failure-existing')) {
+        Test-OnboardingBehavior ('restart isolates children and exactly restores absent and existing variables: '+$OnboardingMode) {
+            [void](Reset-OnboardingLifecycle)
+            $OnboardingNames=@('TEMP','TMP','JAVA_HOME','MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD','JAVA_OPTS','JAVA_TOOL_OPTIONS','_JAVA_OPTIONS','JDK_JAVA_OPTIONS','MAVEN_OPTS','MAVEN_ARGS','MYSQL_PWD','COURSE_FOREIGN','MINIO_FOREIGN','HTTP_PROXY','HTTPS_PROXY','NO_PROXY','ALL_PROXY')
+            $OnboardingSaved=@{}
+            foreach($OnboardingN in $OnboardingNames) { $OnboardingSaved[$OnboardingN]=[Environment]::GetEnvironmentVariable($OnboardingN,'Process') }
+            try {
+                foreach($OnboardingN in $OnboardingNames) { [Environment]::SetEnvironmentVariable($OnboardingN,'sentinel','Process') }
+                if ($OnboardingMode -notlike '*-existing') { foreach($OnboardingN in @('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD')) { [Environment]::SetEnvironmentVariable($OnboardingN,$null,'Process') } }
+                $script:OnboardingFailStorage=($OnboardingMode -like 'storage-failure*')
+                $OnboardingCaught=$null
+                try { Start-OnboardingFixture $OnboardingOptions } catch { $OnboardingCaught=$_ }
+                foreach($OnboardingN in $OnboardingNames) {
+                    $OnboardingExpected=if($OnboardingMode -notlike '*-existing' -and $OnboardingN -in @('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD')){$null}else{'sentinel'}
+                    Assert-OnboardingTest ([Environment]::GetEnvironmentVariable($OnboardingN,'Process') -ceq $OnboardingExpected) ('Restart did not restore '+$OnboardingN)
+                }
+                if ($script:OnboardingFailStorage) { Assert-OnboardingTest ($OnboardingCaught -and $OnboardingCaught.Exception.Message -eq 'injected storage start failure') 'Wrong restart failure boundary' }
+                elseif ($OnboardingCaught) { throw $OnboardingCaught }
+                if ($script:OnboardingFailStorage) {
+                    Assert-OnboardingTestThrows { Stop-OnboardingFixture $OnboardingOptions } '*Unknown launch outcome*'
+                    $OnboardingFailed=[IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json
+                    Assert-OnboardingTest ($OnboardingFailed.storage.status -eq 'intent' -and $OnboardingFailed.mysql.status -eq 'running' -and $script:OnboardingProcesses.ContainsKey([int]$OnboardingFailed.mysql.pid)) 'Restart failure lost known or unknown child identity'
+                } else {
+                    Stop-OnboardingFixture $OnboardingOptions
+                    Assert-OnboardingTest (([IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json).state -eq 'stopped') 'Restart could not be gracefully stopped'
+                }
+            } finally { foreach($OnboardingN in $OnboardingNames) { [Environment]::SetEnvironmentVariable($OnboardingN,$OnboardingSaved[$OnboardingN],'Process') }; $script:OnboardingFailStorage=$false }
+        }
+    }
+    foreach($OnboardingOperation in @('start','stop')) {
+        Test-OnboardingBehavior ('real '+$OnboardingOperation+' journal survives interruption before terminal manifest') {
+            [void](Reset-OnboardingLifecycle)
+            if ($OnboardingOperation -eq 'stop') { Start-OnboardingFixture $OnboardingOptions }
+            $OnboardingRealWriter=${function:Write-OnboardingPrivate}
+            $script:OnboardingInterrupted=$false
+            function Write-OnboardingPrivate($OnboardingPath,$OnboardingText) {
+                if ($script:OnboardingInterrupted) { throw 'injected persistence interruption' }
+                & $OnboardingRealWriter $OnboardingPath $OnboardingText
+                if ($OnboardingPath -eq (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json')) {
+                    $OnboardingSaved=$OnboardingText|ConvertFrom-Json
+                    if (($OnboardingOperation -eq 'start' -and $OnboardingSaved.components.mysql.status -eq 'running') -or
+                        ($OnboardingOperation -eq 'stop' -and $OnboardingSaved.components.portal.status -eq 'stopped')) {
+                        $script:OnboardingInterrupted=$true
+                        throw 'injected persistence interruption'
+                    }
+                }
+            }
+            try {
+                if ($OnboardingOperation -eq 'start') { Assert-OnboardingTestThrows { Start-OnboardingFixture $OnboardingOptions } '*injected persistence interruption*' }
+                else { Assert-OnboardingTestThrows { Stop-OnboardingFixture $OnboardingOptions } '*injected persistence interruption*' }
+            } finally { ${function:Write-OnboardingPrivate}=$OnboardingRealWriter }
+            Assert-OnboardingTest $script:OnboardingInterrupted 'Interruption did not reach real lifecycle persistence'
+            Assert-OnboardingTestThrows { Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning }
+            Stop-OnboardingFixture $OnboardingOptions
+            Assert-OnboardingTest (([IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json).state -eq 'stopped') 'Persisted interrupted transition was not recovered'
+        }
+    }
+    foreach($OnboardingOperation in @('start','stop')) {
+        Test-OnboardingBehavior ('explicit recovery accepts interrupted '+$OnboardingOperation+' and rejects unrecorded identity drift') {
+            $OnboardingC=Reset-OnboardingLifecycle
+            $OnboardingPrior=ConvertTo-OnboardingMap (($OnboardingC.Manifest|ConvertTo-Json -Depth 24)|ConvertFrom-Json)
+            $OnboardingRecords=[ordered]@{}
+            foreach($OnboardingN in @('mysql','mysqlMigration','storage','paas','portal')) {
+                $OnboardingP=$OnboardingC.Journal.components[$OnboardingN]
+                $OnboardingRecords[$OnboardingN]=@(@{status=$OnboardingP.status;pid=$OnboardingP.pid;created=$OnboardingP.created})
+            }
+            if ($OnboardingOperation -eq 'stop') {
+                $OnboardingC.Manifest.state='running'; $OnboardingPrior.state='running'
+                foreach($OnboardingN in @('mysql','mysqlMigration','storage','paas','portal')) {
+                    $OnboardingC.Manifest[$OnboardingN].status='running'; $OnboardingPrior[$OnboardingN].status='running'
+                    $OnboardingRecords[$OnboardingN][0].status='running'
+                    $OnboardingRecords[$OnboardingN]+=@{status='stopped';pid=$OnboardingC.Journal.components[$OnboardingN].pid;created=$OnboardingC.Journal.components[$OnboardingN].created}
+                }
+                $OnboardingC.Journal.state='stopping'
+            } else {
+                $OnboardingC.Journal.state='starting'
+                $OnboardingP=$OnboardingC.Journal.components.portal
+                $OnboardingRecords.portal+=@{status='intent';pid=0;created=$null}
+                $OnboardingRecords.portal+=@{status='starting';pid=59999;created='2026-01-01T00:00:00.0000000Z'}
+                $OnboardingP.status='starting'; $OnboardingP.pid=59999; $OnboardingP.created='2026-01-01T00:00:00.0000000Z'
+            }
+            $OnboardingC.Journal.transition=@{version=1;operation=$OnboardingOperation;prior=$OnboardingPrior;records=$OnboardingRecords}
+            Write-OnboardingPrivate $OnboardingFixturePath ($OnboardingC.Manifest|ConvertTo-Json -Depth 24)
+            Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingC.Journal|ConvertTo-Json -Depth 24)
+            Assert-OnboardingTestThrows { Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning }
+            $OnboardingRecovered=Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning -RecoverLifecycle
+            Assert-OnboardingTest ($OnboardingRecovered.Journal.state -eq ($OnboardingOperation+'ing').Replace('stoping','stopping')) 'Recovery lost journal authority'
+            foreach($OnboardingField in @('pid','created','executable','arguments','extraPorts','clientExecutable','credentialFile','dataDirectory','url','schemaVersion','serverUuid')) {
+                $OnboardingTampered=ConvertTo-OnboardingMap (($OnboardingC.Journal|ConvertTo-Json -Depth 24)|ConvertFrom-Json)
+                $OnboardingTampered.components.mysql[$OnboardingField]=if($OnboardingField -eq 'pid'){12345}elseif($OnboardingField -eq 'extraPorts'){@(49199)}else{'tampered'}
+                Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingTampered|ConvertTo-Json -Depth 24)
+                Assert-OnboardingTestThrows { Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning -RecoverLifecycle }
+            }
+            foreach($OnboardingField in @('ownerId','runtimeRoot','sourceCommit','schemaVersion','tools','stage')) {
+                $OnboardingTampered=ConvertTo-OnboardingMap (($OnboardingC.Journal|ConvertTo-Json -Depth 24)|ConvertFrom-Json)
+                $OnboardingTampered[$OnboardingField]='tampered'
+                Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingTampered|ConvertTo-Json -Depth 24)
+                Assert-OnboardingTestThrows { Read-OnboardingFixtureContext $OnboardingFixturePath $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning -RecoverLifecycle }
+            }
+            Write-OnboardingPrivate (Join-Path $OnboardingOptions.RuntimeRoot 'journal.json') ($OnboardingC.Journal|ConvertTo-Json -Depth 24)
+            Stop-OnboardingFixture $OnboardingOptions
+            Assert-OnboardingTest (([IO.File]::ReadAllText($OnboardingFixturePath)|ConvertFrom-Json).state -eq 'stopped') 'Interrupted transition could not be stopped'
+        }
+    }
+    ${function:Invoke-OnboardingNative}=$OnboardingStartBoundary
+}
 try {
     $OnboardingEntry = Join-Path $PSScriptRoot '../scripts/new-hospital-onboarding-fixture.ps1'
     Test-OnboardingBehavior 'default entry exits 4 and creates no runtime' {
@@ -76,6 +249,9 @@ try {
         Assert-OnboardingTest (@(Get-ChildItem -LiteralPath (Join-Path $OnboardingProject '.local/runtime') -ErrorAction SilentlyContinue).Count -eq $OnboardingBefore) 'Default created a runtime'
     }
     if (Test-Path -LiteralPath $OnboardingEntry) { . $OnboardingEntry -RuntimeRoot 'parameter-preserved' -SourceCommit ('b'*40) -NewRunId ('c'*32) }
+    # Offline port allocation: never bind real listeners in this suite.
+    $script:OnboardingTestPort=49000
+    function Get-OnboardingPort($OnboardingUsed) { do { $script:OnboardingTestPort++ } while(-not $OnboardingUsed.Add($script:OnboardingTestPort)); $script:OnboardingTestPort }
     Test-OnboardingBehavior 'dot source preserves caller parameters and returns without execution' {
         Assert-OnboardingTest ($RuntimeRoot -eq 'parameter-preserved' -and $SourceCommit -ceq ('b'*40) -and $NewRunId -ceq ('c'*32)) 'Import clobbered public parameters'
     }
@@ -311,6 +487,7 @@ try {
         function Get-OnboardingToolHash($OnboardingPath) { if($OnboardingPath -like '*mysql-connector*'){'e2a3b2fc726a1ac64e998585db86b30fa8bf3f706195b78bb77c5f99bf877bd9'}elseif($OnboardingPath -like '*mc.exe'){'c8db13ebeda31497f354c0e950809db0ae9b2a2a69b8afee68c128c37300c157'}else{'1e534498e2468a4b82c2e98300a883492af3107e666af35aba9875ef7853162f'} }
         function Invoke-OnboardingNative {
             param($OnboardingExecutable,$OnboardingArguments,$OnboardingWorkingDirectory,$OnboardingInput,$OnboardingLabel,[switch]$OnboardingStart)
+            Assert-OnboardingTest ($env:JAVA_HOME -ceq $OnboardingOptions.JavaHome -and $env:TEMP.StartsWith($OnboardingOptions.ProjectRoot+'\') -and $env:TMP -ceq $env:TEMP) 'Creation native boundary inherited foreign Java or temp'
             $script:OnboardingCalls.Add([pscustomobject]@{Label=$OnboardingLabel;Arguments=@($OnboardingArguments);Input=$OnboardingInput;Working=$OnboardingWorkingDirectory})
             if ($OnboardingLabel -eq 'source-identity') { return @{ExitCode=0;Output=('a'*40)+"`n"} }
             if ($OnboardingLabel -eq 'source-export') {
@@ -334,6 +511,7 @@ try {
                 [IO.File]::WriteAllText((Join-Path $OnboardingData 'auto.cnf'),('server-uuid='+[guid]::NewGuid().ToString('D')))
             }
             if ($OnboardingStart) {
+                if ($script:OnboardingCreationFailure -eq $OnboardingLabel) { throw 'injected creation service failure' }
                 $script:OnboardingNextPid++
                 $OnboardingJournal=[IO.File]::ReadAllText((Join-Path $OnboardingWorkingDirectory 'journal.json'))|ConvertFrom-Json
                 Assert-OnboardingTest ($OnboardingJournal.stage -eq $OnboardingLabel) 'Start occurred before intent journal'
@@ -364,7 +542,15 @@ try {
             }
             return @{ExitCode=0;Output=''}
         }
-        $OnboardingResult=New-OnboardingFixture $OnboardingOptions
+        $OnboardingCreationEnvironment=@{}
+        foreach($OnboardingN in @('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS')) { $OnboardingCreationEnvironment[$OnboardingN]=[Environment]::GetEnvironmentVariable($OnboardingN,'Process'); [Environment]::SetEnvironmentVariable($OnboardingN,$null,'Process') }
+        try { $OnboardingResult=New-OnboardingFixture $OnboardingOptions }
+        finally {
+            Test-OnboardingBehavior 'creation restores initially absent JWT and download origin variables' {
+                Assert-OnboardingTest ($null -eq $env:MEDICAL_COURSE_JWT_SECRET -and $null -eq $env:COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS) 'Creation leaked initially absent runtime variables'
+            }
+            foreach($OnboardingN in $OnboardingCreationEnvironment.Keys) { [Environment]::SetEnvironmentVariable($OnboardingN,$OnboardingCreationEnvironment[$OnboardingN],'Process') }
+        }
         $OnboardingFixture=[IO.File]::ReadAllText($OnboardingResult)|ConvertFrom-Json
         Assert-OnboardingTest ($OnboardingFixture.sourceCommit -ceq ('a'*40) -and $OnboardingFixture.schemaVersion -ceq '007' -and $OnboardingFixture.state -ceq 'running') 'Incomplete final manifest'
         $OnboardingAccounts=(Get-Content -LiteralPath (Join-Path (Split-Path $OnboardingResult -Parent) 'accounts.json') -Raw -Encoding UTF8|ConvertFrom-Json)
@@ -385,6 +571,25 @@ try {
             Assert-OnboardingTest (($script:OnboardingCalls.Arguments -join ' ') -notlike ('*'+$OnboardingSecret+'*')) 'Secret escaped to argv'
         }
         Assert-OnboardingTest ($env:TEMP -ceq $OnboardingTestRoot) 'Full workflow did not restore TEMP'
+        Invoke-OnboardingLifecycleRegressions $OnboardingOptions
+        foreach($OnboardingFailure in @('storage-start','portal-start')) {
+            Test-OnboardingBehavior ('creation restores absent and preexisting configuration after '+$OnboardingFailure+' failure') {
+                $OnboardingOptions=New-OnboardingTestOptions
+                $script:OnboardingProcesses=@{}; $script:OnboardingCreationFailure=$OnboardingFailure
+                $OnboardingSaved=@{}
+                $OnboardingNames=@('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD','JAVA_TOOL_OPTIONS','MAVEN_ARGS','MYSQL_PWD','TEMP','TMP','JAVA_HOME','HTTP_PROXY')
+                foreach($OnboardingN in $OnboardingNames) { $OnboardingSaved[$OnboardingN]=[Environment]::GetEnvironmentVariable($OnboardingN,'Process') }
+                try {
+                    foreach($OnboardingN in $OnboardingNames) { [Environment]::SetEnvironmentVariable($OnboardingN,'sentinel','Process') }
+                    if ($OnboardingFailure -eq 'portal-start') { foreach($OnboardingN in @('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD')) { [Environment]::SetEnvironmentVariable($OnboardingN,$null,'Process') } }
+                    Assert-OnboardingTestThrows { New-OnboardingFixture $OnboardingOptions } '*Onboarding setup stopped*'
+                    foreach($OnboardingN in $OnboardingNames) {
+                        $OnboardingExpected=if($OnboardingFailure -eq 'portal-start' -and $OnboardingN -in @('MEDICAL_COURSE_JWT_SECRET','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS','COURSE_S3_SECRET_KEY','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD')){$null}else{'sentinel'}
+                        Assert-OnboardingTest ([Environment]::GetEnvironmentVariable($OnboardingN,'Process') -ceq $OnboardingExpected) ('Creation failure did not restore '+$OnboardingN)
+                    }
+                } finally { foreach($OnboardingN in $OnboardingNames) { [Environment]::SetEnvironmentVariable($OnboardingN,$OnboardingSaved[$OnboardingN],'Process') }; $script:OnboardingCreationFailure=$null }
+            }
+        }
         ${function:Invoke-OnboardingNative}=$OnboardingRealNative
     }
 } finally {

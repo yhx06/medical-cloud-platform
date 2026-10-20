@@ -175,7 +175,17 @@ function Save-OnboardingJournal($OnboardingContext) {
         if ($OnboardingPart.status -eq 'running') { Assert-OnboardingIdentity $OnboardingContext $OnboardingName }
         elseif ($OnboardingPart.status -eq 'starting') { Assert-OnboardingIdentity $OnboardingContext $OnboardingName -OnboardingStarting }
     }
-    Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'journal.json') ($OnboardingContext.Journal|ConvertTo-Json -Depth 16)
+    if ($OnboardingContext.Journal.transition) {
+        foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+            $OnboardingIdentity=Get-OnboardingLifecycleIdentity $OnboardingContext.Journal.components[$OnboardingName]
+            $OnboardingRecords=@($OnboardingContext.Journal.transition.records[$OnboardingName])
+            if ((ConvertTo-OnboardingCanonicalJson $OnboardingRecords[-1]) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingIdentity)) {
+                $OnboardingContext.Journal.transition.records[$OnboardingName]=@($OnboardingRecords)+@($OnboardingIdentity)
+            }
+        }
+        Assert-OnboardingLifecycleTransition $OnboardingContext.Manifest $OnboardingContext.Journal
+    }
+    Write-OnboardingPrivate (Join-Path $OnboardingContext.Root 'journal.json') ($OnboardingContext.Journal|ConvertTo-Json -Depth 32)
 }
 function Get-OnboardingProcess([int]$OnboardingProcessId) { Get-CimInstance Win32_Process -Filter "ProcessId=$OnboardingProcessId" -ErrorAction Stop }
 function Get-OnboardingListeners([int]$OnboardingPort) { @(Get-NetTCPConnection -LocalPort $OnboardingPort -State Listen -ErrorAction SilentlyContinue) }
@@ -228,7 +238,95 @@ function ConvertTo-OnboardingMap($OnboardingValue) {
     foreach($OnboardingProperty in $OnboardingValue.PSObject.Properties) { $OnboardingMap[$OnboardingProperty.Name]=ConvertTo-OnboardingMap $OnboardingProperty.Value }
     return $OnboardingMap
 }
-function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$OnboardingExpectedOwner,[switch]$AllowStopped,[switch]$AllowStaleRunning) {
+function ConvertTo-OnboardingCanonicalJson($OnboardingValue) {
+    function ConvertTo-OnboardingCanonicalValue($OnboardingItem) {
+        if ($OnboardingItem -is [Collections.IDictionary]) {
+            $OnboardingSorted=[ordered]@{}
+            foreach($OnboardingKey in @($OnboardingItem.Keys|Sort-Object)) { $OnboardingSorted[$OnboardingKey]=ConvertTo-OnboardingCanonicalValue $OnboardingItem[$OnboardingKey] }
+            return $OnboardingSorted
+        }
+        if ($OnboardingItem -is [array]) { return ,@($OnboardingItem|ForEach-Object{ConvertTo-OnboardingCanonicalValue $_}) }
+        return $OnboardingItem
+    }
+    ConvertTo-Json -InputObject (ConvertTo-OnboardingCanonicalValue $OnboardingValue) -Depth 40 -Compress
+}
+function Get-OnboardingLifecycleIdentity($OnboardingPart) {
+    return [ordered]@{status=$OnboardingPart.status;pid=$OnboardingPart.pid;created=$OnboardingPart.created}
+}
+function Get-OnboardingImmutablePart($OnboardingPart) {
+    $OnboardingImmutable=[ordered]@{}
+    foreach($OnboardingKey in @($OnboardingPart.Keys)) { if($OnboardingKey -notin @('status','pid','created')) { $OnboardingImmutable[$OnboardingKey]=$OnboardingPart[$OnboardingKey] } }
+    return $OnboardingImmutable
+}
+function Assert-OnboardingLifecycleTransition($OnboardingManifest,$OnboardingJournal) {
+    $OnboardingT=$OnboardingJournal.transition
+    if (-not $OnboardingT -or $OnboardingT.version -ne 1 -or $OnboardingT.operation -notin @('start','stop') -or
+        @($OnboardingT.Keys).Count -ne 4 -or @($OnboardingT.records.Keys).Count -ne 5) { throw 'Invalid lifecycle transition record' }
+    $OnboardingPrior=$OnboardingT.prior
+    if ($OnboardingPrior.state -notin @('running','failed','stopped') -or ($OnboardingT.operation -eq 'start' -and $OnboardingPrior.state -ne 'stopped')) { throw 'Invalid lifecycle transition origin' }
+    $OnboardingStates=if($OnboardingT.operation -eq 'start'){@('starting','stopping','failed','running','stopped')}else{@('stopping','failed','stopped')}
+    if ($OnboardingJournal.state -notin $OnboardingStates) { throw 'Invalid lifecycle transition state' }
+    if ($OnboardingJournal.stage -notin @('complete','mysql-start','mysqlMigration-start','storage-start','paas-start','portal-start','mysql-identity','mysqlMigration-identity')) { throw 'Invalid lifecycle transition stage' }
+    foreach($OnboardingKey in @($OnboardingPrior.Keys)) {
+        if ($OnboardingKey -notin @('state','mysql','mysqlMigration','storage','paas','portal','lifecycleValidation')) {
+            if ((ConvertTo-OnboardingCanonicalJson $OnboardingPrior[$OnboardingKey]) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingManifest[$OnboardingKey])) { throw 'Lifecycle manifest identity differs' }
+        }
+    }
+    foreach($OnboardingKey in @('ownerId','runtimeRoot','sourceCommit','schemaVersion','tools')) {
+        if ((ConvertTo-OnboardingCanonicalJson $OnboardingPrior[$OnboardingKey]) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingJournal[$OnboardingKey])) { throw 'Lifecycle journal identity differs' }
+    }
+    foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+        $OnboardingBase=$OnboardingPrior[$OnboardingName]
+        $OnboardingPart=$OnboardingJournal.components[$OnboardingName]
+        $OnboardingImmutable=ConvertTo-OnboardingCanonicalJson (Get-OnboardingImmutablePart $OnboardingBase)
+        if ($OnboardingImmutable -cne (ConvertTo-OnboardingCanonicalJson (Get-OnboardingImmutablePart $OnboardingPart)) -or
+            $OnboardingImmutable -cne (ConvertTo-OnboardingCanonicalJson (Get-OnboardingImmutablePart $OnboardingManifest[$OnboardingName]))) { throw 'Lifecycle component immutable identity differs' }
+        $OnboardingRecords=@($OnboardingT.records[$OnboardingName])
+        if ($OnboardingRecords.Count -lt 1 -or $OnboardingRecords.Count -gt 6 -or
+            (ConvertTo-OnboardingCanonicalJson $OnboardingRecords[0]) -cne (ConvertTo-OnboardingCanonicalJson (Get-OnboardingLifecycleIdentity $OnboardingBase)) -or
+            (ConvertTo-OnboardingCanonicalJson $OnboardingRecords[-1]) -cne (ConvertTo-OnboardingCanonicalJson (Get-OnboardingLifecycleIdentity $OnboardingPart))) { throw 'Lifecycle recorded identity differs' }
+        for($OnboardingIndex=0;$OnboardingIndex -lt $OnboardingRecords.Count;$OnboardingIndex++) {
+            $OnboardingNext=$OnboardingRecords[$OnboardingIndex]
+            if (@($OnboardingNext.Keys).Count -ne 3 -or $OnboardingNext.status -notin @('intent','starting','running','stopped')) { throw 'Invalid lifecycle component status' }
+            if ($OnboardingNext.status -eq 'intent') {
+                if ($OnboardingNext.pid -ne 0 -or $null -ne $OnboardingNext.created) { throw 'Invalid lifecycle launch intent' }
+            } else {
+                $OnboardingParsed=[datetime]::MinValue
+                if ($OnboardingNext.pid -lt 1 -or -not $OnboardingNext.created -or -not ([datetime]::TryParse([string]$OnboardingNext.created,[ref]$OnboardingParsed))) { throw 'Invalid lifecycle process identity' }
+            }
+            if ($OnboardingIndex -eq 0) { continue }
+            $OnboardingPrevious=$OnboardingRecords[$OnboardingIndex-1]
+            $OnboardingSame=($OnboardingPrevious.pid -eq $OnboardingNext.pid -and $OnboardingPrevious.created -ceq $OnboardingNext.created)
+            $OnboardingAllowed=($OnboardingPrevious.status -in @('running','starting') -and $OnboardingNext.status -eq 'stopped' -and $OnboardingSame)
+            if ($OnboardingT.operation -eq 'start') {
+                $OnboardingAllowed=$OnboardingAllowed -or ($OnboardingPrevious.status -eq 'stopped' -and $OnboardingNext.status -eq 'intent') -or
+                    ($OnboardingPrevious.status -eq 'intent' -and $OnboardingNext.status -eq 'starting') -or
+                    ($OnboardingPrevious.status -eq 'starting' -and $OnboardingNext.status -eq 'running' -and $OnboardingSame)
+            }
+            if (-not $OnboardingAllowed) { throw 'Unrecorded lifecycle identity substitution' }
+        }
+        if ($OnboardingJournal.state -eq 'stopped' -and $OnboardingPart.status -ne 'stopped') { throw 'Stopped transition has unresolved child' }
+        if ($OnboardingJournal.state -eq 'running' -and $OnboardingPart.status -ne 'running') { throw 'Running transition has unresolved child' }
+    }
+    # The manifest is either the exact pre-operation snapshot, or the terminal
+    # projection already written by Save-OnboardingLifecycleState. No midpoint
+    # or unrelated component identity may be supplied as a recovery baseline.
+    if ((ConvertTo-OnboardingCanonicalJson $OnboardingManifest) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingPrior)) {
+        if ($OnboardingManifest.state -notin @('running','failed','stopped')) { throw 'Invalid lifecycle manifest terminal state' }
+        foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+            if ((ConvertTo-OnboardingCanonicalJson $OnboardingManifest[$OnboardingName]) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingJournal.components[$OnboardingName])) { throw 'Lifecycle manifest is not a recorded snapshot' }
+        }
+        if ($OnboardingManifest.state -ne $OnboardingJournal.state) { throw 'Lifecycle terminal state differs' }
+    }
+}
+function Begin-OnboardingLifecycle($OnboardingContext,[string]$OnboardingOperation) {
+    if ($OnboardingContext.RecoveringLifecycle) { return }
+    $OnboardingRecords=[ordered]@{}
+    foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) { $OnboardingRecords[$OnboardingName]=@(Get-OnboardingLifecycleIdentity $OnboardingContext.Journal.components[$OnboardingName]) }
+    $OnboardingPrior=ConvertTo-OnboardingMap (($OnboardingContext.Manifest|ConvertTo-Json -Depth 24)|ConvertFrom-Json)
+    $OnboardingContext.Journal.transition=[ordered]@{version=1;operation=$OnboardingOperation;prior=$OnboardingPrior;records=$OnboardingRecords}
+}
+function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$OnboardingExpectedOwner,[switch]$AllowStopped,[switch]$AllowStaleRunning,[switch]$RecoverLifecycle) {
     $ErrorActionPreference='Stop'
     if ($OnboardingExpectedOwner -cnotmatch '\A[0-9a-f]{32}\z' -or $OnboardingExpectedOwner -ceq ('0'*32)) { throw 'Explicit owner required' }
     $OnboardingProject=Get-OnboardingProjectRoot
@@ -244,12 +342,23 @@ function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$O
     $OnboardingJournalPath=Join-Path $OnboardingRoot 'journal.json'
     Assert-OnboardingPathChain $OnboardingJournalPath; Assert-OnboardingPrivateParent $OnboardingJournalPath
     $OnboardingJournal=ConvertTo-OnboardingMap ([IO.File]::ReadAllText($OnboardingJournalPath)|ConvertFrom-Json -ErrorAction Stop)
-    if ($OnboardingJournal.ownerId -cne $OnboardingExpectedOwner -or $OnboardingJournal.sourceCommit -cne $OnboardingManifest.sourceCommit -or $OnboardingJournal.schemaVersion -cne '007' -or $OnboardingJournal.state -ne $OnboardingManifest.state) { throw 'Journal deployment identity differs' }
+    if ($RecoverLifecycle -and (-not $AllowStopped -or -not $AllowStaleRunning)) { throw 'Recovery requires explicit stopped/stale validation' }
+    $OnboardingRecovering=$false
+    if ($RecoverLifecycle -and $OnboardingJournal.transition) {
+        Assert-OnboardingLifecycleTransition $OnboardingManifest $OnboardingJournal
+        $OnboardingRecovering=($OnboardingJournal.state -ne $OnboardingManifest.state)
+        foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+            if ((ConvertTo-OnboardingCanonicalJson $OnboardingManifest[$OnboardingName]) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingJournal.components[$OnboardingName])) { $OnboardingRecovering=$true }
+        }
+    }
+    if ($OnboardingJournal.ownerId -cne $OnboardingExpectedOwner -or $OnboardingJournal.runtimeRoot -cne $OnboardingRoot -or $OnboardingJournal.sourceCommit -cne $OnboardingManifest.sourceCommit -or $OnboardingJournal.schemaVersion -cne '007' -or
+        (ConvertTo-OnboardingCanonicalJson $OnboardingJournal.tools) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingManifest.tools) -or
+        (-not $OnboardingRecovering -and $OnboardingJournal.state -ne $OnboardingManifest.state)) { throw 'Journal deployment identity differs' }
     $OnboardingOptions=@{NewRunId=$OnboardingExpectedOwner;MySqlBin=(Split-Path $OnboardingManifest.mysql.clientExecutable -Parent)}
     foreach($OnboardingTool in @('JavaHome','TomcatHome','WildFlyHome','MinioExecutable','MinioClientExecutable','MavenExecutable','ConnectorJar')) {
         if ($OnboardingManifest.tools.host.$OnboardingTool) { $OnboardingOptions[$OnboardingTool]=$OnboardingManifest.tools.host.$OnboardingTool }
     }
-    $OnboardingContext=@{Root=$OnboardingRoot;Options=$OnboardingOptions;Journal=$OnboardingJournal;Manifest=$OnboardingManifest;Ports=@{}}
+    $OnboardingContext=@{Root=$OnboardingRoot;Options=$OnboardingOptions;Journal=$OnboardingJournal;Manifest=$OnboardingManifest;Ports=@{};RecoveringLifecycle=$OnboardingRecovering}
     foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
         $OnboardingContext.Ports[$OnboardingName]=[int]$OnboardingJournal.components[$OnboardingName].port
         $OnboardingExtra=@($OnboardingJournal.components[$OnboardingName].extraPorts)
@@ -259,10 +368,11 @@ function Read-OnboardingFixtureContext([string]$OnboardingFixturePath,[string]$O
     foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
         $OnboardingPart=$OnboardingManifest[$OnboardingName]
         $OnboardingJournalPart=$OnboardingJournal.components[$OnboardingName]
-        foreach($OnboardingField in @('pid','created','executable','dataDirectory','port','status','serverUuid')) { if ([string]$OnboardingPart[$OnboardingField] -cne [string]$OnboardingJournalPart[$OnboardingField]) { throw 'Manifest/journal component identity differs' } }
+        if (-not $OnboardingRecovering -and (ConvertTo-OnboardingCanonicalJson $OnboardingPart) -cne (ConvertTo-OnboardingCanonicalJson $OnboardingJournalPart)) { throw 'Manifest/journal component identity differs' }
+        if ($OnboardingRecovering) { $OnboardingPart=$OnboardingJournalPart }
         if ($OnboardingPart.status -eq 'running') { }
         elseif ($OnboardingPart.status -eq 'stopped' -and $AllowStopped) { }
-        elseif ($OnboardingPart.status -in @('starting','intent') -and $AllowStopped -and $OnboardingManifest.state -eq 'failed') { }
+        elseif ($OnboardingPart.status -in @('starting','intent') -and $AllowStopped -and ($OnboardingManifest.state -eq 'failed' -or $OnboardingRecovering)) { }
         else { throw 'Fixture component is not running' }
         foreach($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) {
             if (-not $OnboardingPort -or $OnboardingPort -in @(3318,8180,8188,10090) -or -not $OnboardingUsed.Add([int]$OnboardingPort)) { throw 'Fixture ports overlap or are protected' }
@@ -346,6 +456,28 @@ function Set-OnboardingRuntimeEnvironment($OnboardingContext) {
     $env:COURSE_S3_SECRET_KEY=$OnboardingCredentials.storageAppSecret
     $env:MEDICAL_COURSE_JWT_SECRET=$OnboardingCredentials.jwtSecret
     $env:MEDICAL_COURSE_PAAS_URL='http://127.0.0.1:'+$OnboardingContext.Ports.paas+'/paas/api'
+}
+function Save-OnboardingEnvironment {
+    # Include absent names as well as all inherited names in the namespaces we
+    # sanitize. Every environment write in create/start/stop is covered here.
+    $OnboardingNames=@('TEMP','TMP','JAVA_HOME','JBOSS_HOME','NOPAUSE','JAVA_OPTS','JAVA_TOOL_OPTIONS','_JAVA_OPTIONS','JDK_JAVA_OPTIONS','MAVEN_OPTS','MAVEN_ARGS','MYSQL_PWD',
+        'HTTP_PROXY','HTTPS_PROXY','NO_PROXY','ALL_PROXY','http_proxy','https_proxy','no_proxy','all_proxy',
+        'MEDICAL_COURSE_DB_USER','MEDICAL_COURSE_DB_PASSWORD','MEDICAL_COURSE_JWT_SECRET','MEDICAL_COURSE_PAAS_URL',
+        'MINIO_ROOT_USER','MINIO_ROOT_PASSWORD','MINIO_BROWSER','MINIO_UPDATE','MC_CONFIG_DIR','MC_HOST_onboarding_fixture',
+        'COURSE_ATTACHMENTS_ENABLED','COURSE_ATTACHMENTS_TEMP_DIR','COURSE_ATTACHMENTS_DOWNLOAD_ORIGINS',
+        'COURSE_S3_INTERNAL_ENDPOINT','COURSE_S3_PUBLIC_ENDPOINT','COURSE_S3_REGION','COURSE_S3_BUCKET','COURSE_S3_PREFIX','COURSE_S3_ACCESS_KEY','COURSE_S3_SECRET_KEY')+
+        @([Environment]::GetEnvironmentVariables('Process').Keys|Where-Object{$_ -match '^(COURSE_|MEDICAL_|MINIO_|MC_)'})
+    $OnboardingSaved=@{}
+    foreach($OnboardingName in @($OnboardingNames|Select-Object -Unique)) { $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process') }
+    return $OnboardingSaved
+}
+function Set-OnboardingIsolatedEnvironment($OnboardingSaved,[string]$OnboardingRoot,$OnboardingOptions) {
+    foreach($OnboardingName in $OnboardingSaved.Keys) { [Environment]::SetEnvironmentVariable($OnboardingName,$null,'Process') }
+    $OnboardingTemp=Join-Path $OnboardingRoot 'temp'
+    Assert-OnboardingPathChain $OnboardingTemp
+    [IO.Directory]::CreateDirectory($OnboardingTemp)|Out-Null
+    $env:TEMP=$OnboardingTemp; $env:TMP=$OnboardingTemp; $env:JAVA_HOME=$OnboardingOptions.JavaHome
+    $env:MAVEN_OPTS='-Djava.io.tmpdir="'+$OnboardingTemp+'"'
 }
 function New-OnboardingRandomToken {
     $OnboardingBytes=New-Object byte[] 32
@@ -649,30 +781,41 @@ function Save-OnboardingLifecycleState($OnboardingContext,[string]$OnboardingSta
     $OnboardingContext.Manifest=ConvertTo-OnboardingMap ($OnboardingManifest|ConvertTo-Json -Depth 16|ConvertFrom-Json)
 }
 function Stop-OnboardingFixture([hashtable]$OnboardingOptions) {
-    $OnboardingContext=Read-OnboardingFixtureContext (Join-Path $OnboardingOptions.RuntimeRoot 'fixture.json') $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning
-    if ($OnboardingContext.Manifest.state -eq 'stopped') { return }
+    $OnboardingContext=Read-OnboardingFixtureContext (Join-Path $OnboardingOptions.RuntimeRoot 'fixture.json') $OnboardingOptions.NewRunId -AllowStopped -AllowStaleRunning -RecoverLifecycle
     $OnboardingCredentials=ConvertTo-OnboardingMap ([IO.File]::ReadAllText((Join-Path $OnboardingContext.Root 'credentials.json'))|ConvertFrom-Json -ErrorAction Stop)
-    $OnboardingSaved=@{}
-    foreach($OnboardingName in @('MC_CONFIG_DIR','MC_HOST_onboarding_fixture','JAVA_HOME','JBOSS_HOME','NOPAUSE')) { $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process') }
+    $OnboardingSaved=Save-OnboardingEnvironment
     try {
-        if ($OnboardingContext.Options.JavaHome) { $env:JAVA_HOME=$OnboardingContext.Options.JavaHome }
-        if ($OnboardingContext.Options.WildFlyHome) { $env:JBOSS_HOME=$OnboardingContext.Options.WildFlyHome }
-        $env:NOPAUSE='1'
-        # Reconcile components already gone (for example after a reboot) before writing a stopping state.
+        # Validate every recorded child before any lifecycle write or shutdown.
+        # An intent has no recorded launch result and cannot prove absence.
+        $OnboardingGone=@()
         foreach($OnboardingName in @('portal','paas','storage','mysqlMigration','mysql')) {
             $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingName]
-            if ($OnboardingPart.status -ne 'running') { continue }
-            if (Get-Process -Id $OnboardingPart.pid -ErrorAction SilentlyContinue) { continue }
-            foreach($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) {
-                if ($OnboardingPort -and @(Get-OnboardingListeners $OnboardingPort).Count) { throw ('Unexpected listener without recorded process: '+$OnboardingName) }
+            if ($OnboardingPart.status -eq 'intent') { throw ('Unknown launch outcome retained: '+$OnboardingName) }
+            if ($OnboardingPart.status -notin @('running','starting','stopped') -or $OnboardingPart.pid -lt 1) { throw 'Unrecognized recorded lifecycle identity' }
+            if (@(Get-OnboardingProcess $OnboardingPart.pid|Where-Object{$null -ne $_}).Count) {
+                Assert-OnboardingIdentity $OnboardingContext $OnboardingName -OnboardingStarting
+                if ($OnboardingPart.status -eq 'stopped') { throw ('Recorded stopped process remains alive: '+$OnboardingName) }
+                # Graceful stop requires every recorded listener. A child that
+                # has not bound them stays tracked; no force kill is attempted.
+                Assert-OnboardingIdentity $OnboardingContext $OnboardingName
+            } else {
+                foreach($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) {
+                    if ($OnboardingPort -and @(Get-OnboardingListeners $OnboardingPort).Count) { throw ('Unexpected listener without recorded process: '+$OnboardingName) }
+                }
+                $OnboardingGone+= $OnboardingName
             }
-            $OnboardingPart.status='stopped'
         }
+        if ($OnboardingContext.Manifest.state -eq 'stopped' -and -not $OnboardingContext.RecoveringLifecycle) { return }
+        Begin-OnboardingLifecycle $OnboardingContext 'stop'
+        Set-OnboardingIsolatedEnvironment $OnboardingSaved $OnboardingContext.Root $OnboardingContext.Options
+        if ($OnboardingContext.Options.WildFlyHome) { $env:JBOSS_HOME=$OnboardingContext.Options.WildFlyHome }
+        $env:NOPAUSE='1'
+        foreach($OnboardingName in $OnboardingGone) { $OnboardingContext.Journal.components[$OnboardingName].status='stopped' }
         $OnboardingContext.Journal.state='stopping'
         Save-OnboardingJournal $OnboardingContext
         foreach($OnboardingName in @('portal','paas','storage','mysqlMigration','mysql')) {
             $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingName]
-            if ($OnboardingPart.status -ne 'running') { continue }
+            if ($OnboardingPart.status -eq 'stopped') { continue }
             Assert-OnboardingIdentity $OnboardingContext $OnboardingName
             if ($OnboardingName -eq 'portal') {
                 $OnboardingTomcat=Join-Path $OnboardingContext.Options.TomcatHome 'bin'
@@ -695,6 +838,7 @@ function Stop-OnboardingFixture([hashtable]$OnboardingOptions) {
             try { Save-OnboardingJournal $OnboardingContext } catch { }
         }
         foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+            if (@(Get-OnboardingProcess $OnboardingContext.Journal.components[$OnboardingName].pid|Where-Object{$null -ne $_}).Count) { throw ('Recorded process remains alive after stop: '+$OnboardingName) }
             foreach($OnboardingPort in @($OnboardingContext.Journal.components[$OnboardingName].port)+@($OnboardingContext.Journal.components[$OnboardingName].extraPorts)) {
                 if ($OnboardingPort -and @(Get-OnboardingListeners $OnboardingPort).Count) { throw ('Listener still bound after stop: '+$OnboardingName) }
             }
@@ -715,10 +859,17 @@ function Start-OnboardingFixture([hashtable]$OnboardingOptions) {
         if (-not (Test-Path -LiteralPath $OnboardingPath -PathType Leaf)) { throw ('Restart artifact missing: '+$OnboardingPath) }
     }
     $OnboardingCredentials=ConvertTo-OnboardingMap ([IO.File]::ReadAllText((Join-Path $OnboardingContext.Root 'credentials.json'))|ConvertFrom-Json -ErrorAction Stop)
-    $OnboardingSaved=@{}
-    foreach($OnboardingName in @([Environment]::GetEnvironmentVariables('Process').Keys|Where-Object{$_ -match '^(COURSE_|MEDICAL_|MINIO_|MC_)'})) { $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process') }
+    # A stopped label alone cannot authorize replacement of a recorded child.
+    foreach($OnboardingName in @('mysql','mysqlMigration','storage','paas','portal')) {
+        $OnboardingPart=$OnboardingContext.Journal.components[$OnboardingName]
+        if ($OnboardingPart.status -ne 'stopped' -or @(Get-OnboardingProcess $OnboardingPart.pid|Where-Object{$null -ne $_}).Count) { throw 'Start requires every recorded child to be absent and stopped' }
+        foreach($OnboardingPort in @($OnboardingPart.port)+@($OnboardingPart.extraPorts)) { if($OnboardingPort -and @(Get-OnboardingListeners $OnboardingPort).Count) { throw 'Start requires every owned port to be free' } }
+    }
+    $OnboardingSaved=Save-OnboardingEnvironment
     try {
+        Set-OnboardingIsolatedEnvironment $OnboardingSaved $OnboardingContext.Root $OnboardingContext.Options
         Set-OnboardingRuntimeEnvironment $OnboardingContext
+        Begin-OnboardingLifecycle $OnboardingContext 'start'
         $OnboardingContext.Journal.state='starting'
         Save-OnboardingJournal $OnboardingContext
         foreach($OnboardingName in @('mysql','mysqlMigration')) {
@@ -727,8 +878,9 @@ function Start-OnboardingFixture([hashtable]$OnboardingOptions) {
         }
         $OnboardingStorage=$OnboardingContext.Journal.components.storage
         $env:MINIO_ROOT_USER=$OnboardingCredentials.storageRootKey; $env:MINIO_ROOT_PASSWORD=$OnboardingCredentials.storageRootSecret
-        Start-OnboardingComponent $OnboardingContext 'storage' $OnboardingStorage.executable @($OnboardingStorage.arguments) $OnboardingStorage.dataDirectory ([int]$OnboardingStorage.port) @($OnboardingStorage.extraPorts)
-        $env:MINIO_ROOT_USER=$null; $env:MINIO_ROOT_PASSWORD=$null
+        $env:MINIO_BROWSER='on'; $env:MINIO_UPDATE='off'
+        try { Start-OnboardingComponent $OnboardingContext 'storage' $OnboardingStorage.executable @($OnboardingStorage.arguments) $OnboardingStorage.dataDirectory ([int]$OnboardingStorage.port) @($OnboardingStorage.extraPorts) }
+        finally { $env:MINIO_ROOT_USER=$null; $env:MINIO_ROOT_PASSWORD=$null }
         $OnboardingPaas=$OnboardingContext.Journal.components.paas
         foreach($OnboardingMarker in @('paas.war.deployed','paas.war.failed','paas.war.isdeploying','paas.war.undeployed')) { $OnboardingMarkerPath=Join-Path $OnboardingPaas.dataDirectory ('deployments/'+$OnboardingMarker); if (Test-Path -LiteralPath $OnboardingMarkerPath) { [IO.File]::Delete($OnboardingMarkerPath) } }
         Start-OnboardingComponent $OnboardingContext 'paas' $OnboardingPaas.executable @($OnboardingPaas.arguments) $OnboardingPaas.dataDirectory ([int]$OnboardingPaas.port) @($OnboardingPaas.extraPorts)
@@ -761,28 +913,25 @@ function Start-OnboardingFixture([hashtable]$OnboardingOptions) {
 function New-OnboardingFixture([hashtable]$OnboardingOptions) {
     $ErrorActionPreference='Stop'
     $OnboardingRoot=Assert-OnboardingNewRuntime $OnboardingOptions
-    Assert-OnboardingToolchain $OnboardingOptions
     $OnboardingBuildParent=Join-Path $OnboardingOptions.ProjectRoot '.local/builds'
     Assert-OnboardingPathChain $OnboardingBuildParent
     if (-not (Test-Path -LiteralPath $OnboardingBuildParent)) { throw 'Build parent missing' }
     Assert-OnboardingPrivateParent $OnboardingBuildParent
     $OnboardingSnapshot=Join-Path $OnboardingBuildParent ('hob-'+$OnboardingOptions.NewRunId.Substring(0,12))
     if (Test-Path -LiteralPath $OnboardingSnapshot) { throw 'Snapshot already exists' }
-    $OnboardingContext=@{Options=$OnboardingOptions;Root=$OnboardingRoot;Snapshot=$OnboardingSnapshot;Journal=[ordered]@{ownerId=$OnboardingOptions.NewRunId;runtimeRoot=$OnboardingRoot;sourceCommit=$OnboardingOptions.SourceCommit;state='intent';stage='preflight';components=[ordered]@{};nativeExits=@()}}
-    [IO.Directory]::CreateDirectory($OnboardingRoot)|Out-Null
-    Set-OnboardingPrivateAcl $OnboardingRoot
-    Write-OnboardingPrivate (Join-Path $OnboardingRoot 'owner.id') $OnboardingOptions.NewRunId
-    Save-OnboardingJournal $OnboardingContext
-    $OnboardingSaved=@{}
-    $OnboardingEnvNames=@('TEMP','TMP','JAVA_HOME','JAVA_TOOL_OPTIONS','_JAVA_OPTIONS','JDK_JAVA_OPTIONS','MAVEN_OPTS','MAVEN_ARGS','MYSQL_PWD','MEDICAL_COURSE_DB_USER','MEDICAL_COURSE_DB_PASSWORD','MINIO_ROOT_USER','MINIO_ROOT_PASSWORD','MINIO_BROWSER','MINIO_UPDATE','MC_CONFIG_DIR','MC_HOST_onboarding_fixture','MEDICAL_COURSE_PAAS_URL')+@([Environment]::GetEnvironmentVariables('Process').Keys|Where-Object{$_ -match '^(COURSE_|MEDICAL_|MC_HOST_|MINIO_)'})+@('COURSE_ATTACHMENTS_ENABLED','COURSE_ATTACHMENTS_TEMP_DIR','COURSE_S3_INTERNAL_ENDPOINT','COURSE_S3_PUBLIC_ENDPOINT','COURSE_S3_REGION','COURSE_S3_BUCKET','COURSE_S3_ACCESS_KEY','COURSE_S3_SECRET_KEY','COURSE_S3_PREFIX')
-    foreach ($OnboardingName in @($OnboardingEnvNames|Select-Object -Unique)) {
-        $OnboardingSaved[$OnboardingName]=[Environment]::GetEnvironmentVariable($OnboardingName,'Process')
-        [Environment]::SetEnvironmentVariable($OnboardingName,$null,'Process')
-    }
+    $OnboardingSaved=Save-OnboardingEnvironment
+    $OnboardingContext=$null
     try {
-        $OnboardingTemp=Join-Path $OnboardingRoot 'temp'; [IO.Directory]::CreateDirectory($OnboardingTemp)|Out-Null
-        $env:TEMP=$OnboardingTemp; $env:TMP=$OnboardingTemp; $env:JAVA_HOME=$OnboardingOptions.JavaHome
-        $env:MAVEN_OPTS='-Djava.io.tmpdir="'+$OnboardingTemp+'"'
+        # Tool preflight also inherits a sanitized environment, before the runtime
+        # exists. Its unique temporary directory remains under the project builds.
+        Set-OnboardingIsolatedEnvironment $OnboardingSaved (Join-Path $OnboardingBuildParent ('hob-preflight-'+$OnboardingOptions.NewRunId)) $OnboardingOptions
+        Assert-OnboardingToolchain $OnboardingOptions
+        $OnboardingContext=@{Options=$OnboardingOptions;Root=$OnboardingRoot;Snapshot=$OnboardingSnapshot;Journal=[ordered]@{ownerId=$OnboardingOptions.NewRunId;runtimeRoot=$OnboardingRoot;sourceCommit=$OnboardingOptions.SourceCommit;state='intent';stage='preflight';components=[ordered]@{};nativeExits=@()}}
+        [IO.Directory]::CreateDirectory($OnboardingRoot)|Out-Null
+        Set-OnboardingPrivateAcl $OnboardingRoot
+        Write-OnboardingPrivate (Join-Path $OnboardingRoot 'owner.id') $OnboardingOptions.NewRunId
+        Save-OnboardingJournal $OnboardingContext
+        Set-OnboardingIsolatedEnvironment $OnboardingSaved $OnboardingRoot $OnboardingOptions
         $OnboardingCommit=Invoke-OnboardingChecked 'git.exe' @('-C',$OnboardingOptions.SourceRoot,'rev-parse','--verify',($OnboardingOptions.SourceCommit+'^{commit}')) $OnboardingRoot $null 'source-identity'
         if ($OnboardingCommit.Trim() -cne $OnboardingOptions.SourceCommit) { throw 'Fixed source identity mismatch' }
         $OnboardingZip=Join-Path $OnboardingRoot 'source.zip'
@@ -800,6 +949,7 @@ function New-OnboardingFixture([hashtable]$OnboardingOptions) {
         Invoke-OnboardingBootstrap $OnboardingContext
         return (Join-Path $OnboardingRoot 'fixture.json')
     } catch {
+        if (-not $OnboardingContext) { throw 'Onboarding toolchain preflight stopped before runtime creation' }
         $OnboardingContext.Journal.state='failed'
         try { Write-OnboardingPrivate (Join-Path $OnboardingRoot 'failure.txt') ($_.Exception.ToString()) } catch { }
         try { Save-OnboardingJournal $OnboardingContext } catch { }
