@@ -1,0 +1,2083 @@
+openapi: 3.0.3
+info:
+  title: Medical Cloud Course API
+  version: "1.0.0"
+  description: >-
+    Machine-readable contract for the course PaaS (JAX-RS/WildFly). All examples are fictional;
+    no token, password, JWT, clinical text or signed URL is embedded. Business error codes follow
+    ApiFailureMapper: UNAUTHORIZED (401), FORBIDDEN (403), BAD_REQUEST (400), CONFLICT (409).
+servers:
+  - url: http://127.0.0.1:8080/paas/api
+tags:
+  - name: auth
+  - name: catalog
+  - name: patient
+  - name: doctor
+  - name: hospital-admin
+  - name: platform-admin
+  - name: files
+security:
+  - BearerAuth: []
+paths:
+  "/auth/login":
+    post:
+      tags: [auth]
+      summary: "AuthResource.login"
+      description: "Returns ApiResponse<LoginResponse> (audited; X-Request-ID returned)"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/auth/register":
+    post:
+      tags: [auth]
+      summary: "AuthResource.register"
+      description: "Returns ApiResponse<RegisterResponse>"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/catalog/departments":
+    get:
+      tags: [catalog]
+      summary: "CatalogResource.departments"
+      description: "Returns ApiResponse<List<CatalogOption>>"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/catalog/doctors":
+    get:
+      tags: [catalog]
+      summary: "CatalogResource.doctors"
+      description: "Returns ApiResponse<List<CatalogOption>>"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/catalog/hospitals":
+    get:
+      tags: [catalog]
+      summary: "CatalogResource.hospitals"
+      description: "Returns ApiResponse<List<CatalogOption>>"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/catalog/slots":
+    get:
+      tags: [catalog]
+      summary: "CatalogResource.slots"
+      description: "Returns ApiResponse<SlotPage>"
+      security: []
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments":
+    get:
+      tags: [doctor]
+      summary: "AppointmentResource.forDoctor"
+      description: "Returns ApiResponse<AppointmentPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments/{id}/clinical-workspace":
+    get:
+      tags: [doctor]
+      summary: "ClinicalSupplementResource.workspace"
+      description: "Returns ApiResponse<ClinicalWorkspaceView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments/{id}/complete":
+    post:
+      tags: [doctor]
+      summary: "ClinicalResource.complete"
+      description: "Returns ApiResponse<ClinicalRecordView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments/{id}/draft":
+    put:
+      tags: [doctor]
+      summary: "ClinicalSupplementResource.saveDraft"
+      description: "Returns ApiResponse<ClinicalDraftView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments/{id}/files":
+    get:
+      tags: [doctor]
+      summary: "AttachmentResource.listDoctorFiles"
+      description: "Returns Response"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/appointments/{id}/start":
+    post:
+      tags: [doctor]
+      summary: "ClinicalResource.start"
+      description: "Returns ApiResponse<String> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/context":
+    get:
+      tags: [doctor]
+      summary: "TenantContextResource.doctor"
+      description: "Returns ApiResponse<TenantContextView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/profile":
+    get:
+      tags: [doctor]
+      summary: "DoctorProfileResource.profile"
+      description: "Returns ApiResponse<DoctorProfileView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/profile":
+    put:
+      tags: [doctor]
+      summary: "DoctorProfileResource.update"
+      description: "Returns ApiResponse<DoctorProfileView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/records":
+    get:
+      tags: [doctor]
+      summary: "ClinicalResource.records"
+      description: "Returns ApiResponse<ClinicalRecordPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/records/{id}":
+    get:
+      tags: [doctor]
+      summary: "ClinicalSupplementResource.doctorDetails"
+      description: "Returns ApiResponse<ClinicalRecordDetailsView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/records/{id}/corrections":
+    get:
+      tags: [doctor]
+      summary: "ClinicalSupplementResource.doctorCorrections"
+      description: "Returns ApiResponse<RecordCorrectionPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/records/{id}/corrections":
+    post:
+      tags: [doctor]
+      summary: "ClinicalSupplementResource.appendCorrection"
+      description: "Returns ApiResponse<RecordCorrectionView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/doctor/records/{id}/files/uploads":
+    post:
+      tags: [doctor]
+      summary: "AttachmentResource.prepareDoctorUpload"
+      description: "Returns Response (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/files/uploads/{uploadId}":
+    get:
+      tags: [files]
+      summary: "AttachmentResource.uploadOperation"
+      description: "Returns Response"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/files/uploads/{uploadId}/content":
+    put:
+      tags: [files]
+      summary: "AttachmentResource.uploadContent"
+      description: "Returns Response (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/files/{fileId}/download-url":
+    post:
+      tags: [files]
+      summary: "AttachmentResource.downloadUrl"
+      description: "Returns Response (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/audit-events":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.auditEvents"
+      description: "Returns ApiResponse<AuditPage> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/context":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.context"
+      description: "Returns ApiResponse<TenantContextView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/departments":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.departments"
+      description: "Returns ApiResponse<DepartmentPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/departments":
+    post:
+      tags: [hospital-admin]
+      summary: "HospitalResource.createDepartment"
+      description: "Returns ApiResponse<DepartmentView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/departments/{id}":
+    put:
+      tags: [hospital-admin]
+      summary: "HospitalResource.updateDepartment"
+      description: "Returns ApiResponse<DepartmentView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/doctors":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.doctors"
+      description: "Returns ApiResponse<DoctorPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/doctors":
+    post:
+      tags: [hospital-admin]
+      summary: "HospitalResource.createDoctor"
+      description: "Returns ApiResponse<DoctorCreateResponse> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/doctors/{id}":
+    put:
+      tags: [hospital-admin]
+      summary: "HospitalResource.updateDoctor"
+      description: "Returns ApiResponse<DoctorView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/name":
+    put:
+      tags: [hospital-admin]
+      summary: "HospitalResource.rename"
+      description: "Returns ApiResponse<String> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/orders":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.orders"
+      description: "Returns ApiResponse<PaymentOrderPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/slots":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalSlotResource.list"
+      description: "Returns ApiResponse<SlotPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/slots":
+    post:
+      tags: [hospital-admin]
+      summary: "HospitalSlotResource.create"
+      description: "Returns ApiResponse<SlotView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/slots/{id}":
+    put:
+      tags: [hospital-admin]
+      summary: "HospitalSlotResource.update"
+      description: "Returns ApiResponse<SlotView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/hospital/statistics":
+    get:
+      tags: [hospital-admin]
+      summary: "HospitalResource.statistics"
+      description: "Returns ApiResponse<StatisticsReport>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments":
+    get:
+      tags: [patient]
+      summary: "AppointmentResource.forPatient"
+      description: "Returns ApiResponse<AppointmentHistoryPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments":
+    post:
+      tags: [patient]
+      summary: "AppointmentResource.book"
+      description: "Returns ApiResponse<AppointmentView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/cancel":
+    post:
+      tags: [patient]
+      summary: "AppointmentResource.cancel"
+      description: "Returns ApiResponse<AppointmentView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/complaint":
+    get:
+      tags: [patient]
+      summary: "ClinicalSupplementResource.complaint"
+      description: "Returns ApiResponse<PatientComplaintView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/complaint":
+    put:
+      tags: [patient]
+      summary: "ClinicalSupplementResource.updateComplaint"
+      description: "Returns ApiResponse<PatientComplaintView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/files":
+    get:
+      tags: [patient]
+      summary: "AttachmentResource.listPatientFiles"
+      description: "Returns Response"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/files/uploads":
+    post:
+      tags: [patient]
+      summary: "AttachmentResource.preparePatientUpload"
+      description: "Returns Response (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/order":
+    get:
+      tags: [patient]
+      summary: "PaymentResource.order"
+      description: "Returns ApiResponse<PaymentOrderView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/record":
+    get:
+      tags: [patient]
+      summary: "ClinicalResource.record"
+      description: "Returns ApiResponse<ClinicalRecordView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/record/corrections":
+    get:
+      tags: [patient]
+      summary: "ClinicalSupplementResource.patientCorrections"
+      description: "Returns ApiResponse<RecordCorrectionPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/appointments/{id}/record/details":
+    get:
+      tags: [patient]
+      summary: "ClinicalSupplementResource.patientDetails"
+      description: "Returns ApiResponse<ClinicalRecordDetailsView>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/files/{fileId}/delete":
+    post:
+      tags: [patient]
+      summary: "AttachmentResource.deletePatientFile"
+      description: "Returns Response (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/patient/orders/{id}/pay":
+    post:
+      tags: [patient]
+      summary: "PaymentResource.pay"
+      description: "Returns ApiResponse<PaymentOrderView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/audit-events":
+    get:
+      tags: [platform-admin]
+      summary: "AuditResource.platform"
+      description: "Returns ApiResponse<AuditPage> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/statistics":
+    get:
+      tags: [platform-admin]
+      summary: "StatisticsResource.platform"
+      description: "Returns ApiResponse<StatisticsReport>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants":
+    get:
+      tags: [platform-admin]
+      summary: "PlatformTenantResource.list"
+      description: "Returns ApiResponse<TenantPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants":
+    post:
+      tags: [platform-admin]
+      summary: "PlatformTenantResource.open"
+      description: "Returns ApiResponse<HospitalAdminCreationView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants/{id}/status":
+    put:
+      tags: [platform-admin]
+      summary: "PlatformTenantResource.changeStatus"
+      description: "Returns ApiResponse<TenantView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants/{tenantId}/administrators":
+    get:
+      tags: [platform-admin]
+      summary: "HospitalAdministratorResource.list"
+      description: "Returns ApiResponse<HospitalAdministratorPage>"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants/{tenantId}/administrators":
+    post:
+      tags: [platform-admin]
+      summary: "HospitalAdministratorResource.create"
+      description: "Returns ApiResponse<HospitalAdminCreationView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+  "/platform/tenants/{tenantId}/administrators/{adminId}/status":
+    put:
+      tags: [platform-admin]
+      summary: "HospitalAdministratorResource.changeStatus"
+      description: "Returns ApiResponse<HospitalAdministratorView> (audited; X-Request-ID returned)"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              schema: { type: string }
+              description: Server request id shared with the audit log
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiResponse" }
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        data: { type: object }
+    ApiError:
+      type: object
+      properties:
+        code: { type: string, example: "CONFLICT" }
+        message: { type: string }
+        requestId: { type: string, description: "Server request id for audit correlation" }
+    Page:
+      type: object
+      properties:
+        items: { type: array, items: { type: object } }
+        total: { type: integer, format: int64 }
+        page: { type: integer }
+        size: { type: integer }

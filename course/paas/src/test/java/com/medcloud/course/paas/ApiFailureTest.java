@@ -11,6 +11,8 @@ import javax.ws.rs.core.Response;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ApiFailureTest {
     @Test
@@ -100,5 +102,19 @@ class ApiFailureTest {
             ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(503, "OBJECT_STORE_UNAVAILABLE")));
         assertEquals(com.medcloud.course.contract.AuditReasonCode.UNAUTHORIZED,
             ApiFailureMapper.reasonFor(new com.medcloud.course.paas.attachment.AttachmentException(401, "UNAUTHORIZED")));
+    }
+
+    @Test
+    void internalErrorHidesNativeDiagnosticsButKeepsRequestId() {
+        Response response = new ApiFailureMapper().toResponse(
+                new RuntimeException("java.sql.SQLException: table 'patient' not found; password=secret"));
+        assertEquals(500, response.getStatus());
+        ApiError error = (ApiError) response.getEntity();
+        assertEquals("INTERNAL_ERROR", error.getCode());
+        assertEquals("Service temporarily unavailable", error.getMessage());
+        assertFalse(error.getMessage().contains("SQLException"));
+        assertFalse(error.getMessage().contains("password"));
+        assertNotNull(error.getRequestId());
+        assertTrue(error.getRequestId().matches("[0-9a-fA-F-]{36}"));
     }
 }

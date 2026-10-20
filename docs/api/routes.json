@@ -1,0 +1,582 @@
+[
+  {
+    "method": "POST",
+    "path": "/auth/login",
+    "class": "AuthResource",
+    "name": "login",
+    "returnType": "ApiResponse<LoginResponse>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/auth/register",
+    "class": "AuthResource",
+    "name": "register",
+    "returnType": "ApiResponse<RegisterResponse>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/catalog/departments",
+    "class": "CatalogResource",
+    "name": "departments",
+    "returnType": "ApiResponse<List<CatalogOption>>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/catalog/doctors",
+    "class": "CatalogResource",
+    "name": "doctors",
+    "returnType": "ApiResponse<List<CatalogOption>>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/catalog/hospitals",
+    "class": "CatalogResource",
+    "name": "hospitals",
+    "returnType": "ApiResponse<List<CatalogOption>>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/catalog/slots",
+    "class": "CatalogResource",
+    "name": "slots",
+    "returnType": "ApiResponse<SlotPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/appointments",
+    "class": "AppointmentResource",
+    "name": "forDoctor",
+    "returnType": "ApiResponse<AppointmentPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/appointments/{id}/clinical-workspace",
+    "class": "ClinicalSupplementResource",
+    "name": "workspace",
+    "returnType": "ApiResponse<ClinicalWorkspaceView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/doctor/appointments/{id}/complete",
+    "class": "ClinicalResource",
+    "name": "complete",
+    "returnType": "ApiResponse<ClinicalRecordView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/doctor/appointments/{id}/draft",
+    "class": "ClinicalSupplementResource",
+    "name": "saveDraft",
+    "returnType": "ApiResponse<ClinicalDraftView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/appointments/{id}/files",
+    "class": "AttachmentResource",
+    "name": "listDoctorFiles",
+    "returnType": "Response",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/doctor/appointments/{id}/start",
+    "class": "ClinicalResource",
+    "name": "start",
+    "returnType": "ApiResponse<String>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/context",
+    "class": "TenantContextResource",
+    "name": "doctor",
+    "returnType": "ApiResponse<TenantContextView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/profile",
+    "class": "DoctorProfileResource",
+    "name": "profile",
+    "returnType": "ApiResponse<DoctorProfileView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/doctor/profile",
+    "class": "DoctorProfileResource",
+    "name": "update",
+    "returnType": "ApiResponse<DoctorProfileView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/records",
+    "class": "ClinicalResource",
+    "name": "records",
+    "returnType": "ApiResponse<ClinicalRecordPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/records/{id}",
+    "class": "ClinicalSupplementResource",
+    "name": "doctorDetails",
+    "returnType": "ApiResponse<ClinicalRecordDetailsView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/doctor/records/{id}/corrections",
+    "class": "ClinicalSupplementResource",
+    "name": "doctorCorrections",
+    "returnType": "ApiResponse<RecordCorrectionPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/doctor/records/{id}/corrections",
+    "class": "ClinicalSupplementResource",
+    "name": "appendCorrection",
+    "returnType": "ApiResponse<RecordCorrectionView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/doctor/records/{id}/files/uploads",
+    "class": "AttachmentResource",
+    "name": "prepareDoctorUpload",
+    "returnType": "Response",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/files/uploads/{uploadId}",
+    "class": "AttachmentResource",
+    "name": "uploadOperation",
+    "returnType": "Response",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/files/uploads/{uploadId}/content",
+    "class": "AttachmentResource",
+    "name": "uploadContent",
+    "returnType": "Response",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/files/{fileId}/download-url",
+    "class": "AttachmentResource",
+    "name": "downloadUrl",
+    "returnType": "Response",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/audit-events",
+    "class": "HospitalResource",
+    "name": "auditEvents",
+    "returnType": "ApiResponse<AuditPage>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/context",
+    "class": "HospitalResource",
+    "name": "context",
+    "returnType": "ApiResponse<TenantContextView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/departments",
+    "class": "HospitalResource",
+    "name": "departments",
+    "returnType": "ApiResponse<DepartmentPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/hospital/departments",
+    "class": "HospitalResource",
+    "name": "createDepartment",
+    "returnType": "ApiResponse<DepartmentView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/hospital/departments/{id}",
+    "class": "HospitalResource",
+    "name": "updateDepartment",
+    "returnType": "ApiResponse<DepartmentView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/doctors",
+    "class": "HospitalResource",
+    "name": "doctors",
+    "returnType": "ApiResponse<DoctorPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/hospital/doctors",
+    "class": "HospitalResource",
+    "name": "createDoctor",
+    "returnType": "ApiResponse<DoctorCreateResponse>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/hospital/doctors/{id}",
+    "class": "HospitalResource",
+    "name": "updateDoctor",
+    "returnType": "ApiResponse<DoctorView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/hospital/name",
+    "class": "HospitalResource",
+    "name": "rename",
+    "returnType": "ApiResponse<String>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/orders",
+    "class": "HospitalResource",
+    "name": "orders",
+    "returnType": "ApiResponse<PaymentOrderPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/slots",
+    "class": "HospitalSlotResource",
+    "name": "list",
+    "returnType": "ApiResponse<SlotPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/hospital/slots",
+    "class": "HospitalSlotResource",
+    "name": "create",
+    "returnType": "ApiResponse<SlotView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/hospital/slots/{id}",
+    "class": "HospitalSlotResource",
+    "name": "update",
+    "returnType": "ApiResponse<SlotView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/hospital/statistics",
+    "class": "HospitalResource",
+    "name": "statistics",
+    "returnType": "ApiResponse<StatisticsReport>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments",
+    "class": "AppointmentResource",
+    "name": "forPatient",
+    "returnType": "ApiResponse<AppointmentHistoryPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/patient/appointments",
+    "class": "AppointmentResource",
+    "name": "book",
+    "returnType": "ApiResponse<AppointmentView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/patient/appointments/{id}/cancel",
+    "class": "AppointmentResource",
+    "name": "cancel",
+    "returnType": "ApiResponse<AppointmentView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/complaint",
+    "class": "ClinicalSupplementResource",
+    "name": "complaint",
+    "returnType": "ApiResponse<PatientComplaintView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/patient/appointments/{id}/complaint",
+    "class": "ClinicalSupplementResource",
+    "name": "updateComplaint",
+    "returnType": "ApiResponse<PatientComplaintView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/files",
+    "class": "AttachmentResource",
+    "name": "listPatientFiles",
+    "returnType": "Response",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/patient/appointments/{id}/files/uploads",
+    "class": "AttachmentResource",
+    "name": "preparePatientUpload",
+    "returnType": "Response",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/order",
+    "class": "PaymentResource",
+    "name": "order",
+    "returnType": "ApiResponse<PaymentOrderView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/record",
+    "class": "ClinicalResource",
+    "name": "record",
+    "returnType": "ApiResponse<ClinicalRecordView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/record/corrections",
+    "class": "ClinicalSupplementResource",
+    "name": "patientCorrections",
+    "returnType": "ApiResponse<RecordCorrectionPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/patient/appointments/{id}/record/details",
+    "class": "ClinicalSupplementResource",
+    "name": "patientDetails",
+    "returnType": "ApiResponse<ClinicalRecordDetailsView>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/patient/files/{fileId}/delete",
+    "class": "AttachmentResource",
+    "name": "deletePatientFile",
+    "returnType": "Response",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/patient/orders/{id}/pay",
+    "class": "PaymentResource",
+    "name": "pay",
+    "returnType": "ApiResponse<PaymentOrderView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/platform/audit-events",
+    "class": "AuditResource",
+    "name": "platform",
+    "returnType": "ApiResponse<AuditPage>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/platform/statistics",
+    "class": "StatisticsResource",
+    "name": "platform",
+    "returnType": "ApiResponse<StatisticsReport>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/platform/tenants",
+    "class": "PlatformTenantResource",
+    "name": "list",
+    "returnType": "ApiResponse<TenantPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/platform/tenants",
+    "class": "PlatformTenantResource",
+    "name": "open",
+    "returnType": "ApiResponse<HospitalAdminCreationView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/platform/tenants/{id}/status",
+    "class": "PlatformTenantResource",
+    "name": "changeStatus",
+    "returnType": "ApiResponse<TenantView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "GET",
+    "path": "/platform/tenants/{tenantId}/administrators",
+    "class": "HospitalAdministratorResource",
+    "name": "list",
+    "returnType": "ApiResponse<HospitalAdministratorPage>",
+    "auditTracked": false,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "POST",
+    "path": "/platform/tenants/{tenantId}/administrators",
+    "class": "HospitalAdministratorResource",
+    "name": "create",
+    "returnType": "ApiResponse<HospitalAdminCreationView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  },
+  {
+    "method": "PUT",
+    "path": "/platform/tenants/{tenantId}/administrators/{adminId}/status",
+    "class": "HospitalAdministratorResource",
+    "name": "changeStatus",
+    "returnType": "ApiResponse<HospitalAdministratorView>",
+    "auditTracked": true,
+    "query": [],
+    "pathParams": []
+  }
+]
