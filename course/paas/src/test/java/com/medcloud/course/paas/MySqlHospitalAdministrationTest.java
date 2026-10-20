@@ -75,8 +75,9 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
         assertTrue(env("URL").matches("^jdbc:mysql://127\\.0\\.0\\.1:[0-9]{1,5}/course_onboarding_test_[a-f0-9]{32}\\?[^#]*$"), "Only a new dedicated onboarding test schema is allowed");
         assertTrue(env("UUID").matches("[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}"), "A fixed database UUID is required");
         assertNotEquals(env("USER"), env("OBSERVER_USER"), "Independent observer account required");
-        String endpoint = env("URL").substring(0, env("URL").indexOf('/', "jdbc:mysql://".length()));
-        assertTrue(env("OBSERVER_URL").startsWith(endpoint + "/"), "Observer must use the same owned MySQL endpoint");
+        String observerUrl = env("OBSERVER_URL");
+        assertTrue(observerUrl.matches("^jdbc:mysql://127\\.0\\.0\\.1:[0-9]{1,5}/course_onboarding_test_[a-f0-9]{32}\\?[^#]*$"), "Observer must target a dedicated onboarding schema");
+        assertEquals(env("URL").substring(0, env("URL").indexOf('?')), observerUrl.substring(0, observerUrl.indexOf('?')), "Observer must use the exact same owned schema endpoint");
         try (Connection writer = connection(false); Connection observer = connection(true)) {
             assertUuid(writer); assertUuid(observer);
             Set<String> actual = new HashSet<String>();
@@ -88,7 +89,12 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
             try (Statement sql = writer.createStatement()) { for (String table : TABLES) sql.executeUpdate("DELETE FROM " + table); }
             writer.commit();
             // Prove observer has real lock visibility before starting any competing transaction.
-            try (Statement sql = observer.createStatement(); ResultSet rows = sql.executeQuery("SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS")) { assertTrue(rows.next()); }
+            String version;
+            try (Statement sql = writer.createStatement(); ResultSet rows = sql.executeQuery("SELECT VERSION()")) { assertTrue(rows.next()); version = rows.getString(1); }
+            String lockProbe = version.startsWith("8.")
+                    ? "SELECT COUNT(*) FROM performance_schema.data_lock_waits"
+                    : "SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS";
+            try (Statement sql = observer.createStatement(); ResultSet rows = sql.executeQuery(lockProbe)) { assertTrue(rows.next()); }
         } catch (SQLException failure) { throw new AssertionError("Owned onboarding MySQL preflight failed (SQL state " + failure.getSQLState() + ")"); }
         Map<String,Object> settings = new HashMap<String,Object>();
         settings.put("javax.persistence.jdbc.driver", "com.mysql.cj.jdbc.Driver");
@@ -129,6 +135,9 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
     }
     private void schema() {
         assertEquals("validate", factory.getProperties().get("hibernate.hbm2ddl.auto"));
+        String version = serverVersion();
+        assertTrue(version.startsWith("8.") || version.startsWith("5.6."), "Unexpected MySQL version: " + version);
+        System.out.println("ONBOARDING_MYSQL_VERSION=" + version);
         assertEquals(2L, count(Tenant.class)); assertEquals(8L, count(Account.class));
         assertEquals(0L, count(HospitalAdminOperation.class)); assertEquals(0L, count(AuditEvent.class));
     }
@@ -185,6 +194,8 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
     private void disableWriter(String label, String operation, boolean disableFirst) throws Exception {
         add("tenant-a", "extra_admin", UUID.randomUUID().toString());
         List<String> before = snapshot();
+        Map<String,String> administratorBefore = accountRow("admin-a");
+        List<String> otherAccountsBefore = accountRowsExcept("admin-a");
         Function<EntityManager,Object> disable = em -> change(em, PLATFORM, "admin-a", "DISABLED", "ACTIVE");
         Function<EntityManager,Object> writer = em -> write(em, operation);
         Race race = race(label, disableFirst ? disable : writer, disableFirst ? writer : disable);
@@ -194,13 +205,62 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
         assertEquals("DISABLED", statusOf("admin-a")); assertEquals(1L, active()); assertEquals("ACTIVE", tenantStatus());
         assertEquals(1L, count(HospitalAdminOperation.class)); assertEquals(disableFirst ? 2L : 3L, count(AuditEvent.class));
         if (disableFirst) {
-            // Compare the real writer-owned rows; only the administrator status may have changed.
-            List<String> after = snapshot();
-            assertEquals(withoutAccountRows(before), withoutAccountRows(after));
-        } else assertNotEquals(before, snapshot(), "Successful writer must persist its mutation");
+            // Only the target account's status may change; every other account column stays byte-identical.
+            Map<String,String> administratorAfter = accountRow("admin-a");
+            assertEquals("DISABLED", administratorAfter.get("status"));
+            for (String column : administratorBefore.keySet()) {
+                if (!column.equals("status")) assertEquals(administratorBefore.get(column), administratorAfter.get(column), "Unexpected administrator column change: " + column);
+            }
+            assertEquals(otherAccountsBefore, accountRowsExcept("admin-a"), "Another account row changed during disable-first");
+            assertEquals(withoutAccountRows(before), withoutAccountRows(snapshot()), "A non-account table changed during disable-first");
+        } else {
+            assertWriterPersisted(operation);
+            assertNotEquals(before, snapshot(), "Successful writer must persist its mutation");
+        }
     }
     private static List<String> withoutAccountRows(List<String> values) {
         List<String> copy = new ArrayList<String>(); for (String row : values) if (!row.startsWith("user_account:")) copy.add(row); return copy;
+    }
+    private String serverVersion() {
+        return inTx(em -> String.valueOf(em.createNativeQuery("SELECT VERSION()").getSingleResult()));
+    }
+    private Map<String,String> accountRow(String id) {
+        return inTx(em -> {
+            Object[] row = (Object[]) em.createNativeQuery("SELECT username,password_hash,role,status,tenant_id FROM user_account WHERE id=?1").setParameter(1, id).getSingleResult();
+            String[] names = {"username", "password_hash", "role", "status", "tenant_id"};
+            Map<String,String> values = new LinkedHashMap<String,String>();
+            for (int i = 0; i < names.length; i++) values.put(names[i], row[i] == null ? null : String.valueOf(row[i]));
+            return values;
+        });
+    }
+    private List<String> accountRowsExcept(String id) {
+        return inTx(em -> {
+            List<?> rows = em.createNativeQuery("SELECT id,username,password_hash,role,status,tenant_id FROM user_account WHERE id<>?1 ORDER BY id").setParameter(1, id).getResultList();
+            List<String> values = new ArrayList<String>();
+            for (Object row : rows) {
+                StringBuilder line = new StringBuilder();
+                for (Object column : (Object[]) row) line.append(column == null ? "NULL" : String.valueOf(column)).append('|');
+                values.add(line.toString());
+            }
+            return values;
+        });
+    }
+    private void assertWriterPersisted(String operation) {
+        inTx(em -> {
+            switch (operation) {
+                case "createDepartment": assertEquals(1L, number(em, "SELECT COUNT(*) FROM department WHERE tenant_id='tenant-a' AND name='New department' AND status='ACTIVE'")); break;
+                case "updateDepartment": assertEquals(1L, number(em, "SELECT COUNT(*) FROM department WHERE id='department-a' AND name='Updated department' AND status='ACTIVE'")); break;
+                case "createDoctor": assertEquals(1L, number(em, "SELECT COUNT(*) FROM user_account a JOIN doctor_profile d ON d.user_id=a.id WHERE a.username='new_doctor' AND d.tenant_id='tenant-a' AND d.display_name='New doctor'")); break;
+                case "updateDoctor": assertEquals(1L, number(em, "SELECT COUNT(*) FROM doctor_profile WHERE user_id='doctor-a' AND display_name='Updated doctor' AND department_id='department-a'")); break;
+                case "createSlot": assertEquals(1L, number(em, "SELECT COUNT(*) FROM schedule_slot WHERE tenant_id='tenant-a' AND department_id='department-a' AND doctor_id='doctor-a' AND schedule_date='2099-05-21' AND start_time='11:00:00' AND capacity=21 AND fee=40.00")); break;
+                case "updateSlot": assertEquals(1L, number(em, "SELECT COUNT(*) FROM schedule_slot WHERE id='slot-a' AND schedule_date='2099-05-21' AND start_time='11:00:00' AND capacity=21 AND fee=40.00")); break;
+                default: throw new AssertionError(operation);
+            }
+            return null;
+        });
+    }
+    private static long number(EntityManager em, String sql) {
+        return ((Number) em.createNativeQuery(sql).getSingleResult()).longValue();
     }
     private Object write(EntityManager em, String operation) {
         SlotRequest slot = new SlotRequest("department-a", "doctor-a", java.sql.Date.valueOf("2099-05-21"), Time.valueOf("11:00:00"), Time.valueOf("12:00:00"), 21, new BigDecimal("40.00"), "PUBLISHED");
@@ -316,7 +376,14 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
                 } finally { if(second.getTransaction().isActive())second.getTransaction().rollback(); second.close(); }
             });
             assertTrue(secondStarted.await(10,TimeUnit.SECONDS)); assertNotEquals(firstId,secondId.get(),"Separate physical transaction connections required");
-            observeWait(firstId,secondId.get(),label);
+            try { observeWait(firstId,secondId.get(),label); }
+            catch (AssertionError noWait) {
+                if (future.isDone()) {
+                    Outcome early = future.get(1, TimeUnit.SECONDS);
+                    throw new AssertionError(noWait.getMessage() + "; second outcome=" + (early.failure == null ? "COMMITTED" : early.failure.getClass().getSimpleName() + ":" + early.failure.getMessage()), noWait);
+                }
+                throw noWait;
+            }
             first.getTransaction().commit(); result.second = future.get(15,TimeUnit.SECONDS);
             return result;
         } finally {
@@ -327,11 +394,16 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
     }
     private void observeWait(long blocker, long waiter, String label) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-        // MySQL 5.6/5.7 InnoDB visibility, joined to exact physical connection IDs.
-        String query = "SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS w "
-                + "JOIN information_schema.INNODB_TRX r ON r.trx_id=w.requesting_trx_id "
-                + "JOIN information_schema.INNODB_TRX b ON b.trx_id=w.blocking_trx_id "
-                + "WHERE r.trx_mysql_thread_id=? AND b.trx_mysql_thread_id=? AND r.trx_state='LOCK WAIT'";
+        // MySQL 8 exposes data_lock_waits; MySQL 5.6/5.7 uses INNODB_LOCK_WAITS. Both join exact physical connection IDs.
+        String query = serverVersion().startsWith("8.")
+                ? "SELECT COUNT(*) FROM performance_schema.data_lock_waits w "
+                    + "JOIN performance_schema.threads r ON r.THREAD_ID=w.REQUESTING_THREAD_ID "
+                    + "JOIN performance_schema.threads b ON b.THREAD_ID=w.BLOCKING_THREAD_ID "
+                    + "WHERE r.PROCESSLIST_ID=? AND b.PROCESSLIST_ID=?"
+                : "SELECT COUNT(*) FROM information_schema.INNODB_LOCK_WAITS w "
+                    + "JOIN information_schema.INNODB_TRX r ON r.trx_id=w.requesting_trx_id "
+                    + "JOIN information_schema.INNODB_TRX b ON b.trx_id=w.blocking_trx_id "
+                    + "WHERE r.trx_mysql_thread_id=? AND b.trx_mysql_thread_id=? AND r.trx_state='LOCK WAIT'";
         try (Connection observer = connection(true); PreparedStatement statement = observer.prepareStatement(query)) {
             assertUuid(observer); statement.setLong(1,waiter); statement.setLong(2,blocker);
             do {
@@ -340,7 +412,45 @@ class MySqlHospitalAdministrationTest extends HospitalAdministrationFixture {
                 }
                 Thread.sleep(25); // Poll interval only; success requires a matching real InnoDB waiting edge.
             } while(System.nanoTime()<deadline);
+            // MySQL 8 reports duplicate-key waits as a self-referential data_lock_waits edge
+            // (requesting == blocking == waiter). Keep the exact connection ids: the waiter must be in
+            // LOCK WAIT, the other test transaction must still be RUNNING, and a real wait must exist.
+            String duplicateEdge = "SELECT COUNT(*) FROM performance_schema.data_lock_waits w "
+                    + "JOIN performance_schema.threads r ON r.THREAD_ID=w.REQUESTING_THREAD_ID "
+                    + "WHERE r.PROCESSLIST_ID=?";
+            try (PreparedStatement edge = observer.prepareStatement(duplicateEdge)) {
+                edge.setLong(1, waiter);
+                try (ResultSet rows = edge.executeQuery()) {
+                    if (rows.next() && rows.getLong(1) > 0
+                            && trxState(observer, waiter, "LOCK WAIT") == 1
+                            && trxState(observer, blocker, "RUNNING") == 1) {
+                        System.out.println("ONBOARDING_OBSERVED_LOCK=" + label + ":innodb-wait-duplicate-key");
+                        return;
+                    }
+                }
+            }
+            String diagnostic;
+            try (Statement probe = observer.createStatement()) {
+                long totalWaits = single(probe, "SELECT COUNT(*) FROM performance_schema.data_lock_waits");
+                long waitingLocks = single(probe, "SELECT COUNT(*) FROM performance_schema.data_locks WHERE LOCK_STATUS='WAITING'");
+                long waiterTrx = single(probe, "SELECT COUNT(*) FROM information_schema.INNODB_TRX WHERE trx_mysql_thread_id=" + waiter + " AND trx_state='LOCK WAIT'");
+                long threads = single(probe, "SELECT COUNT(*) FROM performance_schema.threads WHERE PROCESSLIST_ID IN (" + blocker + "," + waiter + ")");
+                String edge = "none";
+                try (ResultSet rows = probe.executeQuery("SELECT r.PROCESSLIST_ID,b.PROCESSLIST_ID FROM performance_schema.data_lock_waits w LEFT JOIN performance_schema.threads r ON r.THREAD_ID=w.REQUESTING_THREAD_ID LEFT JOIN performance_schema.threads b ON b.THREAD_ID=w.BLOCKING_THREAD_ID LIMIT 1")) {
+                    if (rows.next()) edge = rows.getLong(1) + "->" + rows.getLong(2);
+                }
+                diagnostic = "totalWaits=" + totalWaits + ",waitingLocks=" + waitingLocks + ",waiterTrxWait=" + waiterTrx + ",mappedThreads=" + threads + ",ids=" + blocker + "/" + waiter + ",edge=" + edge;
+            }
+            fail("No matching real InnoDB lock wait: " + label + " [" + diagnostic + "]");
         }
-        fail("No matching real InnoDB lock wait: " + label);
+    }
+    private static long single(Statement statement, String sql) throws SQLException {
+        try (ResultSet rows = statement.executeQuery(sql)) { return rows.next() ? rows.getLong(1) : -1; }
+    }
+    private static long trxState(Connection connection, long processListId, String state) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM information_schema.INNODB_TRX WHERE trx_mysql_thread_id=? AND trx_state=?")) {
+            statement.setLong(1, processListId); statement.setString(2, state);
+            try (ResultSet rows = statement.executeQuery()) { return rows.next() ? rows.getLong(1) : -1; }
+        }
     }
 }
