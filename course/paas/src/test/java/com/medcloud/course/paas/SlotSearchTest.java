@@ -42,7 +42,7 @@ class SlotSearchTest {
             slot(manager, "available-after-full", "dept-a", "doctor-a", "2035-05-02", 1);
             manager.getTransaction().commit(); manager.clear();
             List<SlotAvailability> result = new DirectoryService(manager).availableSlots("tenant-a", null, null,
-                    null, Date.valueOf("2035-01-01"));
+                    null, Date.valueOf("2035-01-01"), 1, 100).getItems();
             assertEquals(1, result.size());
             assertEquals("available-after-full", result.get(0).getSlot().getId());
         } finally { manager.close(); factory.close(); }
@@ -67,19 +67,19 @@ class SlotSearchTest {
             manager.persist(new Appointment(UUID.randomUUID().toString(), "patient-b", "full", "tenant-a", "doctor-a", BigDecimal.TEN, Date.valueOf("2035-04-30")));
             manager.getTransaction().commit(); manager.clear();
             DirectoryService directory = new DirectoryService(manager);
-            List<SlotAvailability> found = directory.availableSlots("tenant-a", "dept-a", "doctor-a", Date.valueOf("2035-05-01"), Date.valueOf("2035-01-01"));
+            List<SlotAvailability> found = directory.availableSlots("tenant-a", "dept-a", "doctor-a", Date.valueOf("2035-05-01"), Date.valueOf("2035-01-01"), 1, 100).getItems();
             assertEquals(1, found.size()); assertEquals("open", found.get(0).getSlot().getId()); assertEquals(1, found.get(0).getRemaining());
-            assertTrue(directory.availableSlots("tenant-a", "dept-a", "doctor-b", null, Date.valueOf("2035-01-01")).isEmpty());
+            assertTrue(directory.availableSlots("tenant-a", "dept-a", "doctor-b", null, Date.valueOf("2035-01-01"), 1, 100).getItems().isEmpty());
             assertEquals(2, directory.availableSlots("tenant-a", Date.valueOf("2035-01-01")).size());
             manager.getTransaction().begin(); manager.find(Account.class, "doctor-a").setStatus("DISABLED"); manager.getTransaction().commit(); manager.clear();
-            assertTrue(directory.availableSlots("tenant-a", null, null, null, Date.valueOf("2035-01-01")).stream()
+            assertTrue(directory.availableSlots("tenant-a", null, null, null, Date.valueOf("2035-01-01"), 1, 100).getItems().stream()
                     .noneMatch(value -> "doctor-a".equals(value.getSlot().getDoctorId())));
         } finally { manager.close(); factory.close(); }
     }
 
     @Test void malformedDateFailsInsteadOfFallingBackToUnfilteredCatalog() {
         CatalogResource resource = new CatalogResource(new DirectoryService());
-        assertThrows(IllegalArgumentException.class, () -> resource.slots("tenant-a", null, null, "not-a-date"));
+        assertThrows(IllegalArgumentException.class, () -> resource.slots("tenant-a", null, null, "not-a-date", "1", "100"));
     }
 
     private static void slot(EntityManager manager, String id, String department, String doctor, String date, int capacity) {

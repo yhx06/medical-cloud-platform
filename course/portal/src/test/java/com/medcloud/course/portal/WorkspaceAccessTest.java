@@ -175,6 +175,9 @@ final class PortalFixture implements AutoCloseable {
         data.put("/patient/appointments", emptyPage);
         data.put("/doctor/appointments", emptyPage);
         data.put("/doctor/records", emptyPage);
+        data.put("/hospital/departments", emptyPage);
+        data.put("/hospital/doctors", emptyPage);
+        data.put("/hospital/slots", emptyPage);
         data.put("/patient/appointments/" + ID + "/record", "{\"diagnosis\":\"虚构诊断\"}");
         data.put("/patient/appointments/" + ID + "/order", "{\"status\":\"UNPAID\",\"amount\":39.00,\"businessWritable\":false}");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

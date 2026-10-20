@@ -29,9 +29,9 @@ class TenantReadOnlyTest extends TenantFixture {
         assertEquals(Role.HOSPITAL_ADMIN, assertDoesNotThrow(() -> auth.authenticate(adminToken)).getRole());
         assertDoesNotThrow(() -> AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)));
         assertDoesNotThrow(() -> AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", PASSWORD)));
-        assertEquals(1, new HospitalDepartmentService(manager).list(ADMIN).size());
-        assertEquals(1, new HospitalDoctorService(manager).list(ADMIN).size());
-        assertEquals(1, new SlotAdminService(manager).list(ADMIN).size());
+        assertEquals(1, new HospitalDepartmentService(manager).list(ADMIN, 1, 100).getItems().size());
+        assertEquals(1, new HospitalDoctorService(manager).list(ADMIN, 1, 100).getItems().size());
+        assertEquals(1, new SlotAdminService(manager).list(ADMIN, 1, 100).getItems().size());
         assertEquals(2, new PaymentService(manager).forHospital(ADMIN, null, null, null, 1, 100).getItems().size());
         assertEquals(4, new BookingService(manager).forDoctor(DOCTOR, 1, 100).getItems().size());
         assertEquals(2, new ClinicalService(manager).forDoctor(DOCTOR, null, null, 1, 100).getItems().size());
@@ -42,9 +42,9 @@ class TenantReadOnlyTest extends TenantFixture {
         assertThrows(AccessDeniedException.class, () -> new PaymentService(manager).forPatient(OTHER, "unpaid"));
         assertThrows(AccessDeniedException.class, () -> new ClinicalService(manager).forPatient(ADMIN, "unpaid"));
         assertEquals(0, new BookingService(manager).forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a"), 1, 100).getItems().size());
-        assertThrows(AccessDeniedException.class, () -> new HospitalDepartmentService(manager).list(PLATFORM));
-        assertThrows(AccessDeniedException.class, () -> new HospitalDoctorService(manager).list(DOCTOR));
-        assertThrows(AccessDeniedException.class, () -> new SlotAdminService(manager).list(PATIENT));
+        assertThrows(AccessDeniedException.class, () -> new HospitalDepartmentService(manager).list(PLATFORM, 1, 100).getItems());
+        assertThrows(AccessDeniedException.class, () -> new HospitalDoctorService(manager).list(DOCTOR, 1, 100).getItems());
+        assertThrows(AccessDeniedException.class, () -> new SlotAdminService(manager).list(PATIENT, 1, 100).getItems());
         assertThrows(AccessDeniedException.class, () -> new PaymentService(manager).forHospital(PLATFORM, null, null, null, 1, 100).getItems());
         assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forPatient(ADMIN, 1, 100).getItems());
         assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forDoctor(PLATFORM, 1, 100).getItems());
@@ -73,9 +73,9 @@ class TenantReadOnlyTest extends TenantFixture {
         assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT, 1, 100).getItems());
         assertThrows(SecurityException.class, () -> new ClinicalService(manager).forPatient(PATIENT, "unpaid"));
         assertThrows(SecurityException.class, () -> new PaymentService(manager).forPatient(PATIENT, "unpaid"));
-        assertThrows(SecurityException.class, () -> new HospitalDepartmentService(manager).list(ADMIN));
-        assertThrows(SecurityException.class, () -> new HospitalDoctorService(manager).list(ADMIN));
-        assertThrows(SecurityException.class, () -> new SlotAdminService(manager).list(ADMIN));
+        assertThrows(SecurityException.class, () -> new HospitalDepartmentService(manager).list(ADMIN, 1, 100).getItems());
+        assertThrows(SecurityException.class, () -> new HospitalDoctorService(manager).list(ADMIN, 1, 100).getItems());
+        assertThrows(SecurityException.class, () -> new SlotAdminService(manager).list(ADMIN, 1, 100).getItems());
         assertThrows(SecurityException.class, () -> new PaymentService(manager).forHospital(ADMIN, null, null, null, 1, 100).getItems());
         externalUpdate("delete from Tenant t where t.id = 'tenant-a'");
         assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT, 1, 100).getItems());

@@ -9,6 +9,7 @@ import java.time.Instant;
 import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorView;
 import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -36,16 +37,22 @@ public class HospitalDoctorService {
     @EJB private AuditWritePort journal;
     public HospitalDoctorService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
-    public List<DoctorView> list(CurrentActor actor) {
+    public PageResult<DoctorView> list(CurrentActor actor, int page, int size) {
         String tenantId = tenant(actor);
-        List<DoctorView> result = new ArrayList<DoctorView>();
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        long total = manager.createQuery("select count(a) from Account a, DoctorProfile p "
+                + "where a.id = p.userId and a.tenantId = :tenantId and p.tenantId = :tenantId and a.role = :role", Long.class)
+                .setParameter("tenantId", tenantId).setParameter("role", Role.DOCTOR).getSingleResult();
         List<Object[]> rows = manager.createQuery("select a, p from Account a, DoctorProfile p "
                 + "where a.id = p.userId and a.tenantId = :tenantId and p.tenantId = :tenantId "
                 + "and a.role = :role order by p.displayName, a.id", Object[].class)
                 .setParameter("tenantId", tenantId).setParameter("role", Role.DOCTOR)
-                .setMaxResults(200).getResultList();
+                .setFirstResult((int) offset).setMaxResults(size).getResultList();
+        List<DoctorView> result = new ArrayList<DoctorView>();
         for (Object[] row : rows) result.add(view((Account) row[0], (DoctorProfile) row[1]));
-        return result;
+        return new PageResult<DoctorView>(result, total, page, size);
     }
 
     public DoctorCreateResponse create(CurrentActor actor, String username, String displayName, String departmentId) {

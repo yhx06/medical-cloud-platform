@@ -3,6 +3,8 @@ package com.medcloud.course.paas.api;
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.SlotRequest;
 import com.medcloud.course.contract.SlotView;
+import com.medcloud.course.contract.SlotPage;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
@@ -21,6 +23,8 @@ import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.core.MediaType;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,10 +45,24 @@ public class HospitalSlotResource {
     private CurrentActor actor(String authorization) { return auth.authenticate(BearerTokens.require(authorization)); }
 
     @GET
-    public ApiResponse<List<SlotView>> list(@HeaderParam("Authorization") String authorization) {
+    public ApiResponse<SlotPage> list(@HeaderParam("Authorization") String authorization,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("100") String rawSize) {
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "100");
+        PageResult<ScheduleSlot> result = slots.list(actor(authorization), page, size);
         List<SlotView> views = new ArrayList<SlotView>();
-        for (ScheduleSlot slot : slots.list(actor(authorization))) views.add(view(slot));
-        return ApiResponse.success("slots", views);
+        for (ScheduleSlot slot : result.getItems()) views.add(view(slot));
+        return ApiResponse.success("slots", new SlotPage(views, result.getTotal(), page, size));
+    }
+
+    private static int parsePositiveInt(String raw, String fallback) {
+        String value = (raw == null || raw.trim().isEmpty()) ? fallback : raw.trim();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("invalid pagination");
+        }
     }
     @POST @AuditTracked
     public ApiResponse<SlotView> create(@HeaderParam("Authorization") String authorization, SlotRequest request) {

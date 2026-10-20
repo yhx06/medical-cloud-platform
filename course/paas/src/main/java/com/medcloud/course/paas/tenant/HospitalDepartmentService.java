@@ -7,6 +7,7 @@ import javax.ejb.EJB;
 import java.time.Instant;
 
 import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.appointment.Appointment;
@@ -29,10 +30,17 @@ public class HospitalDepartmentService {
     @EJB private AuditWritePort journal;
     public HospitalDepartmentService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
-    public List<Department> list(CurrentActor actor) {
+    public PageResult<Department> list(CurrentActor actor, int page, int size) {
         String tenantId = tenant(actor);
-        return manager.createQuery("select d from Department d where d.tenantId = :tenantId order by d.name, d.id", Department.class)
-                .setParameter("tenantId", tenantId).setMaxResults(200).getResultList();
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        long total = manager.createQuery("select count(d) from Department d where d.tenantId = :tenantId", Long.class)
+                .setParameter("tenantId", tenantId).getSingleResult();
+        List<Department> rows = manager.createQuery("select d from Department d where d.tenantId = :tenantId "
+                + "order by d.name, d.id", Department.class)
+                .setParameter("tenantId", tenantId).setFirstResult((int) offset).setMaxResults(size).getResultList();
+        return new PageResult<Department>(rows, total, page, size);
     }
 
     public Department create(CurrentActor actor, String name) {

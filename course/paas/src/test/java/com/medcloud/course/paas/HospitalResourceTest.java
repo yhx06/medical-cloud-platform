@@ -31,8 +31,8 @@ class HospitalResourceTest {
             f.begin();
             Department created = f.departments.create(f.a, "心内科");
             assertEquals(f.tenantA, created.getTenantId());
-            assertEquals(1, f.departments.list(f.a).size());
-            assertEquals(1, f.departments.list(f.b).size()); // fixture preloads this hospital's department
+            assertEquals(1, f.departments.list(f.a, 1, 100).getItems().size());
+            assertEquals(1, f.departments.list(f.b, 1, 100).getItems().size()); // fixture preloads this hospital's department
             assertEquals("心血管科", f.departments.update(f.a, created.getId(), "心血管科", "ACTIVE").getName());
             assertThrows(AccessDeniedException.class,
                     () -> f.departments.update(f.b, created.getId(), "偷改", "ACTIVE"));
@@ -52,9 +52,9 @@ class HospitalResourceTest {
             assertEquals(Role.DOCTOR, account.getRole());
             assertEquals(f.tenantA, account.getTenantId());
             assertTrue(BCrypt.checkpw(created.getInitialPassword(), account.getPasswordHash()));
-            assertFalse(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(f.doctors.list(f.a)).contains(created.getInitialPassword()));
-            assertEquals(1, f.doctors.list(f.a).size());
-            assertTrue(f.doctors.list(f.b).isEmpty());
+            assertFalse(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(f.doctors.list(f.a, 1, 100).getItems()).contains(created.getInitialPassword()));
+            assertEquals(1, f.doctors.list(f.a, 1, 100).getItems().size());
+            assertTrue(f.doctors.list(f.b, 1, 100).getItems().isEmpty());
             assertThrows(IllegalStateException.class, () -> f.doctors.create(f.b, "doctor_a", "李医生", f.foreignDepartment.getId()));
             assertThrows(IllegalArgumentException.class, () -> f.doctors.create(f.a, "bad-name", "王医生", dept.getId()));
             f.commit();

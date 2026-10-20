@@ -2,7 +2,9 @@ package com.medcloud.course.paas.api;
 
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.SlotView;
+import com.medcloud.course.contract.SlotPage;
 import com.medcloud.course.contract.CatalogOption;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.schedule.DirectoryService;
 import com.medcloud.course.paas.schedule.ScheduleSlot;
 import com.medcloud.course.paas.schedule.SlotAvailability;
@@ -12,6 +14,7 @@ import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.core.MediaType;
 import java.sql.Date;
 import java.time.LocalDate;
@@ -50,25 +53,39 @@ public class CatalogResource {
 
     @GET
     @Path("slots")
-    public ApiResponse<List<SlotView>> slots(@QueryParam("tenantId") String tenantId,
+    public ApiResponse<SlotPage> slots(@QueryParam("tenantId") String tenantId,
             @QueryParam("departmentId") String departmentId, @QueryParam("doctorId") String doctorId,
-            @QueryParam("date") String date) {
+            @QueryParam("date") String date,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("100") String rawSize) {
         if (tenantId == null || tenantId.trim().isEmpty()) {
             throw new IllegalArgumentException("tenantId required");
         }
-        List<SlotView> views = new ArrayList<SlotView>();
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "100");
         Date requestedDate = null;
         if (date != null && !date.trim().isEmpty()) {
             try { requestedDate = Date.valueOf(LocalDate.parse(date.trim())); }
             catch (DateTimeParseException | IllegalArgumentException failure) { throw new IllegalArgumentException("invalid date"); }
         }
-        for (SlotAvailability availability : directory.availableSlots(tenantId, departmentId, doctorId,
-                requestedDate, Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai"))))) {
+        PageResult<SlotAvailability> result = directory.availableSlots(tenantId, departmentId, doctorId,
+                requestedDate, Date.valueOf(LocalDate.now(ZoneId.of("Asia/Shanghai"))), page, size);
+        List<SlotView> views = new ArrayList<SlotView>();
+        for (SlotAvailability availability : result.getItems()) {
             ScheduleSlot slot = availability.getSlot();
             views.add(new SlotView(slot.getId(), slot.getTenantId(), slot.getDepartmentId(),
                     slot.getDoctorId(), slot.getDate(), slot.getStartTime(), slot.getEndTime(),
                     slot.getCapacity(), slot.getFee(), availability.getRemaining()));
         }
-        return ApiResponse.success("slots", views);
+        return ApiResponse.success("slots", new SlotPage(views, result.getTotal(), page, size));
+    }
+
+    private static int parsePositiveInt(String raw, String fallback) {
+        String value = (raw == null || raw.trim().isEmpty()) ? fallback : raw.trim();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("invalid pagination");
+        }
     }
 }

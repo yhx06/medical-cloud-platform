@@ -10,9 +10,11 @@ import com.medcloud.course.contract.AuditEventType;
 import org.jboss.resteasy.spi.HttpRequest;
 import com.medcloud.course.contract.DepartmentRequest;
 import com.medcloud.course.contract.DepartmentView;
+import com.medcloud.course.contract.DepartmentPage;
 import com.medcloud.course.contract.DoctorCreateResponse;
 import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.contract.DoctorView;
+import com.medcloud.course.contract.DoctorPage;
 import com.medcloud.course.contract.HospitalNameRequest;
 import com.medcloud.course.contract.PaymentOrderView;
 import com.medcloud.course.contract.PaymentOrderPage;
@@ -149,10 +151,15 @@ public class HospitalResource {
     }
 
     @GET @Path("departments")
-    public ApiResponse<List<DepartmentView>> departments(@HeaderParam("Authorization") String authorization) {
-        List<DepartmentView> result = new ArrayList<DepartmentView>();
-        for (Department department : departments.list(actor(authorization))) result.add(view(department));
-        return ApiResponse.success("departments", result);
+    public ApiResponse<DepartmentPage> departments(@HeaderParam("Authorization") String authorization,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("100") String rawSize) {
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "100");
+        PageResult<Department> result = departments.list(actor(authorization), page, size);
+        List<DepartmentView> views = new ArrayList<DepartmentView>();
+        for (Department department : result.getItems()) views.add(view(department));
+        return ApiResponse.success("departments", new DepartmentPage(views, result.getTotal(), page, size));
     }
     @POST @Path("departments") @AuditTracked
     public ApiResponse<DepartmentView> createDepartment(@HeaderParam("Authorization") String authorization, DepartmentRequest request) {
@@ -174,8 +181,13 @@ public class HospitalResource {
         return ApiResponse.success("department updated", view(result));
     }
     @GET @Path("doctors")
-    public ApiResponse<List<DoctorView>> doctors(@HeaderParam("Authorization") String authorization) {
-        return ApiResponse.success("doctors", doctors.list(actor(authorization)));
+    public ApiResponse<DoctorPage> doctors(@HeaderParam("Authorization") String authorization,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("100") String rawSize) {
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "100");
+        PageResult<com.medcloud.course.contract.DoctorView> result = doctors.list(actor(authorization), page, size);
+        return ApiResponse.success("doctors", new DoctorPage(result.getItems(), result.getTotal(), page, size));
     }
     @POST @Path("doctors") @AuditTracked
     public ApiResponse<DoctorCreateResponse> createDoctor(@HeaderParam("Authorization") String authorization, DoctorRequest request) {

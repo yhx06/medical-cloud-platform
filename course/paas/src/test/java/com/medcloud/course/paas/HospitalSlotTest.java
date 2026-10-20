@@ -114,7 +114,7 @@ class HospitalSlotTest {
             f.begin();
             ScheduleSlot slot = f.service.create(f.admin, f.request(f.department, f.doctor, "PUBLISHED"));
             assertEquals(f.tenant, slot.getTenantId());
-            assertEquals(1, f.service.list(f.admin).size());
+            assertEquals(1, f.service.list(f.admin, 1, 100).getItems().size());
             assertThrows(AccessDeniedException.class, () -> f.service.create(f.admin, f.request(f.foreignDepartment, f.foreignDoctor, "PUBLISHED")));
             assertThrows(AccessDeniedException.class, () -> f.service.update(f.admin, f.foreignSlot, f.request(f.department, f.doctor, "PUBLISHED")));
             f.manager.find(Account.class, f.doctor).setStatus("DISABLED");

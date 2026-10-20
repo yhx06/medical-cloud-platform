@@ -8,6 +8,7 @@ import java.time.Instant;
 
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.SlotRequest;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.Account;
@@ -34,11 +35,17 @@ public class SlotAdminService {
     @EJB private AuditWritePort journal;
     public SlotAdminService(EntityManager manager) { this.manager = manager; this.journal = new AuditJournal(manager); }
 
-    public List<ScheduleSlot> list(CurrentActor actor) {
+    public PageResult<ScheduleSlot> list(CurrentActor actor, int page, int size) {
         String tenantId = tenant(actor);
-        return manager.createQuery("select s from ScheduleSlot s where s.tenantId = :tenantId "
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        long total = manager.createQuery("select count(s) from ScheduleSlot s where s.tenantId = :tenantId", Long.class)
+                .setParameter("tenantId", tenantId).getSingleResult();
+        List<ScheduleSlot> rows = manager.createQuery("select s from ScheduleSlot s where s.tenantId = :tenantId "
                 + "order by s.date desc, s.startTime, s.id", ScheduleSlot.class)
-                .setParameter("tenantId", tenantId).setMaxResults(200).getResultList();
+                .setParameter("tenantId", tenantId).setFirstResult((int) offset).setMaxResults(size).getResultList();
+        return new PageResult<ScheduleSlot>(rows, total, page, size);
     }
 
     public int remaining(ScheduleSlot slot) {

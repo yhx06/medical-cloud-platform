@@ -130,9 +130,12 @@ public class PortalServlet extends HttpServlet {
                 access.loadSection(request, token(session), "doctorProfile", "/doctor/profile");
                 access.loadContext(request, token(session), expected);
             } else if ("/hospital".equals(path)) {
-                access.loadSection(request, token(session), "departments", "/hospital/departments");
-                access.loadSection(request, token(session), "doctors", "/hospital/doctors");
-                access.loadSection(request, token(session), "slots", "/hospital/slots");
+                access.loadPage(request, token(session), "departments", "/hospital/departments",
+                        pageNumber(request, "page", 1, Integer.MAX_VALUE), pageNumber(request, "size", 100, 100));
+                access.loadPage(request, token(session), "doctors", "/hospital/doctors",
+                        pageNumber(request, "page", 1, Integer.MAX_VALUE), pageNumber(request, "size", 100, 100));
+                access.loadPage(request, token(session), "slots", "/hospital/slots",
+                        pageNumber(request, "page", 1, Integer.MAX_VALUE), pageNumber(request, "size", 100, 100));
                 loadFilteredSection(request, token(session), access, "orders", "/hospital/orders", true);
                 access.loadContext(request, token(session), expected);
                 new StatisticsWorkspace(paas).load(request, token(session), expected);
@@ -192,8 +195,9 @@ public class PortalServlet extends HttpServlet {
                     throw new IllegalArgumentException("所选医生不属于当前科室或已停用，请重新选择医生");
                 }
                 if (!refreshDirectory) {
-                    request.setAttribute("slots", paas.get("/catalog/slots?"
-                            + patientFilters(tenant, department, doctor, date), null));
+                    com.fasterxml.jackson.databind.JsonNode slotPage = paas.get("/catalog/slots?"
+                            + patientFilters(tenant, department, doctor, date), null);
+                    request.setAttribute("slots", slotPage.isObject() ? slotPage.path("items") : slotPage);
                 }
             } else {
                 department = ""; doctor = "";
