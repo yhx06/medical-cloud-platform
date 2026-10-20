@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PortalServletTest {
     @Test
@@ -150,6 +151,52 @@ class PortalServletTest {
             JsonNode json = new ObjectMapper().readTree(submitted.get());
             assertEquals("急性咽炎", json.path("diagnosis").asText());
             assertEquals("多喝温水，三日复诊", json.path("advice").asText());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void bookingConflictShowsChineseMessageAndPreservesFilters() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/patient/appointments", exchange -> {
+            byte[] body = "{\"code\":\"APPOINTMENT_CONFLICT\",\"message\":\"submitted-secret SQL\"}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(409, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+        try {
+            PortalServlet servlet = new PortalServlet(
+                    new PaasClient("http://127.0.0.1:" + server.getAddress().getPort() + "/api"),
+                    new CloudServiceFactory());
+            MockHttpServletRequest request = new MockHttpServletRequest("POST", "/portal/patient/book");
+            request.setContextPath("/portal");
+            request.setServletPath("/patient/book");
+            request.addParameter("csrfToken", "csrf");
+            request.addParameter("slotId", "slot-a");
+            request.addParameter("tenantId", "t-a");
+            request.addParameter("departmentId", "d-a");
+            request.addParameter("doctorId", "do-a");
+            request.addParameter("date", "2030-05-21");
+            MockHttpSession session = new MockHttpSession();
+            session.setAttribute("role", Role.PATIENT);
+            session.setAttribute("accessToken", "signed-token");
+            session.setAttribute("csrfToken", "csrf");
+            request.setSession(session);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            servlet.service(request, response);
+
+            assertEquals("您在该时段已有其他预约，请选择不相重叠的号源后再试", session.getAttribute("flash"));
+            String redirect = response.getRedirectedUrl();
+            assertTrue(redirect.startsWith("/portal/patient?"), "unexpected redirect: " + redirect);
+            assertTrue(redirect.contains("tenantId=t-a"), "tenant filter lost: " + redirect);
+            assertTrue(redirect.contains("departmentId=d-a"), "department filter lost: " + redirect);
+            assertTrue(redirect.contains("doctorId=do-a"), "doctor filter lost: " + redirect);
+            assertTrue(redirect.contains("date=2030-05-21"), "date filter lost: " + redirect);
+            assertTrue(redirect.endsWith("#slot-search"), "slot anchor lost: " + redirect);
         } finally {
             server.stop(0);
         }

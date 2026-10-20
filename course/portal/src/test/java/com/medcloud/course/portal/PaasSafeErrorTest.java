@@ -10,8 +10,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class PaasSafeErrorTest {
     // A raw backend message must never become public, even for a recognized business code.
     @Test void onlyMatchingStableCodesBecomeActionableSafeErrors() throws Exception {
-        String[] codes={"HOSPITAL_ONBOARDING_INVALID","USERNAME_EXISTS","OPERATION_KEY_CONFLICT","ADMIN_STATUS_CONFLICT","LAST_ACTIVE_HOSPITAL_ADMIN"};
-        String[] messages={"开通信息无效，请检查医院名称、用户名、密码和操作编号","用户名已被使用，请核对账号后再提交","操作编号与原提交内容冲突，请复核原信息，不要直接换编号重发","管理员状态已变化，请另开列表复核，不要直接覆盖当前状态","不能停用最后一位启用的医院管理员，请先增补或启用另一位管理员后复核"};
+        String[] codes={"HOSPITAL_ONBOARDING_INVALID","USERNAME_EXISTS","OPERATION_KEY_CONFLICT","ADMIN_STATUS_CONFLICT","LAST_ACTIVE_HOSPITAL_ADMIN","APPOINTMENT_CONFLICT"};
+        String[] messages={"开通信息无效，请检查医院名称、用户名、密码和操作编号","用户名已被使用，请核对账号后再提交","操作编号与原提交内容冲突，请复核原信息，不要直接换编号重发","管理员状态已变化，请另开列表复核，不要直接覆盖当前状态","不能停用最后一位启用的医院管理员，请先增补或启用另一位管理员后复核","您在该时段已有其他预约，请选择不相重叠的号源后再试"};
         for(int i=0;i<codes.length;i++){String code=codes[i];int status=code.equals(codes[0])?400:409;
             PaasRejectedException error=reject(status,"{\"code\":\""+code+"\",\"message\":\"submitted-secret SQL\"}");
             assertEquals(code,code(error));assertEquals(messages[i],error.getMessage());assertFalse(error.getMessage().contains("submitted-secret"));assertFalse(error.getMessage().contains("SQL"));

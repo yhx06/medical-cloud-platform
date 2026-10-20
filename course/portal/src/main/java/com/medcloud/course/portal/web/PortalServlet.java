@@ -274,6 +274,7 @@ public class PortalServlet extends HttpServlet {
         }
         String home = factory.forRole(expected).getHomePath();
         if (expected == Role.PLATFORM_ADMIN) home += new PlatformWorkspace(paas).redirectQuery(request);
+        String redirectHome = home;
         try {
             JsonNode result;
             if ("/platform/tenant/status".equals(path)) {
@@ -336,8 +337,13 @@ public class PortalServlet extends HttpServlet {
             }
             session.removeAttribute("initialPassword");
             session.setAttribute("flash", error.getMessage());
+            if ("/patient/book".equals(path)) {
+                String filters = patientFilters(parameter(request, "tenantId"), parameter(request, "departmentId"),
+                        parameter(request, "doctorId"), parameter(request, "date"));
+                redirectHome = home + (filters.isEmpty() ? "" : "?" + filters) + "#slot-search";
+            }
         }
-        response.sendRedirect(request.getContextPath() + home);
+        response.sendRedirect(request.getContextPath() + redirectHome);
     }
 
     private void login(HttpServletRequest request, HttpServletResponse response)

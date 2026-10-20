@@ -30,6 +30,18 @@ class ApiFailureTest {
     }
 
     @Test
+    void appointmentTimeConflictUsesStableBusinessCode() {
+        Response response = new ApiFailureMapper().toResponse(
+                new com.medcloud.course.paas.appointment.AppointmentConflictException());
+        assertEquals(409, response.getStatus());
+        ApiError error = (ApiError) response.getEntity();
+        assertEquals("APPOINTMENT_CONFLICT", error.getCode());
+        assertEquals("Appointment time conflicts with an existing appointment", error.getMessage());
+        assertEquals(com.medcloud.course.contract.AuditReasonCode.CONFLICT,
+                ApiFailureMapper.reasonFor(new com.medcloud.course.paas.appointment.AppointmentConflictException()));
+    }
+
+    @Test
     void crossTenantAccessIs403() {
         Response response = new ApiFailureMapper().toResponse(new AccessDeniedException());
         assertEquals(403, response.getStatus());

@@ -45,7 +45,12 @@ public class BookingService {
         Account patient = new TenantAccessPolicy(manager).requireAccount(actor, Role.PATIENT);
         context.attachActor(new CurrentActor(patient.getId(),Role.PATIENT,null));
         if (slotId == null || slotId.trim().isEmpty() || today == null) throw new IllegalArgumentException("slotId and date required");
-        manager.flush();
+        // Serialize every booking by this patient, across hospitals, before checking overlap.
+        Account lockedPatient = manager.find(Account.class, patient.getId(), LockModeType.PESSIMISTIC_WRITE);
+        if (lockedPatient == null) throw new SecurityException("inactive account");
+        manager.refresh(lockedPatient, LockModeType.PESSIMISTIC_WRITE);
+        if (!"ACTIVE".equals(lockedPatient.getStatus()) || lockedPatient.getRole() != Role.PATIENT)
+            throw new AccessDeniedException();
         ScheduleSlot candidate = manager.find(ScheduleSlot.class, slotId);
         if (candidate == null) throw new IllegalStateException("slot unavailable");
         String tenantId = candidate.getTenantId();
@@ -65,6 +70,8 @@ public class BookingService {
         manager.refresh(slot, LockModeType.PESSIMISTIC_WRITE);
         Instant start = LocalDateTime.of(slot.getDate().toLocalDate(), slot.getStartTime().toLocalTime())
                 .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+        Instant end = LocalDateTime.of(slot.getDate().toLocalDate(), slot.getEndTime().toLocalTime())
+                .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
         if (!"PUBLISHED".equals(slot.getStatus()) || slot.getDate().before(today) || !Instant.now().isBefore(start)) {
             throw new IllegalStateException("slot unavailable");
         }
@@ -80,6 +87,24 @@ public class BookingService {
                 || profile == null || !slot.getTenantId().equals(profile.getTenantId())
                 || !slot.getDepartmentId().equals(profile.getDepartmentId())) {
             throw new IllegalStateException("slot directory unavailable");
+        }
+        // Cross-hospital, cross-doctor half-open interval conflict for the same patient. The patient row
+        // lock above serializes bookings, so a concurrent booking for this patient cannot slip between this
+        // read and the persist; a concurrent cancellation only risks a safe, retryable over-rejection.
+        List<Appointment> active = manager.createQuery(
+                "select a from Appointment a where a.patientId = :patientId and a.status in ('BOOKED','IN_PROGRESS')",
+                Appointment.class).setParameter("patientId", patient.getId()).getResultList();
+        for (Appointment held : active) {
+            if (slotId.equals(held.getSlotId())) continue; // Same-slot duplicates keep the existing rule.
+            ScheduleSlot heldSlot = manager.find(ScheduleSlot.class, held.getSlotId());
+            if (heldSlot == null) continue;
+            Instant heldStart = LocalDateTime.of(heldSlot.getDate().toLocalDate(), heldSlot.getStartTime().toLocalTime())
+                    .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+            Instant heldEnd = LocalDateTime.of(heldSlot.getDate().toLocalDate(), heldSlot.getEndTime().toLocalTime())
+                    .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+            if (start.isBefore(heldEnd) && heldStart.isBefore(end)) {
+                throw new AppointmentConflictException();
+            }
         }
         List<Appointment> existing = manager.createQuery(
                 "select a from Appointment a where a.slotId = :slotId and a.status <> 'CANCELED'", Appointment.class)

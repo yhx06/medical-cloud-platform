@@ -48,6 +48,9 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
             return ((com.medcloud.course.paas.consultation.ClinicalSupplementException) failure).getStatus() == 400
                     ? AuditReasonCode.BAD_REQUEST : AuditReasonCode.CONFLICT;
         }
+        if (failure instanceof com.medcloud.course.paas.appointment.AppointmentConflictException) {
+            return AuditReasonCode.CONFLICT;
+        }
         if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
             int status = ((com.medcloud.course.paas.attachment.AttachmentException) failure).getStatus();
             if (status == 401) return AuditReasonCode.UNAUTHORIZED;
@@ -125,6 +128,10 @@ public class ApiFailureMapper implements ExceptionMapper<RuntimeException> {
             status = clinical.getStatus();
             code = clinical.getCode();
             message = status == 400 ? "Invalid clinical input" : "Clinical operation conflicts with current state";
+        } else if (failure instanceof com.medcloud.course.paas.appointment.AppointmentConflictException) {
+            status = 409;
+            code = "APPOINTMENT_CONFLICT";
+            message = "Appointment time conflicts with an existing appointment";
         } else if (failure instanceof com.medcloud.course.paas.attachment.AttachmentException) {
             com.medcloud.course.paas.attachment.AttachmentException attachment = (com.medcloud.course.paas.attachment.AttachmentException) failure;
             status = attachment.getStatus();

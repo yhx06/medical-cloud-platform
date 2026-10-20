@@ -63,6 +63,10 @@
       <td><form method="post" action="<%= context %>/patient/book">
         <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
         <input type="hidden" name="slotId" value="<%= WebEscaper.html(slot.path("id").asText()) %>">
+        <input type="hidden" name="tenantId" value="<%= selectedTenant %>">
+        <input type="hidden" name="departmentId" value="<%= selectedDepartment %>">
+        <input type="hidden" name="doctorId" value="<%= selectedDoctor %>">
+        <input type="hidden" name="date" value="<%= selectedDate %>">
         <button type="submit">预约</button>
       </form></td>
     </tr>

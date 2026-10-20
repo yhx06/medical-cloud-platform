@@ -194,6 +194,7 @@ public final class PaasClient {
         if ("OPERATION_KEY_CONFLICT".equals(code)) return "操作编号与原提交内容冲突，请复核原信息，不要直接换编号重发";
         if ("ADMIN_STATUS_CONFLICT".equals(code)) return "管理员状态已变化，请另开列表复核，不要直接覆盖当前状态";
         if ("LAST_ACTIVE_HOSPITAL_ADMIN".equals(code)) return "不能停用最后一位启用的医院管理员，请先增补或启用另一位管理员后复核";
+        if ("APPOINTMENT_CONFLICT".equals(code)) return "您在该时段已有其他预约，请选择不相重叠的号源后再试";
         return null;
     }
 
