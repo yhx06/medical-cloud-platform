@@ -8,8 +8,10 @@ import javax.ws.rs.core.Context;
 
 import com.medcloud.course.contract.ApiResponse;
 import com.medcloud.course.contract.ClinicalRecordView;
+import com.medcloud.course.contract.ClinicalRecordPage;
 import com.medcloud.course.contract.CompleteConsultationRequest;
 import com.medcloud.course.paas.auth.AuthService;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.consultation.ClinicalRecord;
 import com.medcloud.course.paas.consultation.ClinicalService;
 
@@ -22,6 +24,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
 import javax.ws.rs.core.MediaType;
 import java.sql.Date;
 import java.time.Instant;
@@ -87,14 +90,28 @@ public class ClinicalResource {
 
     @GET
     @Path("doctor/records")
-    public ApiResponse<List<ClinicalRecordView>> records(@HeaderParam("Authorization") String authorization,
-            @QueryParam("from") String from, @QueryParam("to") String to) {
+    public ApiResponse<ClinicalRecordPage> records(@HeaderParam("Authorization") String authorization,
+            @QueryParam("from") String from, @QueryParam("to") String to,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("20") String rawSize) {
         Date fromDate = parseDate(from);
         Date toDate = parseDate(to);
-        List<ClinicalRecordView> result = new ArrayList<ClinicalRecordView>();
-        for (ClinicalRecord record : clinical.forDoctor(auth.authenticate(BearerTokens.require(authorization)),
-                fromDate, toDate)) result.add(view(record));
-        return ApiResponse.success("records", result);
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "20");
+        PageResult<ClinicalRecord> result = clinical.forDoctor(
+                auth.authenticate(BearerTokens.require(authorization)), fromDate, toDate, page, size);
+        List<ClinicalRecordView> views = new ArrayList<ClinicalRecordView>();
+        for (ClinicalRecord record : result.getItems()) views.add(view(record));
+        return ApiResponse.success("records", new ClinicalRecordPage(views, result.getTotal(), page, size));
+    }
+
+    private static int parsePositiveInt(String raw, String fallback) {
+        String value = (raw == null || raw.trim().isEmpty()) ? fallback : raw.trim();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("invalid pagination");
+        }
     }
 
     private static Date parseDate(String value) {

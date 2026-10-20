@@ -18,7 +18,7 @@ public final class AttachmentWorkspace {
         String recordId=optional(request,"recordId"),appointmentId=optional(request,"appointmentId");JsonNode record=null;
         if(!recordId.isEmpty()) {
             if(role!=Role.DOCTOR)throw new IllegalArgumentException("无病历追加权限");recordId=id(recordId);
-            record=find(paas.get("/doctor/records",token),recordId,"id");
+            record=findAcrossPages("/doctor/records",token,recordId,"id");
             if(record==null)throw new PaasRejectedException(403,"无附件访问权限");
             String resolved=id(record.path("appointmentId").asText());
             if(!appointmentId.isEmpty()&&!id(appointmentId).equals(resolved))throw new IllegalArgumentException("预约与病历不一致");appointmentId=resolved;
@@ -29,7 +29,7 @@ public final class AttachmentWorkspace {
         JsonNode data=paas.get(home+"/appointments/"+appointmentId+"/files?page="+page+"&pageSize="+size,token);
         request.setAttribute("attachmentPage",safePage(data,page,size));request.setAttribute("appointmentId",appointmentId);
         request.setAttribute("targetId",role==Role.PATIENT?appointmentId:recordId);
-        JsonNode appointment=find(paas.get(home+"/appointments",token),appointmentId,"id");
+        JsonNode appointment=findAcrossPages(home+"/appointments",token,appointmentId,"id");
         boolean writable=false,delete=false;
         if(appointment!=null) {
             String state=appointment.path("status").asText();
@@ -40,7 +40,7 @@ public final class AttachmentWorkspace {
                 delete=active && "BOOKED".equals(state) && (!appointment.has("startedAt")||appointment.path("startedAt").isNull());
             } else {
                 new WorkspaceAccess(paas).loadContext(request,token,role);
-                if(record==null && "COMPLETED".equals(state))record=find(paas.get("/doctor/records",token),appointmentId,"appointmentId");
+                if(record==null && "COMPLETED".equals(state))record=findAcrossPages("/doctor/records",token,appointmentId,"appointmentId");
                 if(record!=null){recordId=id(record.path("id").asText());request.setAttribute("targetId",recordId);}
                 writable=record!=null && "COMPLETED".equals(state) && Boolean.TRUE.equals(request.getAttribute("businessWritable"));
             }
@@ -55,6 +55,17 @@ public final class AttachmentWorkspace {
     static void whitelist(HttpServletRequest r,String... fields){Set<String> allowed=new HashSet<>(Arrays.asList(fields));for(String name:r.getParameterMap().keySet())if(!allowed.contains(name)||r.getParameterValues(name).length!=1)throw new IllegalArgumentException("附件参数不受支持或重复");}
     private static int number(HttpServletRequest r,String field,int fallback,int max){String v=optional(r,field);if(v.isEmpty())return fallback;try{if(!v.matches("[0-9]+"))throw new NumberFormatException();int n=Integer.parseInt(v);if(n<1||n>max)throw new NumberFormatException();return n;}catch(NumberFormatException e){throw new IllegalArgumentException("分页参数无效");}}
     private static JsonNode find(JsonNode rows,String value,String field){if(rows!=null&&rows.isArray())for(JsonNode row:rows)if(value.equals(row.path(field).asText()))return row;return null;}
+    /** Look up one row by id across paged list endpoints so a target outside the first page is still authorized. */
+    private JsonNode findAcrossPages(String path,String token,String value,String field){
+        for(int p=1;;p++){
+            String sep=path.indexOf('?')<0?"?":"&";
+            JsonNode data=paas.get(path+sep+"page="+p+"&size=100",token);
+            JsonNode items=data.path("items");
+            if(!items.isArray())return null;
+            for(JsonNode row:items)if(value.equals(row.path(field).asText()))return row;
+            if(data.path("total").asLong(0)<=(long)p*100)return null;
+        }
+    }
     private static JsonNode safePage(JsonNode data,int page,int size) {
         if(!data.isObject()||!data.path("items").isArray()||data.path("page").asInt()!=page||data.path("pageSize").asInt()!=size
                 ||!data.path("total").isIntegralNumber()||!data.path("total").canConvertToLong()||data.path("total").asLong()<0||data.path("items").size()>size)throw new IllegalArgumentException("附件列表暂不可用");

@@ -47,7 +47,7 @@ class CancellationTest {
             manager.persist(new Appointment("a-newer", "patient-a", "slot-a", "tenant-a", "doctor-a",
                     BigDecimal.TEN, Date.valueOf("2030-05-20"), Instant.parse("2030-05-20T02:00:00Z")));
             manager.getTransaction().commit();
-            List<AppointmentHistoryView> history = new BookingService(manager).forPatient(PATIENT);
+            List<AppointmentHistoryView> history = new BookingService(manager).forPatient(PATIENT, 1, 100).getItems();
             assertEquals("a-newer", history.get(0).getId());
             assertEquals("z-older", history.get(1).getId());
         } finally { close(manager, factory); }
@@ -74,14 +74,14 @@ class CancellationTest {
             Appointment second = service.book(PATIENT, "slot-a", Date.valueOf("2030-05-20"));
             manager.getTransaction().commit();
             assertNotEquals(first.getId(), second.getId());
-            List<AppointmentHistoryView> history = service.forPatient(PATIENT);
+            List<AppointmentHistoryView> history = service.forPatient(PATIENT, 1, 100).getItems();
             assertEquals(2, history.size());
             assertTrue(history.stream().anyMatch(row -> "BOOKED".equals(row.getStatus()) && second.getId().equals(row.getId())));
             assertTrue(history.stream().anyMatch(row -> "CANCELED".equals(row.getStatus()) && first.getId().equals(row.getId())));
             assertEquals("仁和云诊所", history.get(0).getHospitalName());
             assertEquals("全科", history.get(0).getDepartmentName());
             assertEquals(Date.valueOf("2030-05-21"), history.get(0).getSlotDate());
-            assertEquals(0, service.forPatient(OTHER).size());
+            assertEquals(0, service.forPatient(OTHER, 1, 100).getItems().size());
         } finally { close(manager, factory); }
     }
 

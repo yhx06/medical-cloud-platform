@@ -7,6 +7,7 @@ import javax.ejb.EJB;
 import java.util.UUID;
 
 import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Tenant;
@@ -22,6 +23,7 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 
 @Stateless
@@ -74,7 +76,7 @@ public class PaymentService {
         return order;
     }
 
-    public List<PaymentOrder> forHospital(CurrentActor actor, String status, Date from, Date to) {
+    public PageResult<PaymentOrder> forHospital(CurrentActor actor, String status, Date from, Date to, int page, int size) {
         Tenant tenant = new TenantAccessPolicy(manager).readableTenant(actor, Role.HOSPITAL_ADMIN);
         if (status != null && !status.isEmpty() && !"PAID".equals(status) && !"UNPAID".equals(status)) {
             throw new IllegalArgumentException("invalid payment status");
@@ -82,20 +84,31 @@ public class PaymentService {
         if (from != null && to != null && from.after(to)) {
             throw new IllegalArgumentException("invalid date range");
         }
-        StringBuilder jpql = new StringBuilder("select o from PaymentOrder o where o.tenantId = :tenantId");
-        if (status != null && !status.isEmpty()) jpql.append(" and o.status = :status");
-        if (from != null) jpql.append(" and o.paidAt >= :from");
-        if (to != null) jpql.append(" and o.paidAt < :to");
-        jpql.append(" order by case when o.paidAt is null then 1 else 0 end, o.paidAt desc, o.id desc");
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        ZoneId shanghai = ZoneId.of("Asia/Shanghai");
+        Timestamp fromTs = from == null ? null : Timestamp.from(LocalDate.parse(from.toString()).atStartOfDay(shanghai).toInstant());
+        Timestamp toTs = to == null ? null : Timestamp.from(LocalDate.parse(to.toString()).plusDays(1).atStartOfDay(shanghai).toInstant());
+        StringBuilder where = new StringBuilder(" where o.tenantId = :tenantId");
+        if (status != null && !status.isEmpty()) where.append(" and o.status = :status");
+        if (fromTs != null) where.append(" and o.paidAt >= :from");
+        if (toTs != null) where.append(" and o.paidAt < :to");
+        TypedQuery<Long> count = manager.createQuery("select count(o) from PaymentOrder o" + where, Long.class)
+                .setParameter("tenantId", tenant.getId());
+        if (status != null && !status.isEmpty()) count.setParameter("status", status);
+        if (fromTs != null) count.setParameter("from", fromTs);
+        if (toTs != null) count.setParameter("to", toTs);
+        long total = count.getSingleResult();
+        StringBuilder jpql = new StringBuilder("select o from PaymentOrder o" + where)
+                .append(" order by case when o.paidAt is null then 1 else 0 end, o.paidAt desc, o.id desc");
         TypedQuery<PaymentOrder> rows = manager.createQuery(jpql.toString(), PaymentOrder.class)
                 .setParameter("tenantId", tenant.getId());
         if (status != null && !status.isEmpty()) rows.setParameter("status", status);
-        ZoneId shanghai = ZoneId.of("Asia/Shanghai");
-        if (from != null) rows.setParameter("from", Timestamp.from(
-                LocalDate.parse(from.toString()).atStartOfDay(shanghai).toInstant()));
-        if (to != null) rows.setParameter("to", Timestamp.from(
-                LocalDate.parse(to.toString()).plusDays(1).atStartOfDay(shanghai).toInstant()));
-        return rows.setMaxResults(100).getResultList();
+        if (fromTs != null) rows.setParameter("from", fromTs);
+        if (toTs != null) rows.setParameter("to", toTs);
+        rows.setFirstResult((int) offset).setMaxResults(size);
+        return new PageResult<PaymentOrder>(rows.getResultList(), total, page, size);
     }
 
     private void requirePatient(CurrentActor actor) {

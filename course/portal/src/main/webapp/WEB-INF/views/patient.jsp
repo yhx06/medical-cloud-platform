@@ -109,6 +109,15 @@
       <a href="<%= context %>/patient/files?appointmentId=<%= WebEscaper.html(appointment.path("id").asText()) %>">查看诊疗附件</a><% } %></td></tr>
   <% } %></tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无预约记录，完成挂号后可在这里查看。</p><% } %>
+  <% JsonNode appointmentsPage = (JsonNode) request.getAttribute("appointmentsPage");
+     if (appointmentsPage != null) {
+       long apNum = appointmentsPage.path("page").asLong(), apSize = appointmentsPage.path("size").asLong(), apTotal = appointmentsPage.path("total").asLong();
+       long apPages = apTotal / apSize + (apTotal % apSize == 0 ? 0 : 1); %>
+  <nav class="pagination" aria-label="预约历史分页"><span>共 <%= apTotal %> 条 · 第 <%= apNum %> / <%= apPages %> 页</span>
+    <% if (apNum > 1) { %><a href="<%= filteredUrl(context + "/patient", joinFilters(filterQuery, "page=" + (apNum - 1)), "appointment-history") %>">上一页</a><% } %>
+    <% if (apNum < apPages && apNum * apSize <= Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/patient", joinFilters(filterQuery, "page=" + (apNum + 1)), "appointment-history") %>">下一页</a><% } %>
+  </nav>
+  <% } %>
   <% } %>
 </section>
 <section class="card" id="record-billing">

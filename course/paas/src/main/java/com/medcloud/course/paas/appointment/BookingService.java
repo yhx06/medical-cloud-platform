@@ -7,6 +7,8 @@ import javax.ejb.EJB;
 
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.AppointmentHistoryView;
+import com.medcloud.course.contract.AppointmentHistoryPage;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.AccessDeniedException;
 import com.medcloud.course.paas.auth.CurrentActor;
@@ -21,6 +23,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.LockModeType;
 import javax.persistence.PersistenceContext;
 import java.sql.Date;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.time.Instant;
@@ -125,14 +128,22 @@ public class BookingService {
         return appointment;
     }
 
-    public List<Appointment> forDoctor(CurrentActor actor) {
+    public PageResult<Appointment> forDoctor(CurrentActor actor, int page, int size) {
         TenantAccessPolicy policy = new TenantAccessPolicy(manager);
         Account doctor = policy.requireAccount(actor, Role.DOCTOR);
         policy.readableTenant(doctor.getTenantId());
-        return manager.createQuery("select a from Appointment a where a.doctorId = :doctorId "
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        long total = manager.createQuery("select count(a) from Appointment a where a.doctorId = :doctorId "
+                + "and a.tenantId = :tenantId", Long.class)
+                .setParameter("doctorId", doctor.getId()).setParameter("tenantId", doctor.getTenantId())
+                .getSingleResult();
+        List<Appointment> rows = manager.createQuery("select a from Appointment a where a.doctorId = :doctorId "
                 + "and a.tenantId = :tenantId order by a.bookedOn, a.id", Appointment.class)
                 .setParameter("doctorId", doctor.getId()).setParameter("tenantId", doctor.getTenantId())
-                .getResultList();
+                .setFirstResult((int) offset).setMaxResults(size).getResultList();
+        return new PageResult<Appointment>(rows, total, page, size);
     }
 
     public Appointment cancel(CurrentActor actor, String appointmentId, Instant now) {
@@ -167,11 +178,17 @@ public class BookingService {
         return appointment;
     }
 
-    public List<AppointmentHistoryView> forPatient(CurrentActor actor) {
+    public AppointmentHistoryPage forPatient(CurrentActor actor, int page, int size) {
         requirePatient(actor);
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        long total = manager.createQuery("select count(a) from Appointment a where a.patientId = :patientId", Long.class)
+                .setParameter("patientId", actor.getUserId()).getSingleResult();
         List<Appointment> rows = manager.createQuery("select a from Appointment a where a.patientId = :patientId "
                 + "order by a.bookedOn desc, a.bookedAt desc, a.id desc", Appointment.class)
-                .setParameter("patientId", actor.getUserId()).setMaxResults(100).getResultList();
+                .setParameter("patientId", actor.getUserId())
+                .setFirstResult((int) offset).setMaxResults(size).getResultList();
         java.util.ArrayList<AppointmentHistoryView> views = new java.util.ArrayList<AppointmentHistoryView>();
         for (Appointment appointment : rows) {
             ScheduleSlot slot = manager.find(ScheduleSlot.class, appointment.getSlotId());
@@ -186,7 +203,7 @@ public class BookingService {
                     slot == null ? null : slot.getStartTime(), slot == null ? null : slot.getEndTime(),
                     tenant.getStatus(), "ACTIVE".equals(tenant.getStatus())));
         }
-        return views;
+        return new AppointmentHistoryPage(views, total, page, size);
     }
 
     private void requirePatient(CurrentActor actor) {

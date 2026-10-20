@@ -57,7 +57,7 @@ class TenantAccessPolicyTest extends TenantFixture {
         assertThrows(SecurityException.class, () -> policy.readableTenant(ADMIN, Role.HOSPITAL_ADMIN));
         AuthService auth = new AuthService(manager, SECRET);
         assertThrows(SecurityException.class, () -> auth.login(new com.medcloud.course.contract.LoginRequest("doctor_a", PASSWORD)));
-        assertThrows(SecurityException.class, () -> new com.medcloud.course.paas.appointment.BookingService(manager).forDoctor(DOCTOR));
+        assertThrows(SecurityException.class, () -> new com.medcloud.course.paas.appointment.BookingService(manager).forDoctor(DOCTOR, 1, 100).getItems());
         externalUpdate("delete from Tenant t where t.id = 'tenant-a'");
         assertThrows(SecurityException.class, () -> policy.readableTenant(ADMIN, Role.HOSPITAL_ADMIN));
         assertThrows(SecurityException.class, () -> auth.login(new com.medcloud.course.contract.LoginRequest("admin_a", PASSWORD)));

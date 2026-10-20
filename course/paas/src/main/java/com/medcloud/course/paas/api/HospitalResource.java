@@ -15,6 +15,7 @@ import com.medcloud.course.contract.DoctorRequest;
 import com.medcloud.course.contract.DoctorView;
 import com.medcloud.course.contract.HospitalNameRequest;
 import com.medcloud.course.contract.PaymentOrderView;
+import com.medcloud.course.contract.PaymentOrderPage;
 import com.medcloud.course.contract.Role;
 import com.medcloud.course.contract.TenantContextView;
 import com.medcloud.course.contract.StatisticsReport;
@@ -22,6 +23,7 @@ import com.medcloud.course.paas.tenant.PlatformTenantService;
 import com.medcloud.course.paas.statistics.StatisticsService;
 import com.medcloud.course.paas.order.PaymentOrder;
 import com.medcloud.course.paas.order.PaymentService;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.auth.AuthService;
 import com.medcloud.course.paas.auth.CurrentActor;
 import com.medcloud.course.paas.tenant.Department;
@@ -39,6 +41,7 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
 import java.sql.Date;
 import java.time.LocalDate;
 import javax.ws.rs.core.MediaType;
@@ -114,15 +117,30 @@ public class HospitalResource {
     }
 
     @GET @Path("orders")
-    public ApiResponse<List<PaymentOrderView>> orders(@HeaderParam("Authorization") String authorization,
-            @QueryParam("status") String status, @QueryParam("from") String from, @QueryParam("to") String to) {
+    public ApiResponse<PaymentOrderPage> orders(@HeaderParam("Authorization") String authorization,
+            @QueryParam("status") String status, @QueryParam("from") String from, @QueryParam("to") String to,
+            @QueryParam("page") @DefaultValue("1") String rawPage,
+            @QueryParam("size") @DefaultValue("20") String rawSize) {
+        int page = parsePositiveInt(rawPage, "1");
+        int size = parsePositiveInt(rawSize, "20");
+        PageResult<PaymentOrder> result = payments.forHospital(actor(authorization), status,
+                parseDate(from), parseDate(to), page, size);
         List<PaymentOrderView> views = new ArrayList<PaymentOrderView>();
-        for (PaymentOrder order : payments.forHospital(actor(authorization), status, parseDate(from), parseDate(to))) {
+        for (PaymentOrder order : result.getItems()) {
             views.add(new PaymentOrderView(order.getId(), order.getAppointmentId(), order.getAmount(),
                     order.getStatus(), order.getPaidAt(),
                     com.medcloud.course.paas.order.PaymentReference.masked(order.getPaymentReference()), false));
         }
-        return ApiResponse.success("orders", views);
+        return ApiResponse.success("orders", new PaymentOrderPage(views, result.getTotal(), page, size));
+    }
+
+    private static int parsePositiveInt(String raw, String fallback) {
+        String value = (raw == null || raw.trim().isEmpty()) ? fallback : raw.trim();
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException invalid) {
+            throw new IllegalArgumentException("invalid pagination");
+        }
     }
     private static Date parseDate(String value) {
         if (value == null || value.trim().isEmpty()) return null;

@@ -32,24 +32,24 @@ class TenantReadOnlyTest extends TenantFixture {
         assertEquals(1, new HospitalDepartmentService(manager).list(ADMIN).size());
         assertEquals(1, new HospitalDoctorService(manager).list(ADMIN).size());
         assertEquals(1, new SlotAdminService(manager).list(ADMIN).size());
-        assertEquals(2, new PaymentService(manager).forHospital(ADMIN, null, null, null).size());
-        assertEquals(4, new BookingService(manager).forDoctor(DOCTOR).size());
-        assertEquals(2, new ClinicalService(manager).forDoctor(DOCTOR, null, null).size());
-        assertEquals(4, new BookingService(manager).forPatient(PATIENT).size());
+        assertEquals(2, new PaymentService(manager).forHospital(ADMIN, null, null, null, 1, 100).getItems().size());
+        assertEquals(4, new BookingService(manager).forDoctor(DOCTOR, 1, 100).getItems().size());
+        assertEquals(2, new ClinicalService(manager).forDoctor(DOCTOR, null, null, 1, 100).getItems().size());
+        assertEquals(4, new BookingService(manager).forPatient(PATIENT, 1, 100).getItems().size());
         assertEquals("record-unpaid", new ClinicalService(manager).forPatient(PATIENT, "unpaid").getId());
         assertEquals("order-paid", new PaymentService(manager).forPatient(PATIENT, "paid").getId());
         assertThrows(AccessDeniedException.class, () -> new ClinicalService(manager).forPatient(OTHER, "unpaid"));
         assertThrows(AccessDeniedException.class, () -> new PaymentService(manager).forPatient(OTHER, "unpaid"));
         assertThrows(AccessDeniedException.class, () -> new ClinicalService(manager).forPatient(ADMIN, "unpaid"));
-        assertEquals(0, new BookingService(manager).forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a")).size());
+        assertEquals(0, new BookingService(manager).forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a"), 1, 100).getItems().size());
         assertThrows(AccessDeniedException.class, () -> new HospitalDepartmentService(manager).list(PLATFORM));
         assertThrows(AccessDeniedException.class, () -> new HospitalDoctorService(manager).list(DOCTOR));
         assertThrows(AccessDeniedException.class, () -> new SlotAdminService(manager).list(PATIENT));
-        assertThrows(AccessDeniedException.class, () -> new PaymentService(manager).forHospital(PLATFORM, null, null, null));
-        assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forPatient(ADMIN));
-        assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forDoctor(PLATFORM));
-        assertThrows(AccessDeniedException.class, () -> new ClinicalService(manager).forDoctor(ADMIN, null, null));
-        assertEquals(0, new ClinicalService(manager).forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a"), null, null).size());
+        assertThrows(AccessDeniedException.class, () -> new PaymentService(manager).forHospital(PLATFORM, null, null, null, 1, 100).getItems());
+        assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forPatient(ADMIN, 1, 100).getItems());
+        assertThrows(AccessDeniedException.class, () -> new BookingService(manager).forDoctor(PLATFORM, 1, 100).getItems());
+        assertThrows(AccessDeniedException.class, () -> new ClinicalService(manager).forDoctor(ADMIN, null, null, 1, 100).getItems());
+        assertEquals(0, new ClinicalService(manager).forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a"), null, null, 1, 100).getItems().size());
     }
 
     @Test
@@ -61,24 +61,24 @@ class TenantReadOnlyTest extends TenantFixture {
         externalUpdate("update Account a set a.status = 'DISABLED' where a.id = 'doctor-a'");
         assertThrows(SecurityException.class, () -> auth.authenticate(token));
         assertThrows(SecurityException.class, () -> AuditLocalTransactions.login(manager, auth, new LoginRequest("doctor_a", PASSWORD)));
-        assertThrows(SecurityException.class, () -> new BookingService(manager).forDoctor(DOCTOR));
+        assertThrows(SecurityException.class, () -> new BookingService(manager).forDoctor(DOCTOR, 1, 100).getItems());
         setTenantStatus("ACTIVE");
         assertThrows(SecurityException.class, () -> auth.authenticate(token));
-        assertThrows(SecurityException.class, () -> new ClinicalService(manager).forDoctor(DOCTOR, null, null));
+        assertThrows(SecurityException.class, () -> new ClinicalService(manager).forDoctor(DOCTOR, null, null, 1, 100).getItems());
     }
 
     @Test
     void missingOrUnknownHospitalCannotServePatientOrHospitalHistory() {
         setTenantStatus("UNKNOWN");
-        assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT));
+        assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT, 1, 100).getItems());
         assertThrows(SecurityException.class, () -> new ClinicalService(manager).forPatient(PATIENT, "unpaid"));
         assertThrows(SecurityException.class, () -> new PaymentService(manager).forPatient(PATIENT, "unpaid"));
         assertThrows(SecurityException.class, () -> new HospitalDepartmentService(manager).list(ADMIN));
         assertThrows(SecurityException.class, () -> new HospitalDoctorService(manager).list(ADMIN));
         assertThrows(SecurityException.class, () -> new SlotAdminService(manager).list(ADMIN));
-        assertThrows(SecurityException.class, () -> new PaymentService(manager).forHospital(ADMIN, null, null, null));
+        assertThrows(SecurityException.class, () -> new PaymentService(manager).forHospital(ADMIN, null, null, null, 1, 100).getItems());
         externalUpdate("delete from Tenant t where t.id = 'tenant-a'");
-        assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT));
+        assertThrows(SecurityException.class, () -> new BookingService(manager).forPatient(PATIENT, 1, 100).getItems());
         assertThrows(SecurityException.class, () -> new ClinicalService(manager).forPatient(PATIENT, "unpaid"));
         assertThrows(SecurityException.class, () -> new PaymentService(manager).forPatient(PATIENT, "unpaid"));
     }

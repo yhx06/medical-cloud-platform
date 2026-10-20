@@ -256,10 +256,10 @@ class BookingIsolationTest {
             booking.book(new CurrentActor("patient-a", Role.PATIENT, null), "slot-a", Date.valueOf("2030-05-20"));
             manager.getTransaction().commit();
 
-            assertEquals(1, booking.forDoctor(new CurrentActor("doctor-a", Role.DOCTOR, "tenant-b")).size());
-            assertEquals(0, booking.forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a")).size());
+            assertEquals(1, booking.forDoctor(new CurrentActor("doctor-a", Role.DOCTOR, "tenant-b"), 1, 100).getItems().size());
+            assertEquals(0, booking.forDoctor(new CurrentActor("doctor-b", Role.DOCTOR, "tenant-a"), 1, 100).getItems().size());
             assertThrows(SecurityException.class,
-                    () -> booking.forDoctor(new CurrentActor("patient-a", Role.DOCTOR, "tenant-a")));
+                    () -> booking.forDoctor(new CurrentActor("patient-a", Role.DOCTOR, "tenant-a"), 1, 100));
         } finally {
             manager.close();
             factory.close();

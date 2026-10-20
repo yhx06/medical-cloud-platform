@@ -72,7 +72,8 @@ class HospitalPortalTest {
                 authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             }
             String data = exchange.getRequestURI().getPath().endsWith("/context") ? context
-                    : exchange.getRequestURI().getPath().endsWith("/statistics") ? statistics : "[]";
+                    : exchange.getRequestURI().getPath().endsWith("/statistics") ? statistics
+                    : exchange.getRequestURI().getPath().endsWith("/orders") ? "{\"items\":[],\"total\":0,\"page\":1,\"size\":20}" : "[]";
             byte[] response = ("{\"code\":\"OK\",\"data\":" + data + "}").getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
             exchange.getResponseBody().write(response);
@@ -98,7 +99,7 @@ class HospitalPortalTest {
 
             servlet.service(request, new MockHttpServletResponse());
 
-            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22", orderQuery.get());
+            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22&page=1&size=20", orderQuery.get());
             assertEquals("Bearer signed-token", authorization.get());
             assertFalse(orderQuery.get().contains("tenantId"));
             assertEquals(0, ((JsonNode) request.getAttribute("orders")).size());

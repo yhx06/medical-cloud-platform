@@ -65,13 +65,13 @@ class TenantViewPrivacyTest extends TenantFixture {
         AuthService auth = new AuthService(manager, SECRET);
         String bearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("patient_a", PASSWORD)).getAccessToken();
         PaymentResource resource = new PaymentResource(auth, payments, AuditClinicalFixture.legacyRunner(manager));
-        assertTrue(bookings.forPatient(PATIENT).get(0).isBusinessWritable());
-        assertEquals("ACTIVE", bookings.forPatient(PATIENT).get(0).getTenantStatus());
+        assertTrue(bookings.forPatient(PATIENT, 1, 100).getItems().get(0).isBusinessWritable());
+        assertEquals("ACTIVE", bookings.forPatient(PATIENT, 1, 100).getItems().get(0).getTenantStatus());
         assertTrue(resource.order(bearer, "unpaid").getData().isBusinessWritable());
         setTenantStatus("DISABLED");
-        assertFalse(bookings.forPatient(PATIENT).get(0).isBusinessWritable());
-        assertEquals("DISABLED", bookings.forPatient(PATIENT).get(0).getTenantStatus());
-        JsonNode historyJson = new ObjectMapper().valueToTree(bookings.forPatient(PATIENT).get(0));
+        assertFalse(bookings.forPatient(PATIENT, 1, 100).getItems().get(0).isBusinessWritable());
+        assertEquals("DISABLED", bookings.forPatient(PATIENT, 1, 100).getItems().get(0).getTenantStatus());
+        JsonNode historyJson = new ObjectMapper().valueToTree(bookings.forPatient(PATIENT, 1, 100).getItems().get(0));
         assertEquals(fields("id", "status", "bookedOn", "bookedAt", "tenantId", "hospitalName", "departmentId",
                 "departmentName", "doctorId", "doctorName", "slotId", "slotDate", "startTime", "endTime",
                 "tenantStatus", "businessWritable"), fieldNames(historyJson));
@@ -100,7 +100,7 @@ class TenantViewPrivacyTest extends TenantFixture {
         assertEquals("PAID", paid.getStatus());
         assertNotNull(paid.getPaidAt());
         String adminBearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", PASSWORD)).getAccessToken();
-        for (PaymentOrderView order : new HospitalResource(auth, payments).orders(adminBearer, null, null, null).getData()) {
+        for (PaymentOrderView order : new HospitalResource(auth, payments).orders(adminBearer, null, null, null, "1", "100").getData().getItems()) {
             assertFalse(order.isBusinessWritable(), "hospital views must not grant patient payment capability");
         }
     }

@@ -13,7 +13,7 @@ class StatisticsPortalTest {
             request.addParameter("status", "PAID"); request.addParameter("from", "2030-05-21"); request.addParameter("to", "2030-05-22");
             request.addParameter("statsFrom", "2030-05-01"); request.addParameter("statsTo", "2030-05-02"); request.addParameter("tenantId", "forged");
             f.servlet.service(request, new MockHttpServletResponse());
-            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22", f.queries.get("/hospital/orders"));
+            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22&page=1&size=20", f.queries.get("/hospital/orders"));
             assertEquals("from=2030-05-01&to=2030-05-02", f.queries.get("/hospital/statistics"));
             assertNotNull(request.getAttribute("statistics"));
         }
@@ -50,7 +50,7 @@ class StatisticsPortalTest {
             request.addParameter("from", "2030-05-21"); request.addParameter("to", "2030-05-22"); request.addParameter("status", "UNPAID");
             f.servlet.service(request, new MockHttpServletResponse());
             assertTrue(f.calls.contains("GET /hospital/statistics")); assertNull(f.queries.get("/hospital/statistics"));
-            assertEquals("status=UNPAID&from=2030-05-21&to=2030-05-22", f.queries.get("/hospital/orders"));
+            assertEquals("status=UNPAID&from=2030-05-21&to=2030-05-22&page=1&size=20", f.queries.get("/hospital/orders"));
             assertEquals("2030-05-01", request.getAttribute("statsFrom"));
         }
     }

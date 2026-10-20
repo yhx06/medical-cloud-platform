@@ -7,6 +7,7 @@ import com.medcloud.course.contract.ClinicalContentView;
 import javax.ejb.EJB;
 
 import com.medcloud.course.contract.Role;
+import com.medcloud.course.paas.PageResult;
 import com.medcloud.course.paas.appointment.Appointment;
 import com.medcloud.course.paas.auth.Account;
 import com.medcloud.course.paas.auth.AccessDeniedException;
@@ -20,6 +21,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.LockModeType;
 import javax.persistence.PersistenceContext;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.UUID;
 import java.sql.Date;
 import java.sql.Timestamp;
@@ -109,23 +111,35 @@ public class ClinicalService {
         return new ClinicalAccessPolicy(manager).lockedDoctorAppointment(actor,appointmentId,context);
     }
 
-    public List<ClinicalRecord> forDoctor(CurrentActor actor, Date from, Date to) {
+    public PageResult<ClinicalRecord> forDoctor(CurrentActor actor, Date from, Date to, int page, int size) {
         TenantAccessPolicy policy = new TenantAccessPolicy(manager);
         Account doctor = policy.requireAccount(actor, Role.DOCTOR);
         policy.readableTenant(doctor.getTenantId());
         if (from != null && to != null && from.toString().compareTo(to.toString()) > 0)
             throw new IllegalArgumentException("invalid date range");
-        StringBuilder query = new StringBuilder("select r from ClinicalRecord r where r.doctorId = :doctorId "
-                + "and r.tenantId = :tenantId");
-        if (from != null) query.append(" and r.completedAt >= :from");
-        if (to != null) query.append(" and r.completedAt < :to");
-        query.append(" order by r.completedAt desc, r.id desc");
+        if (page < 1 || size < 1 || size > 100) throw new IllegalArgumentException("invalid pagination");
+        long offset = ((long) page - 1) * size;
+        if (offset > Integer.MAX_VALUE) throw new IllegalArgumentException("pagination offset too large");
+        ZoneId shanghai = ZoneId.of("Asia/Shanghai");
+        Timestamp fromTs = from == null ? null : Timestamp.from(LocalDate.parse(from.toString()).atStartOfDay(shanghai).toInstant());
+        Timestamp toTs = to == null ? null : Timestamp.from(LocalDate.parse(to.toString()).plusDays(1).atStartOfDay(shanghai).toInstant());
+        StringBuilder where = new StringBuilder(" where r.doctorId = :doctorId and r.tenantId = :tenantId");
+        if (fromTs != null) where.append(" and r.completedAt >= :from");
+        if (toTs != null) where.append(" and r.completedAt < :to");
+        javax.persistence.TypedQuery<Long> count = manager.createQuery(
+                "select count(r) from ClinicalRecord r" + where, Long.class)
+                .setParameter("doctorId", doctor.getId()).setParameter("tenantId", doctor.getTenantId());
+        if (fromTs != null) count.setParameter("from", fromTs);
+        if (toTs != null) count.setParameter("to", toTs);
+        long total = count.getSingleResult();
+        StringBuilder query = new StringBuilder("select r from ClinicalRecord r" + where)
+                .append(" order by r.completedAt desc, r.id desc");
         javax.persistence.TypedQuery<ClinicalRecord> rows = manager.createQuery(query.toString(), ClinicalRecord.class)
                 .setParameter("doctorId", doctor.getId()).setParameter("tenantId", doctor.getTenantId());
-        ZoneId shanghai = ZoneId.of("Asia/Shanghai");
-        if (from != null) rows.setParameter("from", Timestamp.from(LocalDate.parse(from.toString()).atStartOfDay(shanghai).toInstant()));
-        if (to != null) rows.setParameter("to", Timestamp.from(LocalDate.parse(to.toString()).plusDays(1).atStartOfDay(shanghai).toInstant()));
-        return rows.setMaxResults(100).getResultList();
+        if (fromTs != null) rows.setParameter("from", fromTs);
+        if (toTs != null) rows.setParameter("to", toTs);
+        rows.setFirstResult((int) offset).setMaxResults(size);
+        return new PageResult<ClinicalRecord>(rows.getResultList(), total, page, size);
     }
 
     public ClinicalRecord forPatient(CurrentActor actor, String appointmentId) {

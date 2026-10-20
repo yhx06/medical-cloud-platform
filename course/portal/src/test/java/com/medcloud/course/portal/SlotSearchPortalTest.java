@@ -111,7 +111,7 @@ class SlotSearchPortalTest {
             String path = exchange.getRequestURI().getPath();
             reply(exchange, path.endsWith("/record") ? "{\"diagnosis\":\"虚构诊断\"}"
                     : path.endsWith("/order") ? "{\"status\":\"UNPAID\",\"amount\":39,\"businessWritable\":false}"
-                    : "[{\"id\":\"" + id + "\",\"status\":\"COMPLETED\",\"tenantStatus\":\"DISABLED\",\"businessWritable\":false}]");
+                    : "{\"items\":[{\"id\":\"" + id + "\",\"status\":\"COMPLETED\",\"tenantStatus\":\"DISABLED\",\"businessWritable\":false}],\"total\":1,\"page\":1,\"size\":20}");
         });
         server.start();
         try {
@@ -130,7 +130,7 @@ class SlotSearchPortalTest {
         server.createContext("/api/catalog/hospitals", exchange -> reply(exchange, "[{\"id\":\"tenant a\",\"name\":\"甲医院\"}]"));
         server.createContext("/api/catalog/departments", exchange -> reply(exchange, "[{\"id\":\"dept a\",\"name\":\"内科\"}]"));
         server.createContext("/api/catalog/doctors", exchange -> reply(exchange, "[{\"id\":\"doc a\",\"name\":\"甲医生\"}]"));
-        server.createContext("/api/patient/appointments", exchange -> reply(exchange, "[]"));
+        server.createContext("/api/patient/appointments", exchange -> reply(exchange, "{\"items\":[],\"total\":0,\"page\":1,\"size\":20}"));
     }
 
     private static void reply(com.sun.net.httpserver.HttpExchange exchange, String data) throws java.io.IOException {

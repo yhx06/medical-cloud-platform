@@ -170,7 +170,11 @@ final class PortalFixture implements AutoCloseable {
         data.put("/platform/tenants/" + ID + "/status", json.writeValueAsString(new TenantView(ID, "甲医院", "DISABLED")));
         data.put("/hospital/context", contextJson());
         data.put("/doctor/context", data.get("/hospital/context"));
-        data.put("/hospital/orders", "[{\"id\":\"order-a\",\"status\":\"PAID\",\"amount\":39.00}]");
+        data.put("/hospital/orders", "{\"items\":[{\"id\":\"order-a\",\"status\":\"PAID\",\"amount\":39.00}],\"total\":1,\"page\":1,\"size\":20}");
+        String emptyPage = "{\"items\":[],\"total\":0,\"page\":1,\"size\":20}";
+        data.put("/patient/appointments", emptyPage);
+        data.put("/doctor/appointments", emptyPage);
+        data.put("/doctor/records", emptyPage);
         data.put("/patient/appointments/" + ID + "/record", "{\"diagnosis\":\"虚构诊断\"}");
         data.put("/patient/appointments/" + ID + "/order", "{\"status\":\"UNPAID\",\"amount\":39.00,\"businessWritable\":false}");
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);

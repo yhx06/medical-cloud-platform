@@ -187,6 +187,15 @@
     <% } %>
   </tbody></table></div>
   <% if (orders.size() == 0) { %><p class="empty-state">暂无符合条件的账单。</p><% } %>
+  <% JsonNode ordersPage = (JsonNode) request.getAttribute("ordersPage");
+     if (ordersPage != null) {
+       long oNum = ordersPage.path("page").asLong(), oSize = ordersPage.path("size").asLong(), oTotal = ordersPage.path("total").asLong();
+       long oPages = oTotal / oSize + (oTotal % oSize == 0 ? 0 : 1); %>
+  <nav class="pagination" aria-label="账单分页"><span>共 <%= oTotal %> 条 · 第 <%= oNum %> / <%= oPages %> 页</span>
+    <% if (oNum > 1) { %><a href="<%= filteredUrl(context + "/hospital", joinFilters(orderFilters(request), "page=" + (oNum - 1)), "orders") %>">上一页</a><% } %>
+    <% if (oNum < oPages && oNum * oSize <= Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/hospital", joinFilters(orderFilters(request), "page=" + (oNum + 1)), "orders") %>">下一页</a><% } %>
+  </nav>
+  <% } %>
   <% } %>
 </section>
 <%@ include file="statistics.jspf" %>

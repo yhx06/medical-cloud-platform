@@ -93,7 +93,7 @@ class ClinicalPaymentFlowTest {
             assertEquals("COMPLETED", manager.find(Appointment.class, appointment.getId()).getStatus());
             assertEquals(record.getId(), clinical.forPatient(patientA, appointment.getId()).getId());
             assertEquals(record.getId(), clinicalApi.record(patientBearer, appointment.getId()).getData().getId());
-            assertEquals(record.getId(), clinicalApi.records(doctorBearer, null, null).getData().get(0).getId());
+            assertEquals(record.getId(), clinicalApi.records(doctorBearer, null, null, "1", "100").getData().getItems().get(0).getId());
             assertThrows(SecurityException.class, () -> clinical.forPatient(patientB, appointment.getId()));
             manager.getTransaction().begin();
             assertThrows(SecurityException.class, () -> clinical.complete(doctorB, appointment.getId(), "伪造", "伪造"));

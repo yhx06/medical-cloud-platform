@@ -41,7 +41,7 @@ class AuditPortalTest {
             filters(r); r.addParameter("status", "PAID"); r.addParameter("from", "2030-05-21"); r.addParameter("to", "2030-05-22");
             r.addParameter("statsFrom", "2030-05-03"); r.addParameter("statsTo", "2030-05-04");
             f.servlet.service(r, new MockHttpServletResponse());
-            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22", f.queries.get("/hospital/orders"));
+            assertEquals("status=PAID&from=2030-05-21&to=2030-05-22&page=1&size=20", f.queries.get("/hospital/orders"));
             assertEquals("from=2030-05-03&to=2030-05-04", f.queries.get("/hospital/statistics"));
             assertEquals("from=2030-05-01&to=2030-05-02&eventType=LOGIN&result=FAILED&page=2&size=1", f.queries.get("/hospital/audit-events"));
             MockHttpServletRequest p = f.request("/platform", Role.PLATFORM_ADMIN); filters(p);
@@ -209,7 +209,7 @@ class AuditPortalTest {
                         }
                     }
                     else if (path.equals("/hospital/context")) data = PortalFixture.contextJson();
-                    else if (path.equals("/hospital/orders")) data = "[{\"id\":\"fictional-order\",\"status\":\"PAID\",\"amount\":39}]";
+                    else if (path.equals("/hospital/orders")) data = "{\"items\":[{\"id\":\"fictional-order\",\"status\":\"PAID\",\"amount\":39}],\"total\":1,\"page\":1,\"size\":20}";
                     else if (path.equals("/platform/tenants")) {
                         tenantQueries.add(query == null ? "" : query); if (query != null && query.contains("size=100")) status = directoryStatus;
                         if ("page=1&size=100".equals(query)) {

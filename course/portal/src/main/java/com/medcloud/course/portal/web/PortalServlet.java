@@ -124,7 +124,8 @@ public class PortalServlet extends HttpServlet {
             if ("/patient".equals(path)) {
                 patient(request, session);
             } else if ("/doctor".equals(path)) {
-                access.loadSection(request, token(session), "appointments", "/doctor/appointments");
+                access.loadPage(request, token(session), "appointments", "/doctor/appointments",
+                        pageNumber(request, "page", 1, Integer.MAX_VALUE), pageNumber(request, "size", 20, 100));
                 loadFilteredSection(request, token(session), access, "records", "/doctor/records", false);
                 access.loadSection(request, token(session), "doctorProfile", "/doctor/profile");
                 access.loadContext(request, token(session), expected);
@@ -154,7 +155,8 @@ public class PortalServlet extends HttpServlet {
     private void patient(HttpServletRequest request, HttpSession session) throws IOException {
         // Independent reads: a catalog failure must not hide existing appointments or records.
         WorkspaceAccess access = new WorkspaceAccess(paas);
-        access.loadSection(request, token(session), "appointments", "/patient/appointments");
+        access.loadPage(request, token(session), "appointments", "/patient/appointments",
+                pageNumber(request, "page", 1, Integer.MAX_VALUE), pageNumber(request, "size", 20, 100));
         String tenant = parameter(request, "tenantId");
         String department = parameter(request, "departmentId");
         String doctor = parameter(request, "doctorId");
@@ -220,6 +222,17 @@ public class PortalServlet extends HttpServlet {
     private static String parameter(HttpServletRequest request, String key) {
         String value = request.getParameter(key);
         return value == null ? "" : value.trim();
+    }
+
+    private static int pageNumber(HttpServletRequest request, String key, int fallback, int max) {
+        String value = parameter(request, key);
+        if (value.isEmpty()) return fallback;
+        try {
+            if (!value.matches("[0-9]+")) throw new NumberFormatException();
+            int n = Integer.parseInt(value);
+            if (n < 1 || n > max) throw new NumberFormatException();
+            return n;
+        } catch (NumberFormatException bad) { throw new IllegalArgumentException("分页参数无效"); }
     }
 
     private static boolean containsOption(JsonNode options, String id) {
@@ -499,7 +512,9 @@ public class PortalServlet extends HttpServlet {
             if (!from.isEmpty() && !to.isEmpty() && StatisticsWorkspace.date(from).isAfter(StatisticsWorkspace.date(to))) {
                 throw new IllegalArgumentException("起始日期不得晚于结束日期");
             }
-            access.loadSection(request, token, attribute, query.toString());
+            int page = pageNumber(request, "page", 1, Integer.MAX_VALUE);
+            int size = pageNumber(request, "size", 20, 100);
+            access.loadPage(request, token, attribute, query.toString(), page, size);
         } catch (IllegalArgumentException failure) { WorkspaceAccess.sectionError(request, attribute + "Error", failure); }
     }
 

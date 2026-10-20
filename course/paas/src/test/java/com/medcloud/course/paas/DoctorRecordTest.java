@@ -72,10 +72,10 @@ class DoctorRecordTest {
                     persisted.getDoctorId(), persisted.getPatientId(), persisted.getComplaint(),
                     persisted.getDiagnosis(), persisted.getAdvice(), persisted.getNotes(), persisted.getCompletedAt());
             assertEquals("2030-05-22 00:30:00", display.getCompletedAt());
-            assertEquals(record.getId(), clinical.forDoctor(doctorA, Date.valueOf("2030-05-22"), Date.valueOf("2030-05-22")).get(0).getId());
-            assertTrue(clinical.forDoctor(doctorA, Date.valueOf("2030-05-21"), Date.valueOf("2030-05-21")).isEmpty());
-            assertEquals(1, clinical.forDoctor(doctorA, null, null).size());
-            assertEquals(1, clinical.forDoctor(doctorB, null, null).size());
+            assertEquals(record.getId(), clinical.forDoctor(doctorA, Date.valueOf("2030-05-22"), Date.valueOf("2030-05-22"), 1, 100).getItems().get(0).getId());
+            assertTrue(clinical.forDoctor(doctorA, Date.valueOf("2030-05-21"), Date.valueOf("2030-05-21"), 1, 100).getItems().isEmpty());
+            assertEquals(1, clinical.forDoctor(doctorA, null, null, 1, 100).getItems().size());
+            assertEquals(1, clinical.forDoctor(doctorB, null, null, 1, 100).getItems().size());
             assertThrows(SecurityException.class, () -> clinical.start(doctorB, "appointment-a", started));
             assertEquals(2L, manager.createQuery("select count(r) from ClinicalRecord r", Long.class).getSingleResult());
             assertEquals(2L, manager.createQuery("select count(o) from PaymentOrder o", Long.class).getSingleResult());

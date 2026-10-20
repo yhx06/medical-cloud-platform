@@ -38,6 +38,28 @@ public final class WorkspaceAccess {
         catch (PaasRejectedException | PaasUnavailableException failure) { sectionError(request, attribute + "Error", failure); }
     }
 
+    /**
+     * Loads a paged list endpoint, exposes the rows under the legacy array attribute so existing
+     * views keep iterating, and stores the page metadata (items/total/page/size) under attribute+"Page".
+     */
+    public void loadPage(HttpServletRequest request, String token, String attribute, String path, int page, int size) {
+        request.removeAttribute(attribute);
+        request.removeAttribute(attribute + "Page");
+        try {
+            String separator = path.indexOf('?') < 0 ? "?" : "&";
+            JsonNode data = paas.get(path + separator + "page=" + page + "&size=" + size, token);
+            if (!data.isObject() || !data.path("items").isArray() || !data.path("total").isIntegralNumber()
+                    || !data.path("page").isIntegralNumber() || !data.path("size").isIntegralNumber()
+                    || data.path("items").size() > data.path("size").asInt()) {
+                throw new IllegalArgumentException("列表返回信息不完整，请刷新后重试");
+            }
+            request.setAttribute(attribute, data.path("items"));
+            request.setAttribute(attribute + "Page", data);
+        } catch (PaasRejectedException | PaasUnavailableException | IllegalArgumentException failure) {
+            sectionError(request, attribute + "Error", failure);
+        }
+    }
+
     public void clearPrivateAttributes(HttpServletRequest request) {
         for (String name : new String[] {"appointments", "records", "record", "orders", "order", "tenants", "statistics",
                 "hospitalContext", "businessWritable", "notice", "initialPassword", "username", "csrfToken", "portalTitle",

@@ -24,7 +24,7 @@ class RoleAuthorizationTest extends TenantFixture {
 
     @Test
     void authenticatedPatientCannotReadHospitalOrders() {
-        assertFailureStatus(403, () -> payments.forHospital(patient, null, null, null));
+        assertFailureStatus(403, () -> payments.forHospital(patient, null, null, null, 1, 100).getItems());
     }
 
     @Test
@@ -39,15 +39,15 @@ class RoleAuthorizationTest extends TenantFixture {
 
     @Test
     void patientCannotReadDoctorAppointments() {
-        assertFailureStatus(403, () -> bookings.forDoctor(patient));
+        assertFailureStatus(403, () -> bookings.forDoctor(patient, 1, 100).getItems());
     }
 
     @Test
     void missingAuthenticationRemains401() {
-        assertFailureStatus(401, () -> payments.forHospital(null, null, null, null));
+        assertFailureStatus(401, () -> payments.forHospital(null, null, null, null, 1, 100).getItems());
         assertFailureStatus(401, () -> payments.pay(null, "order"));
         assertFailureStatus(401, () -> bookings.book(null, "slot", Date.valueOf("2030-05-21")));
-        assertFailureStatus(401, () -> bookings.forDoctor(null));
+        assertFailureStatus(401, () -> bookings.forDoctor(null, 1, 100).getItems());
     }
 
     private static void assertFailureStatus(int expected, Runnable operation) {

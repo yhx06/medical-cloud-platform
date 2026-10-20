@@ -56,15 +56,15 @@ class HospitalOrderTest {
 
             PaymentService service = new PaymentService(manager);
             CurrentActor claimedOtherTenant = new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-b");
-            List<PaymentOrder> own = service.forHospital(claimedOtherTenant, null, null, null);
+            List<PaymentOrder> own = service.forHospital(claimedOtherTenant, null, null, null, 1, 100).getItems();
             assertEquals(4, own.size());
             assertEquals("late", own.get(0).getId());
             assertEquals("tenant-a", own.get(0).getTenantId());
             List<PaymentOrder> paidOnMay21 = service.forHospital(claimedOtherTenant, "PAID",
-                    Date.valueOf("2030-05-21"), Date.valueOf("2030-05-21"));
+                    Date.valueOf("2030-05-21"), Date.valueOf("2030-05-21"), 1, 100).getItems();
             assertEquals(1, paidOnMay21.size());
             assertEquals("in-range", paidOnMay21.get(0).getId());
-            assertEquals("unpaid", service.forHospital(claimedOtherTenant, "UNPAID", null, null).get(0).getId());
+            assertEquals("unpaid", service.forHospital(claimedOtherTenant, "UNPAID", null, null, 1, 100).getItems().get(0).getId());
 
             AuthService auth = new AuthService(manager, "course-test-signing-secret-at-least-32-characters");
             String bearer = "Bearer " + AuditLocalTransactions.login(manager, auth, new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
@@ -78,13 +78,13 @@ class HospitalOrderTest {
                 if (disabling.getTransaction().isActive()) disabling.getTransaction().rollback();
                 disabling.close();
             }
-            assertEquals(4, service.forHospital(claimedOtherTenant, null, null, null).size());
+            assertEquals(4, service.forHospital(claimedOtherTenant, null, null, null, 1, 100).getItems().size());
             HospitalResource api = new HospitalResource(auth, service);
-            assertEquals(4, api.orders(bearer, null, null, null).getData().size());
-            assertEquals("in-range", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")
-                    .getData().get(0).getId());
-            assertEquals("2030-05-21 00:00:00", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21")
-                    .getData().get(0).getPaidAt());
+            assertEquals(4, api.orders(bearer, null, null, null, "1", "100").getData().getItems().size());
+            assertEquals("in-range", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21", "1", "100")
+                    .getData().getItems().get(0).getId());
+            assertEquals("2030-05-21 00:00:00", api.orders(bearer, "PAID", "2030-05-21", "2030-05-21", "1", "100")
+                    .getData().getItems().get(0).getPaidAt());
             assertThrows(SecurityException.class, () -> new PaymentResource(auth, service, AuditClinicalFixture.legacyRunner(manager)).pay(bearer, "in-range"));
         } finally {
             manager.close();
@@ -105,21 +105,21 @@ class HospitalOrderTest {
             manager.getTransaction().commit();
             PaymentService service = new PaymentService(manager);
             CurrentActor actor = new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-a");
-            assertThrows(IllegalArgumentException.class, () -> service.forHospital(actor, "REFUNDED", null, null));
+            assertThrows(IllegalArgumentException.class, () -> service.forHospital(actor, "REFUNDED", null, null, 1, 100).getItems());
             assertThrows(IllegalArgumentException.class, () -> service.forHospital(actor, null,
-                    Date.valueOf("2030-05-22"), Date.valueOf("2030-05-21")));
+                    Date.valueOf("2030-05-22"), Date.valueOf("2030-05-21"), 1, 100));
             assertThrows(SecurityException.class, () -> service.forHospital(
-                    new CurrentActor("admin-a", Role.PATIENT, "tenant-a"), null, null, null));
+                    new CurrentActor("admin-a", Role.PATIENT, "tenant-a"), null, null, null, 1, 100));
             HospitalResource api = new HospitalResource(new AuthService(manager,
                     "course-test-signing-secret-at-least-32-characters"), service);
             String bearer = "Bearer " + AuditLocalTransactions.login(manager, new AuthService(manager,
                     "course-test-signing-secret-at-least-32-characters"),
                     new LoginRequest("admin_a", "Admin@123456")).getAccessToken();
-            assertThrows(IllegalArgumentException.class, () -> api.orders(bearer, null, "not-a-date", null));
+            assertThrows(IllegalArgumentException.class, () -> api.orders(bearer, null, "not-a-date", null, "1", "100"));
             manager.getTransaction().begin();
             admin.disable();
             manager.getTransaction().commit();
-            assertThrows(SecurityException.class, () -> service.forHospital(actor, null, null, null));
+            assertThrows(SecurityException.class, () -> service.forHospital(actor, null, null, null, 1, 100).getItems());
         } finally {
             manager.close();
             factory.close();
@@ -139,7 +139,7 @@ class HospitalOrderTest {
     }
 
     @Test
-    void hospitalListIsLimitedAndKeepsNewestOrdersFirst() {
+    void hospitalOrdersAreFullyPaginatedNewestFirst() {
         EntityManagerFactory factory = Persistence.createEntityManagerFactory("medicalCloudCourseTest");
         EntityManager manager = factory.createEntityManager();
         try {
@@ -152,11 +152,19 @@ class HospitalOrderTest {
                 manager.persist(order);
             }
             manager.getTransaction().commit();
-            List<PaymentOrder> result = new PaymentService(manager).forHospital(
-                    new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-a"), null, null, null);
-            assertEquals(100, result.size());
-            assertEquals("order-100", result.get(0).getId());
-            assertEquals("order-001", result.get(99).getId());
+            PaymentService service = new PaymentService(manager);
+            CurrentActor actor = new CurrentActor("admin-a", Role.HOSPITAL_ADMIN, "tenant-a");
+            PageResult<PaymentOrder> first = service.forHospital(actor, null, null, null, 1, 20);
+            assertEquals(101, first.getTotal());
+            assertEquals(20, first.getItems().size());
+            assertEquals("order-100", first.getItems().get(0).getId());
+            assertEquals("order-081", first.getItems().get(19).getId());
+            PageResult<PaymentOrder> last = service.forHospital(actor, null, null, null, 6, 20);
+            assertEquals(101, last.getTotal());
+            assertEquals(1, last.getItems().size());
+            assertEquals("order-000", last.getItems().get(0).getId());
+            assertThrows(IllegalArgumentException.class, () -> service.forHospital(actor, null, null, null, 1, 101));
+            assertThrows(IllegalArgumentException.class, () -> service.forHospital(actor, null, null, null, 0, 20));
         } finally {
             manager.close();
             factory.close();

@@ -47,6 +47,15 @@
   <% } %>
   </tbody></table></div>
   <% if (appointments.size() == 0) { %><p class="empty-state">暂无接诊预约。</p><% } %>
+  <% JsonNode appointmentsPage = (JsonNode) request.getAttribute("appointmentsPage");
+     if (appointmentsPage != null) {
+       long aNum = appointmentsPage.path("page").asLong(), aSize = appointmentsPage.path("size").asLong(), aTotal = appointmentsPage.path("total").asLong();
+       long aPages = aTotal / aSize + (aTotal % aSize == 0 ? 0 : 1); %>
+  <nav class="pagination" aria-label="接诊预约分页"><span>共 <%= aTotal %> 条 · 第 <%= aNum %> / <%= aPages %> 页</span>
+    <% if (aNum > 1) { %><a href="<%= filteredUrl(context + "/doctor", joinFilters("", "page=" + (aNum - 1)), "consultations") %>">上一页</a><% } %>
+    <% if (aNum < aPages && aNum * aSize <= Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/doctor", joinFilters("", "page=" + (aNum + 1)), "consultations") %>">下一页</a><% } %>
+  </nav>
+  <% } %>
   <% } %>
 </section>
 <section class="card" id="clinical-history">
@@ -76,6 +85,16 @@
   <% } %>
   </tbody></table></div>
   <% if (records.size() == 0) { %><p class="empty-state">暂无符合条件的病历，已完成接诊的记录会显示在这里。</p><% } %>
+  <% JsonNode recordsPage = (JsonNode) request.getAttribute("recordsPage");
+     if (recordsPage != null) {
+       String recordsFilters = orderFilters(request);
+       long rNum = recordsPage.path("page").asLong(), rSize = recordsPage.path("size").asLong(), rTotal = recordsPage.path("total").asLong();
+       long rPages = rTotal / rSize + (rTotal % rSize == 0 ? 0 : 1); %>
+  <nav class="pagination" aria-label="病历分页"><span>共 <%= rTotal %> 条 · 第 <%= rNum %> / <%= rPages %> 页</span>
+    <% if (rNum > 1) { %><a href="<%= filteredUrl(context + "/doctor", joinFilters(recordsFilters, "page=" + (rNum - 1)), "clinical-history") %>">上一页</a><% } %>
+    <% if (rNum < rPages && rNum * rSize <= Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/doctor", joinFilters(recordsFilters, "page=" + (rNum + 1)), "clinical-history") %>">下一页</a><% } %>
+  </nav>
+  <% } %>
   <% } %>
 </section>
 <%@ include file="footer.jspf" %>
