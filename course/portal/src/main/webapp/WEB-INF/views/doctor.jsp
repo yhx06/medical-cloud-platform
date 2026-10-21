@@ -5,19 +5,6 @@
 <% JsonNode doctorProfile = (JsonNode) request.getAttribute("doctorProfile");
    String doctorTitle = doctorProfile != null && doctorProfile.path("title").isTextual() ? doctorProfile.path("title").asText() : "";
    String doctorBio = doctorProfile != null && doctorProfile.path("bio").isTextual() ? doctorProfile.path("bio").asText() : ""; %>
-<section class="card" id="doctor-profile">
-  <div class="section-heading"><div><p class="section-kicker">00 / PROFILE</p><h2>个人资料</h2></div></div>
-  <%= sectionError(request, "doctorProfileError") %>
-  <% if (doctorProfile != null) { %>
-  <p>当前职称：<strong><%= WebEscaper.html(doctorTitle.isEmpty() ? "未填写" : doctorTitle) %></strong></p>
-  <form method="post" action="<%= context %>/doctor/profile" class="stacked-form">
-    <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
-    <label>职称<input name="title" maxlength="100" value="<%= WebEscaper.html(doctorTitle) %>"></label>
-    <label>简介<textarea name="bio" maxlength="1000" rows="3"><%= WebEscaper.html(doctorBio) %></textarea></label>
-    <button type="submit">保存资料</button>
-  </form>
-  <% } %>
-</section>
 <section class="card" id="consultations">
   <div class="section-heading"><div><p class="section-kicker">01 / CONSULTATION</p><h2>接诊工作台</h2></div><span class="section-tag">我的接诊预约</span></div>
   <p class="subtle">开始接诊后填写主诉、诊断与建议，完成时自动生成模拟账单。</p>
@@ -95,6 +82,19 @@
     <% if (rNum < rPages && rNum * rSize <= Integer.MAX_VALUE) { %><a href="<%= filteredUrl(context + "/doctor", joinFilters(recordsFilters, "page=" + (rNum + 1)), "clinical-history") %>">下一页</a><% } %>
   </nav>
   <% } %>
+  <% } %>
+</section>
+<section class="card" id="doctor-profile">
+  <div class="section-heading"><div><p class="section-kicker">03 / PROFILE</p><h2>个人资料</h2></div></div>
+  <%= sectionError(request, "doctorProfileError") %>
+  <% if (doctorProfile != null) { %>
+  <p>当前职称：<strong><%= WebEscaper.html(doctorTitle.isEmpty() ? "未填写" : doctorTitle) %></strong></p>
+  <form method="post" action="<%= context %>/doctor/profile" class="stacked-form">
+    <input type="hidden" name="csrfToken" value="<%= WebEscaper.html(attribute(request, "csrfToken")) %>">
+    <label>职称<input name="title" maxlength="100" value="<%= WebEscaper.html(doctorTitle) %>"></label>
+    <label>简介<textarea name="bio" maxlength="1000" rows="3"><%= WebEscaper.html(doctorBio) %></textarea></label>
+    <button type="submit">保存资料</button>
+  </form>
   <% } %>
 </section>
 <%@ include file="footer.jspf" %>

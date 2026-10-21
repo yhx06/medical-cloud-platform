@@ -39,15 +39,27 @@ class WorkspaceJspTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static Tomcat tomcat;
     private static int port;
+    private static boolean previewMode;
 
     @BeforeAll
     static void start() throws Exception {
         tomcat = new Tomcat();
         tomcat.setBaseDir(Files.createTempDirectory("course-workspace-jsp-").toString());
         tomcat.setPort(0);
+        tomcat.getConnector().setProperty("address", "127.0.0.1");
         Context context = tomcat.addWebapp("/portal", new File("src/main/webapp").getAbsolutePath());
         context.setParentClassLoader(WorkspaceJspTest.class.getClassLoader());
-        Tomcat.addServlet(context, "portal-routing", new PortalServlet());
+        Tomcat.addServlet(context, "portal-routing", previewMode ? new HttpServlet() {
+            @Override protected void doGet(HttpServletRequest r, HttpServletResponse s)
+                    throws ServletException, java.io.IOException {
+                String route = r.getRequestURI().substring(r.getContextPath().length());
+                if (route.startsWith("/assets/")) { r.getServletContext().getNamedDispatcher("default").forward(r, s); return; }
+                String page = route.substring(1);
+                if (Arrays.asList("login", "register", "patient", "doctor", "hospital", "platform").contains(page))
+                    r.getRequestDispatcher("/ui/" + page + "?preview=1&statistics=1").forward(r, s);
+                else s.sendError(404);
+            }
+        } : new PortalServlet());
         // Apply after Tomcat's inherited web.xml so the real '/' controller mapping is not overwritten.
         context.addLifecycleListener(event -> {
             if ("configure_start".equals(event.getType())) {
@@ -61,7 +73,8 @@ class WorkspaceJspTest {
                     throws ServletException, java.io.IOException {
                 String page = request.getPathInfo().substring(1);
                 request.setAttribute("portalTitle", "测试工作台");
-                request.setAttribute("username", "<script>account</script>");
+                request.setAttribute("username", "1".equals(request.getParameter("preview"))
+                        ? "林晓 · 演示账号" : "<script>account</script>");
                 request.setAttribute("csrfToken", "fixture-csrf");
                 String state = request.getParameter("state");
                 if (state == null) state = "ACTIVE";
@@ -124,6 +137,15 @@ class WorkspaceJspTest {
                 }
                 request.setAttribute("record", JSON.readTree("{\"diagnosis\":\"历史诊断 <script>unsafe</script>\",\"advice\":\"历史建议\"}"));
                 if ("1".equals(request.getParameter("statistics"))) statisticsFixture(request);
+                if ("1".equals(request.getParameter("preview"))) {
+                    request.setAttribute("notice", "界面预览 · 虚构测试数据 · 不连接业务服务，不接受业务提交");
+                    if ("platform".equals(page)) request.setAttribute("tenants", JSON.readTree("{\"items\":["
+                            + "{\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"仁和云医院（演示）\",\"status\":\"ACTIVE\"},"
+                            + "{\"id\":\"22222222-2222-2222-2222-222222222222\",\"name\":\"安康云门诊（演示）\",\"status\":\"ACTIVE\"},"
+                            + "{\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"第三演示医院\",\"status\":\"DISABLED\"}],\"page\":1,\"size\":20,\"total\":3}"));
+                    if ("doctor".equals(page)) request.setAttribute("doctorProfile", JSON.readTree(
+                            "{\"title\":\"主治医师（演示）\",\"bio\":\"仅用于界面排版预览，不代表真实医师资质。\"}"));
+                }
                 request.getRequestDispatcher("/WEB-INF/views/" + page + ".jsp").forward(request, response);
             }
         });
@@ -135,6 +157,44 @@ class WorkspaceJspTest {
     @AfterAll
     static void stop() throws Exception {
         if (tomcat != null) { tomcat.stop(); tomcat.destroy(); }
+    }
+
+    /** Local, fictional JSP preview only; never bundled in portal.war or connected to a PaaS/database. */
+    public static void main(String[] args) throws Exception {
+        previewMode = true;
+        start();
+        try {
+            System.out.println("UI_PREVIEW_URL=http://127.0.0.1:" + port + "/portal/ui/patient?preview=1");
+            System.out.println("Type stop then Enter to close the owned preview server.");
+            java.io.BufferedReader input = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(System.in, StandardCharsets.UTF_8));
+            String command;
+            while ((command = input.readLine()) != null && !"stop".equals(command)) { }
+        } finally { stop(); }
+    }
+
+    @Test
+    void profileSectionsAreReachableFromTheRoleNavigation() throws Exception {
+        for (String[] role : new String[][] {{"doctor", "doctor-profile"}, {"hospital", "hospital-profile"}}) {
+            String html = render(role[0]);
+            Matcher navigation = Pattern.compile("<nav[^>]*aria-label=\"工作台导航\"[^>]*>([\\s\\S]*?)</nav>").matcher(html);
+            assertTrue(navigation.find());
+            assertTrue(navigation.group(1).contains("href=\"#" + role[1] + "\""),
+                    role[0] + " users must be able to navigate to their existing profile section");
+            assertTrue(html.contains("id=\"" + role[1] + "\""));
+        }
+    }
+
+    @Test
+    void accountGroupIdentifiesTheCurrentRoleWithoutLosingEscapedIdentity() throws Exception {
+        for (String[] role : new String[][] {{"patient", "患者服务"}, {"doctor", "医生接诊"}, {"hospital", "医院管理"}, {"platform", "平台概览"}}) {
+            String html = render(role[0]);
+            Matcher account = Pattern.compile("<div[^>]*role=\"group\"[^>]*aria-label=\"当前账号\"[^>]*>([\\s\\S]*?)</div>").matcher(html);
+            assertTrue(account.find(), "Account controls need an accessible group name");
+            assertTrue(account.group(1).contains(role[1]), "Account controls must identify the current workspace role");
+            assertTrue(account.group(1).contains("&lt;script&gt;account&lt;/script&gt;"));
+            assertTrue(account.group(1).contains("/logout"));
+        }
     }
 
     @Test

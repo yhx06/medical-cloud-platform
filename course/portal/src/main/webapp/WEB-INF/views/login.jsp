@@ -12,10 +12,10 @@
 <div class="auth-shell">
   <%@ include file="auth-story.jspf" %>
   <main class="login-card">
-    <p class="eyebrow">WELCOME BACK</p>
+    <p class="eyebrow">统一身份入口 / SIGN IN</p>
     <h1>登录医疗云</h1>
     <p class="subtle">使用您的演示账号，进入专属服务工作台。</p>
-    <div class="auth-roles"><span>患者服务</span><span>医生接诊</span><span>医院管理</span></div>
+    <div class="auth-roles"><span>患者服务</span><span>医生接诊</span><span>医院管理</span><span>平台运营</span></div>
     <% if (request.getAttribute("error") != null) { %><p class="error" role="alert"><%= request.getAttribute("error") %></p><% } %>
     <% if (request.getAttribute("notice") != null) { %><p class="notice" role="status"><%= request.getAttribute("notice") %></p><% } %>
     <form method="post" action="<%= request.getContextPath() %>/login">

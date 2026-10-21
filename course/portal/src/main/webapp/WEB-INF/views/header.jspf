@@ -47,29 +47,31 @@
 <div class="app-shell">
 <aside class="sidebar">
   <a class="brand" href="<%= context %>/<%= workspace %>"><span class="brand-mark" aria-hidden="true">+</span><span>医疗云<small>MEDICAL CLOUD</small></span></a>
-  <div class="sidebar-label">服务工作台</div>
+  <div class="sidebar-label">云服务控制台</div>
   <nav class="workspace-nav" aria-label="工作台导航">
     <% if ("patient".equals(workspace)) { %>
-    <a href="#slot-search"><span class="nav-number">01</span>预约挂号</a>
-    <a href="#appointment-history"><span class="nav-number">02</span>我的预约</a>
-    <a href="#record-billing"><span class="nav-number">03</span>病历与账单</a>
+    <a href="#slot-search"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#calendar"/></svg>预约挂号</a>
+    <a href="#appointment-history"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#appointments"/></svg>我的预约</a>
+    <a href="#record-billing"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#document"/></svg>病历与账单</a>
     <% } else if ("doctor".equals(workspace)) { %>
-    <a href="#consultations"><span class="nav-number">01</span>接诊工作台</a>
-    <a href="#clinical-history"><span class="nav-number">02</span>病历记录</a>
+    <a href="#consultations"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#consultation"/></svg>接诊工作台</a>
+    <a href="#clinical-history"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#document"/></svg>病历记录</a>
+    <a href="#doctor-profile"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#profile"/></svg>个人资料</a>
     <% } else if ("hospital".equals(workspace)) { %>
-    <a href="#departments"><span class="nav-number">01</span>科室管理</a>
-    <a href="#doctors"><span class="nav-number">02</span>医生管理</a>
-    <a href="#schedule"><span class="nav-number">03</span>排班号源</a>
-    <a href="#orders"><span class="nav-number">04</span>诊疗账单</a>
-    <a href="#hospital-statistics"><span class="nav-number">05</span>本院统计</a>
-    <a href="#daily-trend"><span class="nav-number">06</span>每日趋势</a>
-    <a href="#audit-events"><span class="nav-number">07</span>本院审计</a>
+    <a href="#hospital-profile"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#building"/></svg>医院资料</a>
+    <a href="#departments"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#grid"/></svg>科室管理</a>
+    <a href="#doctors"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#profile"/></svg>医生管理</a>
+    <a href="#schedule"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#calendar"/></svg>排班号源</a>
+    <a href="#orders"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#billing"/></svg>诊疗账单</a>
+    <a href="#hospital-statistics"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#chart"/></svg>本院统计</a>
+    <a href="#daily-trend"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#activity"/></svg>每日趋势</a>
+    <a href="#audit-events"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#shield"/></svg>本院审计</a>
     <% } else { %>
-    <a href="#tenant-management"><span class="nav-number">01</span>医院管理</a>
-    <a href="#platform-statistics"><span class="nav-number">02</span>跨院统计</a>
-    <a href="#daily-trend"><span class="nav-number">03</span>每日趋势</a>
-    <a href="#audit-events"><span class="nav-number">04</span>平台审计</a>
-    <a href="#architecture"><span class="nav-number">05</span>架构概览</a>
+    <a href="#tenant-management"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#building"/></svg>医院管理</a>
+    <a href="#platform-statistics"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#chart"/></svg>跨院统计</a>
+    <a href="#daily-trend"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#activity"/></svg>每日趋势</a>
+    <a href="#audit-events"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#shield"/></svg>平台审计</a>
+    <a href="#architecture"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#layers"/></svg>架构概览</a>
     <% } %>
   </nav>
   <div class="sidebar-note"><span class="demo-dot" aria-hidden="true"></span>课堂演示环境<p>仅使用虚构数据<br>不接入真实医疗或支付服务</p><small>Java 8 · Tomcat 9 · WildFly 10</small></div>
@@ -77,7 +79,7 @@
 <div class="workspace-content">
 <header class="topbar">
   <div class="breadcrumb">医疗云 <span>/</span> <%= workspaceLabel %></div>
-  <div class="account"><span class="account-avatar" aria-hidden="true">云</span><span class="account-name"><%= WebEscaper.html(String.valueOf(request.getAttribute("username"))) %></span><a class="logout-link" href="<%= context %>/logout">退出登录</a></div>
+  <div class="account" role="group" aria-label="当前账号"><span class="account-role"><%= workspaceLabel %></span><span class="account-avatar" aria-hidden="true">云</span><span class="account-name"><%= WebEscaper.html(String.valueOf(request.getAttribute("username"))) %></span><a class="logout-link" href="<%= context %>/logout">退出登录</a></div>
 </header>
 <main class="container" id="main-content" tabindex="-1">
   <div class="page-heading"><div><p class="eyebrow">MEDICAL CLOUD / <%= workspace.toUpperCase(java.util.Locale.ROOT) %></p><h1><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %></h1><p class="page-description"><%= workspaceDescription %></p></div><span class="environment-tag">课程版 · SaaS 门户</span></div>
