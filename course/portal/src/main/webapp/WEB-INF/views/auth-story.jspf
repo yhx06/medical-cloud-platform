@@ -1,16 +1,16 @@
 <%@ page pageEncoding="UTF-8" %>
 <aside class="auth-story" aria-label="医疗云介绍">
-  <div class="brand"><span class="brand-mark" aria-hidden="true">+</span><span>医疗云<small>MEDICAL CLOUD</small></span></div>
+  <div class="selected-cloud"><svg class="service-icon" aria-hidden="true"><use href="<%= request.getContextPath() %>/assets/icons.svg#cloud"/></svg><div><strong>医疗云服务</strong><small>当前服务环境</small></div><span>已选择</span></div>
   <div class="auth-story-content">
-    <p class="eyebrow">CLOUD HEALTHCARE PLATFORM</p>
-    <h2>让每一次诊疗，<br>有序连接。</h2>
-    <p class="auth-intro">连接患者、医生与医院，演示从预约挂号到接诊、病历和模拟缴费的完整服务流程。</p>
-    <div class="auth-network" aria-hidden="true">
-      <div class="network-node"><svg class="service-icon" focusable="false"><use href="<%= request.getContextPath() %>/assets/icons.svg#profile"/></svg><span>患者</span></div>
-      <div class="network-hub"><svg class="service-icon" focusable="false"><use href="<%= request.getContextPath() %>/assets/icons.svg#cloud"/></svg><span>医疗云</span></div>
-      <div class="network-node"><svg class="service-icon" focusable="false"><use href="<%= request.getContextPath() %>/assets/icons.svg#building"/></svg><span>医院</span></div>
+    <h2>一个门户，连接诊疗服务</h2>
+    <p class="auth-intro">根据账号身份进入对应工作台，办理预约、接诊和医院管理业务。</p>
+    <div class="service-audiences">
+      <div><svg class="service-icon" aria-hidden="true"><use href="<%= request.getContextPath() %>/assets/icons.svg#calendar"/></svg><strong>患者服务</strong><span>查询号源、预约挂号、病历与账单</span></div>
+      <div><svg class="service-icon" aria-hidden="true"><use href="<%= request.getContextPath() %>/assets/icons.svg#consultation"/></svg><strong>医生接诊</strong><span>处理本院预约、接诊草稿与病历</span></div>
+      <div><svg class="service-icon" aria-hidden="true"><use href="<%= request.getContextPath() %>/assets/icons.svg#building"/></svg><strong>医院管理</strong><span>维护科室、医生、排班与号源</span></div>
+      <div><svg class="service-icon" aria-hidden="true"><use href="<%= request.getContextPath() %>/assets/icons.svg#chart"/></svg><strong>平台运营</strong><span>医院入驻、脱敏统计与操作审计</span></div>
     </div>
     <div class="care-flow"><div><span>01</span><strong>预约挂号</strong><small>查询号源与管理预约</small></div><div><span>02</span><strong>在线接诊</strong><small>记录病历与医生建议</small></div><div><span>03</span><strong>诊疗账单</strong><small>查看账单与模拟缴费</small></div></div>
   </div>
-  <div class="auth-footnote"><span class="demo-dot" aria-hidden="true"></span>仅限课堂演示 · 不接入真实医疗或支付服务<small>Java 8 / Tomcat 9 / WildFly 10 / MySQL</small></div>
+  <div class="auth-footnote">登录后，系统根据账号身份提供相应服务。</div>
 </aside>

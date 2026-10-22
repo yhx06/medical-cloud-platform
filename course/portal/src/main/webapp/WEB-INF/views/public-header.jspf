@@ -1,0 +1,6 @@
+<%@ page pageEncoding="UTF-8" %>
+<header class="topbar portal-header">
+  <a class="brand" href="<%= request.getContextPath() %>/login"><span class="brand-mark" aria-hidden="true">+</span><span>智慧医疗云<small>在线预约与诊疗服务平台</small></span></a>
+  <span class="public-header-note">患者服务 · 医院协同 · 云端管理</span>
+</header>
+<nav class="service-portfolio" aria-label="用户服务菜单"><div class="portfolio-inner"><span class="portfolio-name">医疗云服务</span><a href="<%= request.getContextPath() %>/login">统一登录</a><a href="<%= request.getContextPath() %>/register">患者注册</a><a href="#service-scope">服务说明</a></div></nav>

@@ -1,0 +1,151 @@
+/* Lab 2 portal composition: Header / ServicePortfolio / ContentNav / WorkPlace / Footer. */
+:root { --blue: #176da5; --teal: #176da5; --ink: #193d53; --muted: #5c7281; --line: #dce7ec; --nav: #fff; background: #f3f7f9; color: #294557; }
+body { background: #f3f7f9; }
+.portal-header { position: static; min-height: 92px; padding: 20px max(28px, calc((100vw - 1460px) / 2)); border-bottom: 0; background: #fff; }
+.portal-header .brand { padding: 0; color: #155577; font-size: 25px; letter-spacing: .03em; }
+.portal-header .brand-mark { flex-basis: 42px; height: 42px; border-radius: 8px; background: #177aaf; font-size: 36px; }
+.portal-header .brand small { margin-top: 4px; color: #657c8a; font-size: 11px; font-weight: 400; letter-spacing: .08em; }
+.account-role { color: #416b83; }
+.account-avatar { background: #edf7fb; border-color: #cde4ef; color: #19698d; }
+.account-name { color: #39576a; }
+.logout-link { padding: 5px 12px; margin-left: 5px; border: 1px solid #d7e5ed; border-radius: 4px; color: #48677c; }
+.public-header-note { color: #68818d; font-size: 13px; }
+.service-portfolio { position: sticky; top: 0; z-index: 10; width: 100%; color: #fff; background: #176a99; box-shadow: 0 2px 5px #163c5010; }
+.portfolio-inner { display: flex; align-items: stretch; min-height: 50px; max-width: 1516px; padding: 0 28px; margin: auto; }
+.portfolio-name { display: flex; align-items: center; gap: 9px; padding: 0 32px 0 0; font-weight: 600; font-size: 15px; white-space: nowrap; }
+.service-portfolio a { display: flex; align-items: center; justify-content: center; padding: 13px 25px; color: #edf8ff; font-size: 14px; white-space: nowrap; }
+.service-portfolio a:hover, .service-portfolio a:focus-visible { background: #125b86; text-decoration: none; }
+.service-portfolio a[aria-current="page"] { background: #0f5681; box-shadow: inset 0 -3px #83d6e8; }
+.portfolio-caption { align-self: center; margin-left: auto; color: #d0e8f4; font-size: 12px; }
+.app-shell { grid-template-columns: 220px minmax(0, 1fr); align-items: start; gap: 24px; max-width: 1460px; min-height: calc(100vh - 250px); margin: 26px auto 0; padding: 0 28px; }
+.sidebar { position: sticky; top: 74px; height: auto; min-height: 0; max-height: calc(100vh - 100px); padding: 0; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; color: #45677c; background: #fff; }
+.sidebar-label { display: flex; align-items: center; justify-content: space-between; margin: 0; padding: 17px 18px; border-bottom: 1px solid var(--line); background: #f7fbfd; color: #234e66; font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.sidebar-label small { color: #6e8795; font-size: 11px; font-weight: 400; }
+.workspace-nav { gap: 0; padding: 8px 0; }
+.workspace-nav a { gap: 12px; min-height: 47px; padding: 12px 18px; border-radius: 0; color: #4c687b; font-size: 14px; }
+.workspace-nav a:hover, .workspace-nav a:focus-visible { background: #f1f8fc; color: #176da5; }
+.workspace-nav a[aria-current="location"] { background: #eaf5fb; color: #11689c; font-weight: 600; box-shadow: inset 3px 0 #218cbb; }
+.sidebar-note { margin: 6px 16px 0; padding: 18px 0; border-color: #e3edf2; color: #476f84; }
+.sidebar-note .service-icon { width: 16px; height: 16px; margin: 0 7px -3px 0; }
+.sidebar-note strong { font-size: 12px; font-weight: 600; }
+.sidebar-note p { color: #617d8d; font-size: 12px; line-height: 1.9; }
+.container { max-width: none; padding: 0; }
+.breadcrumb { margin: -3px 0 15px; color: #6d8391; font-size: 12px; }
+.breadcrumb span { padding: 0 9px; }
+.portal-welcome { min-height: 142px; margin-bottom: 22px; padding: 23px 28px; border: 1px solid #d5e8f1; border-radius: 6px; background: linear-gradient(110deg, #eaf5fc, #f7fcfd); }
+.portal-welcome h1 { color: #195573; font-size: clamp(23px, 2.2vw, 29px); letter-spacing: 0; }
+.portal-welcome .eyebrow { margin-bottom: 5px; color: #477a96; font-size: 12px; letter-spacing: .03em; }
+.portal-welcome .page-description { color: #577b8e; }
+.welcome-icon { display: grid; place-items: center; flex: 0 0 76px; height: 76px; border: 1px solid #d4e9f3; border-radius: 50%; color: #5b9abd; background: #ffffff99; }
+.welcome-icon svg { width: 38px; height: 38px; fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linecap: round; stroke-linejoin: round; }
+.card { padding: 22px 24px; border-color: #dce7ed; border-radius: 6px; box-shadow: none; scroll-margin-top: 76px; }
+.section-heading { margin: -22px -24px 20px; padding: 16px 24px; border-bottom-color: #e3edf2; background: #fbfdfe; border-radius: 6px 6px 0 0; }
+.section-heading h2 { color: #254c64; font-size: 17px; }
+.section-kicker { font-size: 10px; letter-spacing: .04em; color: #6b8595; }
+.section-tag { background: #f1f8fb; border-color: #deecf2; color: #557c91; }
+.inline-form { background: #f5f9fb; border-color: #e0eaf0; }
+th { background: #f0f6fa; color: #45697f; }
+button, .button { border-radius: 4px; }
+.portal-footer { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 20px; width: 100%; margin-top: 24px; padding: 24px 28px; border-top: 1px solid #dce7ed; background: #fff; color: #6b808e; font-size: 12px; scroll-margin-top: 65px; }
+.portal-footer strong { color: #39647b; font-size: 14px; font-weight: 600; }
+.portal-footer small { font-size: 11px; }
+
+/* The service environment and unified login share the same public portal. */
+.login-page { display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 0; background: #f3f7f9; }
+.login-page > .portal-header { align-self: stretch; }
+.login-page .service-portfolio { position: static; }
+.login-page .portal-footer { margin-top: auto; }
+.auth-page-heading { width: min(calc(100% - 56px), 1120px); padding: 30px 0 24px; }
+.auth-page-heading p { margin: 0 0 8px; color: #778b98; font-size: 12px; }
+.auth-page-heading h1 { margin-bottom: 8px; color: #214f69; font-size: 28px; letter-spacing: 0; }
+.auth-page-heading > span { color: #67808f; font-size: 13px; }
+.auth-shell { grid-template-columns: 1.2fr 1fr; width: min(calc(100% - 56px), 1120px); min-height: 535px; margin-bottom: 38px; border-color: #d7e5ed; border-radius: 6px; box-shadow: 0 5px 20px #234f6510; }
+.auth-story { justify-content: flex-start; gap: 0; padding: 28px 34px; background: #f4fafd; border-right: 1px solid #dce9f0; color: #284e65; }
+.selected-cloud { display: flex; align-items: center; gap: 12px; padding: 15px 18px; border: 1px solid #acd3e8; border-radius: 5px; background: #eaf6fc; }
+.selected-cloud > .service-icon { flex: 0 0 29px; width: 29px; height: 29px; color: #2582ad; }
+.selected-cloud strong { color: #225f7d; font-size: 16px; font-weight: 600; }
+.selected-cloud small { display: block; color: #63879a; font-size: 11px; }
+.selected-cloud > span { margin-left: auto; padding: 2px 8px; border: 1px solid #badfce; border-radius: 3px; color: #347453; background: #f0fbf6; font-size: 11px; white-space: nowrap; }
+.auth-story-content { margin: 23px 0 0; }
+.auth-story h2 { margin: 0 0 8px; color: #2a5268; font-size: 20px; font-weight: 600; line-height: 1.5; letter-spacing: 0; }
+.auth-intro { max-width: none; margin: 0; color: #617d8e; font-size: 12px; line-height: 1.8; }
+.service-audiences { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.service-audiences > div { display: grid; grid-template-columns: 25px minmax(0, 1fr); gap: 7px 9px; min-width: 0; padding: 15px 13px; border: 1px solid #dfebf1; border-radius: 5px; background: #fff; }
+.service-audiences .service-icon { color: #478cab; margin-top: 1px; }
+.service-audiences strong { color: #365e75; font-size: 13px; font-weight: 600; }
+.service-audiences span { grid-column: 1 / -1; color: #6b8291; font-size: 11px; line-height: 1.8; }
+.care-flow { gap: 10px; margin-top: 20px; padding-top: 17px; border-color: #d9e6ee; }
+.care-flow span { color: #488bac; }
+.care-flow strong { color: #4c7186; }
+.care-flow small { color: #6b8493; }
+.auth-footnote { margin-top: 20px; color: #678393; font-size: 11px; }
+.login-card { justify-content: flex-start; padding: 38px 42px; }
+.login-card > h2 { color: #254e67; font-size: 25px; }
+.login-card > .eyebrow { margin-bottom: 5px; color: #68899c; font-size: 11px; letter-spacing: .03em; }
+.login-card > .subtle { margin: 10px 0 15px; color: #69818f; font-size: 12px; }
+.login-card form { margin-top: 22px; }
+.login-card input { padding: 10px 12px; margin-bottom: 17px; background: #fcfdfe; }
+.login-card button { min-height: 42px; }
+.auth-roles { gap: 5px; }
+.auth-roles span { padding: 2px 5px; color: #637e90; background: #f5f9fb; font-size: 10px; }
+.auth-switch { margin-top: 20px; }
+.auth-safety { margin-top: 22px; padding-top: 14px; }
+@media (min-width: 1600px) { .portal-header { padding-inline: calc((100vw - 1404px) / 2); } }
+@media (max-width: 1150px) { .app-shell { grid-template-columns: 195px minmax(0, 1fr); gap: 20px; padding-inline: 22px; } .account-role { display: inline; } .portal-header { padding-inline: 22px; } .portfolio-inner { padding-inline: 22px; } }
+@media (max-width: 850px) {
+  .portal-header { gap: 18px; min-height: 82px; padding: 18px 22px; }
+  .portal-header .brand { font-size: 21px; }
+  .portal-header .brand small { font-size: 10px; }
+  .portal-header .brand-mark { flex-basis: 36px; height: 36px; font-size: 30px; }
+  .account-role, .portfolio-caption, .public-header-note { display: none; }
+  .portfolio-inner { min-height: 46px; padding-inline: 18px; overflow-x: auto; }
+  .portfolio-name { padding-right: 15px; font-size: 13px; }
+  .service-portfolio a { padding: 12px 16px; font-size: 12px; }
+  .app-shell { grid-template-columns: minmax(0, 1fr); gap: 18px; margin-top: 18px; padding-inline: 18px; }
+  .sidebar { position: static; height: auto; max-height: none; padding: 0; overflow: hidden; }
+  .sidebar-label { display: flex; padding: 11px 16px; font-size: 13px; }
+  .workspace-nav { display: flex; gap: 0; margin: 0; padding: 3px 5px; overflow-x: auto; }
+  .workspace-nav a { min-height: 40px; padding: 9px 12px; font-size: 12px; }
+  .workspace-nav a[aria-current="location"] { box-shadow: inset 0 -2px #218cbb; }
+  .sidebar-note { display: none; }
+  .container { padding: 0; }
+  .portal-welcome { min-height: 125px; padding: 22px; margin-bottom: 18px; }
+  .auth-shell { grid-template-columns: minmax(0, 1fr); max-width: 570px; }
+  .auth-page-heading { max-width: 570px; }
+  .auth-story { padding: 25px 28px; border-right: 0; border-top: 1px solid #dce9f0; border-bottom: 0; }
+  .auth-story-content { margin-top: 20px; }
+  .auth-story h2 { font-size: 19px; }
+  .auth-intro { display: block; }
+  .care-flow, .auth-footnote { display: none; }
+  .login-card { order: -1; padding: 30px; }
+}
+@media (max-width: 480px) {
+  .portal-header { flex-wrap: wrap; padding: 17px 18px; gap: 14px; }
+  .portal-header .brand { font-size: 20px; }
+  .portal-header .brand small { font-size: 9px; }
+  .account { width: 100%; padding-top: 11px; border-top: 1px solid #e8eff3; }
+  .account-name { max-width: 220px; }
+  .logout-link { margin-left: auto; }
+  .portfolio-inner { padding-inline: 14px; }
+  .portfolio-name { padding-right: 10px; font-size: 12px; }
+  .portfolio-name .service-icon { display: none; }
+  .service-portfolio a { padding-inline: 13px; }
+  .app-shell { padding-inline: 12px; }
+  .breadcrumb { font-size: 11px; }
+  .portal-welcome { padding: 20px; }
+  .portal-welcome h1 { font-size: 24px; }
+  .portal-welcome .page-description { font-size: 12px; }
+  .welcome-icon { display: none; }
+  .card { padding: 18px 14px; }
+  .section-heading { margin: -18px -14px 18px; padding: 14px; }
+  .section-heading h2 { font-size: 16px; }
+  .auth-page-heading { width: calc(100% - 32px); padding: 24px 0 18px; }
+  .auth-page-heading h1 { font-size: 24px; }
+  .auth-shell { width: calc(100% - 24px); margin-bottom: 24px; }
+  .auth-story { padding: 22px; }
+  .selected-cloud { padding: 12px; }
+  .service-audiences { gap: 9px; }
+  .service-audiences > div { padding: 12px; }
+  .login-card { padding: 28px 23px; }
+  .portal-footer { flex-direction: column; gap: 5px; margin-top: 18px; padding: 20px 16px; }
+}

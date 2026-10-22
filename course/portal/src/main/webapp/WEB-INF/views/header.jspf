@@ -40,14 +40,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %> · 医疗云</title>
   <link rel="stylesheet" href="<%= context %>/assets/course.css">
+  <link rel="stylesheet" href="<%= context %>/assets/lab2-portal.css">
   <script src="<%= context %>/assets/portal.js" defer></script>
 </head>
 <body class="workspace-page">
 <a class="skip-link" href="#main-content">跳转到主要内容</a>
+<header class="topbar portal-header">
+  <a class="brand" href="<%= context %>/<%= workspace %>"><span class="brand-mark" aria-hidden="true">+</span><span>智慧医疗云<small>在线预约与诊疗服务平台</small></span></a>
+  <div class="account" role="group" aria-label="当前账号"><span class="account-role"><%= workspaceLabel %></span><span class="account-avatar" aria-hidden="true">云</span><span class="account-name"><%= WebEscaper.html(String.valueOf(request.getAttribute("username"))) %></span><a class="logout-link" href="<%= context %>/logout">退出登录</a></div>
+</header>
+<nav class="service-portfolio" aria-label="用户服务菜单">
+  <div class="portfolio-inner"><span class="portfolio-name"><svg class="service-icon" aria-hidden="true"><use href="<%= context %>/assets/icons.svg#cloud"/></svg>医疗云服务</span><a href="<%= context %>/<%= workspace %>" aria-current="page"><%= workspaceLabel %>工作台</a><a href="#service-scope">服务说明</a><span class="portfolio-caption">预约 · 诊疗 · 医院协同</span></div>
+</nav>
 <div class="app-shell">
 <aside class="sidebar">
-  <a class="brand" href="<%= context %>/<%= workspace %>"><span class="brand-mark" aria-hidden="true">+</span><span>医疗云<small>MEDICAL CLOUD</small></span></a>
-  <div class="sidebar-label">云服务控制台</div>
+  <div class="sidebar-label"><span>内容导航</span><small><%= workspaceLabel %></small></div>
   <nav class="workspace-nav" aria-label="工作台导航">
     <% if ("patient".equals(workspace)) { %>
     <a href="#slot-search"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#calendar"/></svg>预约挂号</a>
@@ -74,15 +81,12 @@
     <a href="#architecture"><svg class="nav-icon" aria-hidden="true" focusable="false"><use href="<%= context %>/assets/icons.svg#layers"/></svg>架构概览</a>
     <% } %>
   </nav>
-  <div class="sidebar-note"><span class="demo-dot" aria-hidden="true"></span>课堂演示环境<p>仅使用虚构数据<br>不接入真实医疗或支付服务</p><small>Java 8 · Tomcat 9 · WildFly 10</small></div>
+  <div class="sidebar-note"><svg class="service-icon" aria-hidden="true"><use href="<%= context %>/assets/icons.svg#shield"/></svg><strong>服务小提示</strong><p><% if ("patient".equals(workspace)) { %>先选择医院和科室，再查询医生号源。预约后的诊疗信息可在本人记录中查阅。<% } else if ("doctor".equals(workspace)) { %>从接诊工作台开始处理本院预约，保存草稿后可继续完善诊疗记录。<% } else if ("hospital".equals(workspace)) { %>按科室、医生、排班的顺序维护本院服务资源。<% } else { %>管理入驻医院，查看脱敏统计与审计信息。<% } %></p></div>
 </aside>
 <div class="workspace-content">
-<header class="topbar">
-  <div class="breadcrumb">医疗云 <span>/</span> <%= workspaceLabel %></div>
-  <div class="account" role="group" aria-label="当前账号"><span class="account-role"><%= workspaceLabel %></span><span class="account-avatar" aria-hidden="true">云</span><span class="account-name"><%= WebEscaper.html(String.valueOf(request.getAttribute("username"))) %></span><a class="logout-link" href="<%= context %>/logout">退出登录</a></div>
-</header>
 <main class="container" id="main-content" tabindex="-1">
-  <div class="page-heading"><div><p class="eyebrow">MEDICAL CLOUD / <%= workspace.toUpperCase(java.util.Locale.ROOT) %></p><h1><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %></h1><p class="page-description"><%= workspaceDescription %></p></div><span class="environment-tag">课程版 · SaaS 门户</span></div>
+  <div class="breadcrumb">医疗云服务 <span>/</span> <%= workspaceLabel %> <span>/</span> 服务工作区</div>
+  <div class="page-heading portal-welcome"><div><p class="eyebrow">智慧医疗云 · <%= workspaceLabel %></p><h1><%= WebEscaper.html(String.valueOf(request.getAttribute("portalTitle"))) %></h1><p class="page-description"><%= workspaceDescription %></p></div><span class="welcome-icon" aria-hidden="true"><svg><use href="<%= context %>/assets/icons.svg#<%= "doctor".equals(workspace) ? "consultation" : "patient".equals(workspace) ? "calendar" : "building" %>"/></svg></span></div>
   <% if (request.getAttribute("notice") != null) { %><p class="notice" role="status"><%= request.getAttribute("notice") %></p><% } %>
   <% if (request.getAttribute("error") != null) { %><p class="error" role="alert"><%= request.getAttribute("error") %></p><% } %>
   <% if (("doctor".equals(workspace) || "hospital".equals(workspace)) && !workspaceWritable) { %>
